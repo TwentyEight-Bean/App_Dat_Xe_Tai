@@ -1,0 +1,569 @@
+/* ==========================================================================
+   Interactive Draggable & Zoomable Map Styles
+   Features: Pan gesture, Pinch-to-zoom, Lifted Pin, Moving Truck, Glass Controls
+   ========================================================================== */
+
+.interactive-map-root {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+  cursor: grab;
+  background: var(--map, #e8ebe6);
+  transition: background 300ms ease;
+}
+
+.interactive-map-root.is-dragging {
+  cursor: grabbing;
+}
+
+/* Map Content World Layer */
+.map-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.vector-map-bg {
+  position: absolute;
+  inset: -150px -150px;
+  background: #e8ebe6;
+  transition: background 300ms ease;
+}
+
+/* Layer Themes */
+.interactive-map-root.layer-traffic .vector-map-bg {
+  background: #e4e9e2;
+}
+
+.interactive-map-root.layer-satellite .vector-map-bg {
+  background: #19212c;
+}
+
+/* Grid Mesh */
+.map-grid-mesh {
+  position: absolute;
+  inset: 0;
+  opacity: 0.45;
+  background:
+    linear-gradient(29deg, transparent 46%, #ffffff 47%, #ffffff 50%, transparent 51%) 20px 14px / 112px 84px,
+    linear-gradient(118deg, transparent 47%, #ffffff 48%, #ffffff 51%, transparent 52%) 0 0 / 96px 106px;
+}
+
+.interactive-map-root.layer-satellite .map-grid-mesh {
+  opacity: 0.12;
+}
+
+/* Waterways */
+.waterways-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.saigon-river {
+  fill: none;
+  stroke: #c8e6ec;
+  stroke-width: 44;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ben-nghe-canal,
+.nhieu-loc-canal {
+  fill: none;
+  stroke: #d0eaf0;
+  stroke-width: 16;
+  stroke-linecap: round;
+}
+
+.interactive-map-root.layer-satellite .saigon-river {
+  stroke: #102d3a;
+}
+.interactive-map-root.layer-satellite .ben-nghe-canal,
+.interactive-map-root.layer-satellite .nhieu-loc-canal {
+  stroke: #133444;
+}
+
+/* Parks */
+.park {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 24px;
+  color: #5c8364;
+  background: #d4e7cd;
+  border: 1px solid #c4dbc0;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 0 10px rgba(100, 150, 100, 0.08);
+}
+
+.park-tao-dan {
+  border-radius: 36% 24% 40% 30%;
+  transform: rotate(-4deg);
+}
+.park-le-van-tam {
+  border-radius: 20%;
+  transform: rotate(5deg);
+}
+.park-zoo {
+  border-radius: 40% 20% 30% 40%;
+}
+.park-23-9 {
+  border-radius: 14px;
+  transform: rotate(-10deg);
+}
+
+.interactive-map-root.layer-satellite .park {
+  background: #1b2f24;
+  border-color: #234233;
+  color: #6da381;
+}
+
+/* Districts */
+.district-tag {
+  position: absolute;
+  z-index: 2;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: #8fa099;
+  text-transform: uppercase;
+}
+
+.interactive-map-root.layer-satellite .district-tag {
+  color: #4b6358;
+}
+
+/* Roads */
+.roads-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.road-artery {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.06));
+}
+
+.road-local {
+  fill: none;
+  stroke: #fdfdfa;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.interactive-map-root.layer-satellite .road-artery {
+  stroke: #2b3542;
+}
+.interactive-map-root.layer-satellite .road-local {
+  stroke: #222b37;
+}
+
+.street-label {
+  position: absolute;
+  z-index: 2;
+  color: #7b8884;
+  font-size: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.interactive-map-root.layer-satellite .street-label {
+  color: #71869e;
+}
+
+/* Hot Traffic Zones */
+.hot-zone {
+  position: absolute;
+  z-index: 2;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(234, 162, 26, 0.35) 0%, rgba(234, 162, 26, 0.05) 65%, transparent 70%);
+  pointer-events: none;
+  animation: hot-pulse 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes hot-pulse {
+  from { transform: scale(0.95); opacity: 0.75; }
+  to { transform: scale(1.08); opacity: 1; }
+}
+
+.hot-zone-tag {
+  position: absolute;
+  z-index: 3;
+  padding: 3px 9px;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+/* Nearby Truck Marker */
+.nearby-truck-marker {
+  position: absolute;
+  z-index: 4;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.truck-pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: rgba(20, 120, 212, 0.18);
+  animation: radar-expand 1.6s ease-out infinite;
+}
+
+.truck-icon {
+  font-size: 16px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+/* Active Trip Route */
+.trip-route-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.trip-route-casing {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 10;
+  stroke-linecap: round;
+  filter: drop-shadow(0 4px 10px rgba(20, 120, 212, 0.35));
+}
+
+.trip-route-core {
+  fill: none;
+  stroke: url(#routeGlow);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 8 4;
+  animation: route-dash 1.4s linear infinite;
+}
+
+@keyframes route-dash {
+  to { stroke-dashoffset: -24; }
+}
+
+/* Destination Marker */
+.dest-point-marker {
+  position: absolute;
+  z-index: 5;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.dest-pin-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1478d4, #0f62ae);
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-size: 15px;
+  box-shadow: 0 4px 12px rgba(20, 120, 212, 0.45);
+  border: 2px solid #ffffff;
+}
+
+.dest-pin-label {
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(23, 33, 43, 0.88);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Live Animated Truck */
+.live-driver-truck {
+  position: absolute;
+  z-index: 6;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  transition: transform 120ms ease;
+}
+
+.truck-radar-wave {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--green-500);
+  animation: radar-expand 1.8s infinite;
+}
+
+.truck-vehicle-body {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1fb574, var(--green-500));
+  border: 2px solid #ffffff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 14px rgba(25, 169, 107, 0.45);
+}
+
+.truck-glyph {
+  font-size: 18px;
+}
+
+/* Interactive Center Pickup Pin */
+.interactive-center-pin {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  transition: transform 220ms cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.interactive-center-pin.is-lifted {
+  transform: translate(-50%, -85%);
+}
+
+.pin-ground-shadow {
+  position: absolute;
+  bottom: -4px;
+  width: 14px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.22);
+  filter: blur(1.5px);
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+.interactive-center-pin.is-lifted .pin-ground-shadow {
+  transform: scale(0.65);
+  opacity: 0.35;
+}
+
+.pin-head {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  border: 3.5px solid #ffffff;
+  box-shadow: 0 4px 14px rgba(20, 120, 212, 0.4);
+  display: grid;
+  place-items: center;
+  transition: transform 180ms ease;
+}
+
+.pin-inner-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.pin-callout-bubble {
+  position: absolute;
+  bottom: 32px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 18px rgba(52, 44, 28, 0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  white-space: nowrap;
+  animation: pop-bubble 240ms cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+.pin-callout-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px 6px 0;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.95) transparent transparent;
+}
+
+.pin-callout-text {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--ink-900);
+}
+
+.pin-callout-sub {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--ink-500);
+}
+
+@keyframes pop-bubble {
+  from { transform: scale(0.85); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.radar-radar-ring {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 1.5px solid var(--brand-500);
+  animation: radar-expand 2s ease-out infinite;
+}
+
+.radar-radar-ring.ring-delay {
+  animation-delay: 800ms;
+}
+
+/* Floating Map Controls */
+.floating-map-controls {
+  position: absolute;
+  z-index: 7;
+  right: 14px;
+  top: 112px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.layer-control-wrap {
+  position: relative;
+}
+
+.layer-dropdown {
+  position: absolute;
+  right: 50px;
+  top: 0;
+  width: 170px;
+  padding: 6px;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: select-pop 200ms ease-out;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+}
+
+.layer-opt {
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-900);
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.layer-opt:hover,
+.layer-opt.selected {
+  background: var(--brand-50);
+  color: var(--brand-700);
+  font-weight: 700;
+}
+
+.zoom-btn-group {
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(52, 44, 28, 0.1);
+}
+
+.zoom-btn-group button {
+  width: 44px;
+  height: 38px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink-900);
+  font-size: 18px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.zoom-btn-group button:hover {
+  background: #ffffff;
+}
+
+.zoom-btn-group button:active {
+  background: var(--tint-2);
+}
+
+.zoom-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* Drag Hint Pill */
+.drag-hint-pill {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 76px;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-700);
+  box-shadow: 0 4px 14px rgba(52, 44, 28, 0.08);
+  pointer-events: none;
+  animation: peek-appear 300ms ease;
+}
+
+.hint-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  box-shadow: 0 0 0 3px rgba(20, 120, 212, 0.2);
+}

@@ -1,0 +1,10 @@
+{
+  "description": "Connects customers with drivers to book cargo transport easily via a user-friendly mobile interface featuring location input, vehicle selection, and price estimates.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
