@@ -1,0 +1,391 @@
+openapi: 3.0.3
+info:
+  title: App Đặt Xe Tải API (Truck Booking API)
+  description: Tài liệu OpenAPI đặc tả các endpoints cho Frontend (Khách hàng & Tài xế) và Admin.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local Development Server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ------------------
+    # COMMON SCHEMAS
+    # ------------------
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Lỗi hệ thống hoặc request không hợp lệ."
+        code:
+          type: string
+          example: "ERROR_CODE"
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Thành công"
+
+    # ------------------
+    # AUTH SCHEMAS
+    # ------------------
+    LoginRequest:
+      type: object
+      required:
+        - phone
+      properties:
+        phone:
+          type: string
+          example: "0901234567"
+    
+    VerifyOtpRequest:
+      type: object
+      required:
+        - phone
+        - otp
+      properties:
+        phone:
+          type: string
+          example: "0901234567"
+        otp:
+          type: string
+          example: "123456"
+
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        fullName:
+          type: string
+        role:
+          type: string
+          enum: [CUSTOMER, DRIVER, ADMIN]
+
+    # ------------------
+    # BOOKING SCHEMAS
+    # ------------------
+    EstimatePriceRequest:
+      type: object
+      required:
+        - vehicleTypeId
+        - originLat
+        - originLng
+        - destLat
+        - destLng
+      properties:
+        vehicleTypeId:
+          type: string
+          format: uuid
+        originLat:
+          type: number
+        originLng:
+          type: number
+        destLat:
+          type: number
+        destLng:
+          type: number
+        services:
+          type: array
+          items:
+            type: string
+          description: "Mảng ID các dịch vụ kèm theo (VD: Bốc xếp)"
+
+    EstimatePriceResponse:
+      type: object
+      properties:
+        distanceKm:
+          type: number
+          example: 12.5
+        basePrice:
+          type: number
+          example: 250000
+        surchargePrice:
+          type: number
+          example: 50000
+        totalPrice:
+          type: number
+          example: 300000
+
+    CreateBookingRequest:
+      type: object
+      required:
+        - vehicleTypeId
+        - originAddress
+        - originLat
+        - originLng
+        - destinationAddress
+        - destLat
+        - destLng
+        - estimatedPrice
+      properties:
+        vehicleTypeId:
+          type: string
+          format: uuid
+        originAddress:
+          type: string
+        originLat:
+          type: number
+        originLng:
+          type: number
+        destinationAddress:
+          type: string
+        destLat:
+          type: number
+        destLng:
+          type: number
+        estimatedPrice:
+          type: number
+        paymentMethod:
+          type: string
+          enum: [CASH, WALLET, VNPAY, MOMO]
+          default: CASH
+
+    # ------------------
+    # LOCATION SCHEMAS
+    # ------------------
+    UpdateLocationRequest:
+      type: object
+      required:
+        - lat
+        - lng
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+        heading:
+          type: number
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==========================================
+  # AUTHENTICATION MODULE
+  # ==========================================
+  /auth/request-otp:
+    post:
+      tags:
+        - Auth
+      summary: Yêu cầu gửi mã OTP đăng nhập
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Đã gửi OTP thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /auth/verify-otp:
+    post:
+      tags:
+        - Auth
+      summary: Xác thực mã OTP và nhận Token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtpRequest'
+      responses:
+        '200':
+          description: Đăng nhập thành công, trả về JWT Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  # ==========================================
+  # BOOKING MODULE (KHÁCH HÀNG)
+  # ==========================================
+  /bookings/estimate:
+    post:
+      tags:
+        - Booking (Customer)
+      summary: Tính giá cước dự kiến (Trước khi đặt xe)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimatePriceRequest'
+      responses:
+        '200':
+          description: Trả về giá tiền dự tính
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstimatePriceResponse'
+
+  /bookings:
+    post:
+      tags:
+        - Booking (Customer)
+      summary: Tạo đơn đặt xe mới
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Đặt xe thành công, đang tìm tài xế (SEARCHING)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  bookingId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    example: "SEARCHING"
+
+    get:
+      tags:
+        - Booking (Customer)
+      summary: Lấy danh sách lịch sử chuyến đi của tôi
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  # Rút gọn schema trả về...
+
+  # ==========================================
+  # DRIVER OPERATION MODULE
+  # ==========================================
+  /driver/location:
+    put:
+      tags:
+        - Driver Operations
+      summary: Cập nhật vị trí GPS liên tục của tài xế
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLocationRequest'
+      responses:
+        '200':
+          description: Cập nhật tọa độ thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /driver/bookings/{bookingId}/accept:
+    post:
+      tags:
+        - Driver Operations
+      summary: Tài xế bấm nhận chuyến
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Nhận chuyến thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Chuyến xe đã có người khác nhận
+
+  /driver/bookings/{bookingId}/status:
+    patch:
+      tags:
+        - Driver Operations
+      summary: Cập nhật trạng thái chuyến đi (Tới nơi, Đang giao, Hoàn thành)
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [IN_TRANSIT, COMPLETED]
+      responses:
+        '200':
+          description: Cập nhật thành công
+
+  # ==========================================
+  # WALLET MODULE
+  # ==========================================
+  /wallets/me:
+    get:
+      tags:
+        - Wallets
+      summary: Xem thông tin số dư ví cá nhân (Tài xế/Khách hàng)
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance:
+                    type: number
+                    example: 1500000
+                  lockedBalance:
+                    type: number
+                    example: 0

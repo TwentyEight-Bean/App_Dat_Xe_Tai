@@ -1,0 +1,72 @@
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: 'Times New Roman', Times, serif; font-size: 14pt; }
+  h1 { font-size: 20pt; text-align: center; color: #2c3e50; }
+  h2 { font-size: 16pt; color: #2980b9; margin-top: 20px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+  th, td { border: 1px solid black; padding: 8px; text-align: left; }
+  th { background-color: #f2f2f2; }
+</style>
+</head>
+<body>
+<h1>BẢNG PHÂN CÔNG VÀ TIẾN ĐỘ CÔNG VIỆC TEAM BACKEND</h1>
+<p><i>(Áp dụng cho mô hình team: 1 Tech Lead/Senior + 2 Backend Developer)</i></p>
+<p>Để đảm bảo dự án chạy trơn tru và không bị chồng chéo, công việc được chia thành <strong>4 Giai đoạn (Sprints)</strong>. Nguyên tắc: Làm từ móng (Database & API Specs) -> Lõi (Đặt xe/Tính tiền) -> Realtime -> Quản trị.</p>
+
+<h2>👥 THÀNH PHẦN NHÂN SỰ GIẢ ĐỊNH</h2>
+<ol>
+  <li><strong>BE-Lead (Tech Lead / Senior):</strong> Chịu trách nhiệm kiến trúc, Database, cấu hình Server và giải quyết các luồng nghiệp vụ khó (Realtime, Thanh toán).</li>
+  <li><strong>BE-01 (Backend Dev 1):</strong> Phụ trách API liên quan đến Khách hàng, Tài xế, Upload File, Thông báo.</li>
+  <li><strong>BE-02 (Backend Dev 2):</strong> Phụ trách API liên quan đến Admin Panel, Báo cáo, Đơn hàng cơ bản.</li>
+</ol>
+
+<h2>📍 SPRINT 1: XÂY MÓNG & ĐẶC TẢ API (Tuần 1)</h2>
+<p><i>Mục tiêu: Đặt nền móng Database, có file API Mock cho Frontend làm việc ngay lập tức.</i></p>
+<table>
+  <tr><th>STT</th><th>Tên công việc (Task)</th><th>Phân công</th><th>Trạng thái</th></tr>
+  <tr><td>1.1</td><td>Thiết kế sơ đồ Cơ sở dữ liệu (ERD) và tạo Database trên Neon (Bật extension PostGIS).</td><td><strong>BE-Lead</strong></td><td>Cần làm ngay</td></tr>
+  <tr><td>1.2</td><td>Khởi tạo Project Next.js, cấu hình Prisma/Drizzle ORM, setup ESLint/Prettier.</td><td><strong>BE-Lead</strong></td><td>Cần làm ngay</td></tr>
+  <tr><td>1.3</td><td><strong>Viết tài liệu OpenAPI (Swagger):</strong> Định nghĩa toàn bộ Endpoint, Request/Response body. Bàn giao cho Frontend.</td><td>Cả Team</td><td>Cần làm ngay</td></tr>
+  <tr><td>1.4</td><td>Cấu hình xác thực (Authentication): JWT token, mã hóa mật khẩu, phân quyền Role-based.</td><td><strong>BE-01</strong></td><td>Tiếp theo</td></tr>
+  <tr><td>1.5</td><td>Cấu hình lưu trữ file (Upload ảnh avatar, bằng lái) lên Cloud (AWS S3 hoặc Vercel Blob).</td><td><strong>BE-02</strong></td><td>Tiếp theo</td></tr>
+</table>
+
+<h2>📍 SPRINT 2: NGƯỜI DÙNG & TÍNH GIÁ CƯỚC (Tuần 2)</h2>
+<p><i>Mục tiêu: Đăng nhập được vào app, tính được tiền cho một cuốc xe giả định.</i></p>
+<table>
+  <tr><th>STT</th><th>Tên công việc (Task)</th><th>Phân công</th><th>Trạng thái</th></tr>
+  <tr><td>2.1</td><td>API Khách hàng: Đăng ký/Đăng nhập bằng OTP (Tích hợp VietGuys/ESMS). Quản lý sổ địa chỉ.</td><td><strong>BE-01</strong></td><td>Ưu tiên</td></tr>
+  <tr><td>2.2</td><td>API Tài xế: Quy trình KYC (Nộp giấy tờ, duyệt hồ sơ), Cập nhật trạng thái Trực tuyến/Ngoại tuyến.</td><td><strong>BE-02</strong></td><td>Ưu tiên</td></tr>
+  <tr><td>2.3</td><td><strong>Engine Tính giá:</strong> Viết hàm tính khoảng cách bằng tọa độ (gọi API Goong.io) -> Nhân với bảng giá gốc -> Cộng phụ phí.</td><td><strong>BE-Lead</strong></td><td>Ưu tiên cao</td></tr>
+  <tr><td>2.4</td><td>API Admin (Cơ bản): Quản lý bảng giá, Duyệt hồ sơ tài xế, Quản lý danh sách khách hàng B2B.</td><td><strong>BE-02</strong></td><td>Tiếp theo</td></tr>
+</table>
+
+<h2>📍 SPRINT 3: REAL-TIME & ĐIỀU PHỐI CUỐC XE (Tuần 3 - Cốt lõi)</h2>
+<p><i>Mục tiêu: Khách đặt được xe, hệ thống tự động tìm và "nổ cuốc" trên điện thoại tài xế gần nhất.</i></p>
+<table>
+  <tr><th>STT</th><th>Tên công việc (Task)</th><th>Phân công</th><th>Trạng thái</th></tr>
+  <tr><td>3.1</td><td><strong>Logic PostGIS:</strong> Viết query tìm danh sách tài xế đang online trong bán kính 3-5km từ điểm lấy hàng.</td><td><strong>BE-Lead</strong></td><td>Ưu tiên cao</td></tr>
+  <tr><td>3.2</td><td><strong>Tích hợp Pusher (Realtime):</strong> Bắn sự kiện "Có cuốc mới" đến các tài xế quét được. Lắng nghe event "Tài xế A nhận cuốc".</td><td><strong>BE-Lead</strong></td><td>Ưu tiên cao</td></tr>
+  <tr><td>3.3</td><td>API Trạng thái chuyến đi: Đã nhận -> Tới lấy -> Đang giao -> Hoàn thành.</td><td><strong>BE-01</strong></td><td>Song song</td></tr>
+  <tr><td>3.4</td><td>Cập nhật vị trí GPS: API/Socket nhận tọa độ liên tục từ điện thoại tài xế và đẩy lên Pusher cho khách xem.</td><td><strong>BE-02</strong></td><td>Song song</td></tr>
+  <tr><td>3.5</td><td>Push Notification: Tích hợp Firebase (FCM) báo Notification (Xe đã tới, Đơn bị hủy).</td><td><strong>BE-01</strong></td><td>Tiếp theo</td></tr>
+</table>
+
+<h2>📍 SPRINT 4: THANH TOÁN, CHAT & VẬN HÀNH (Tuần 4)</h2>
+<p><i>Mục tiêu: Thu được tiền, chat/gọi điện, và các tính năng phục vụ Admin/Kế toán.</i></p>
+<table>
+  <tr><th>STT</th><th>Tên công việc (Task)</th><th>Phân công</th><th>Trạng thái</th></tr>
+  <tr><td>4.1</td><td><strong>Ví Ký Quỹ & Hoa hồng:</strong> Logic nạp tiền vào ví tài xế, tự động trừ % hoa hồng khi hoàn thành cuốc tiền mặt.</td><td><strong>BE-Lead</strong></td><td>Ưu tiên cao</td></tr>
+  <tr><td>4.2</td><td>Tích hợp cổng thanh toán (VNPay / MoMo) cho khách hàng nạp ví hoặc trả tiền cuốc xe.</td><td><strong>BE-Lead</strong></td><td>Tiếp theo</td></tr>
+  <tr><td>4.3</td><td>API Chat trong app (Lưu trữ tin nhắn vào DB, gửi qua Pusher).</td><td><strong>BE-01</strong></td><td>Song song</td></tr>
+  <tr><td>4.4</td><td>Tích hợp Stringee (Tổng đài ảo): API cấp phép cuộc gọi giữa Khách và Tài xế (Giấu số).</td><td><strong>BE-02</strong></td><td>Song song</td></tr>
+  <tr><td>4.5</td><td>API Dashboard Kế toán: Thống kê doanh thu, số chuyến, API xuất file Excel.</td><td><strong>BE-02</strong></td><td>Tiếp theo</td></tr>
+  <tr><td>4.6</td><td>Setup Cronjob: Tự động khóa tài xế điểm thấp, Tự backup Database hàng ngày.</td><td><strong>BE-Lead</strong></td><td>Cuối cùng</td></tr>
+</table>
+
+<h3>Tóm lược luồng công việc (Dành cho PM/Scrum Master):</h3>
+<p>👉 Bắt buộc hoàn thành xong <strong>Sprint 1 (Thiết kế Swagger)</strong> trong 3-5 ngày đầu tiên để Frontend không ngồi chơi. Các Sprint sau Backend và Frontend có thể chạy song song độc lập.</p>
+</body>
+</html>
