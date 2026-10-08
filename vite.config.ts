@@ -24,6 +24,7 @@ react(),
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      apiMiddlewarePlugin(),
     ],
     resolve: {
       alias: {
@@ -358,4 +359,27 @@ function figmaMakeKitPlugin(options: { storiesGlob: string | string[] }): Plugin
       })
     },
   }
+}
+
+function apiMiddlewarePlugin(): Plugin {
+  return {
+    name: 'api-middleware',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url || '';
+        if (url.startsWith('/api/') || url.startsWith('/api/v1/')) {
+          try {
+            const { handleApiRequest } = await import('./src/api/router');
+            const handled = await handleApiRequest(req, res);
+            if (!handled) next();
+          } catch (err) {
+            next(err as Error);
+          }
+        } else {
+          next();
+        }
+      });
+    },
+  };
 }

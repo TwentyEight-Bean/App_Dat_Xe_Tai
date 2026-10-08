@@ -1,6 +1,9 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import * as dotenv from 'dotenv';
 import * as schema from './schema';
+
+dotenv.config();
 
 // Lấy URL kết nối từ môi trường
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';

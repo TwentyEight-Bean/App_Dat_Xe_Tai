@@ -93,6 +93,121 @@ components:
           enum: [CUSTOMER, DRIVER, ADMIN]
 
     # ------------------
+    # ADDRESS SCHEMAS
+    # ------------------
+    CreateAddressRequest:
+      type: object
+      required:
+        - addressText
+      properties:
+        title:
+          type: string
+          example: "Kho hàng Tân Bình"
+        addressText:
+          type: string
+          example: "123 Cộng Hòa, Phường 12, Quận Tân Bình, TP.HCM"
+        latitude:
+          type: number
+          example: 10.8014
+        longitude:
+          type: number
+          example: 106.6521
+        contactName:
+          type: string
+          example: "Anh Tuấn"
+        contactPhone:
+          type: string
+          example: "0987654321"
+        isDefault:
+          type: boolean
+          example: false
+
+    AddressItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        addressText:
+          type: string
+        latitude:
+          type: string
+        longitude:
+          type: string
+        contactName:
+          type: string
+        contactPhone:
+          type: string
+        isDefault:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    # ------------------
+    # DRIVER KYC SCHEMAS
+    # ------------------
+    DriverDocumentItem:
+      type: object
+      required:
+        - docType
+        - fileUrl
+      properties:
+        docType:
+          type: string
+          enum: [CCCD_FRONT, CCCD_BACK, DRIVER_LICENSE, VEHICLE_REGISTRATION, PORTRAIT]
+          example: "CCCD_FRONT"
+        fileUrl:
+          type: string
+          example: "https://res.cloudinary.com/demo/image/upload/cccd_front.jpg"
+        docNumber:
+          type: string
+          example: "079201001234"
+
+    SubmitDriverKycRequest:
+      type: object
+      required:
+        - documents
+      properties:
+        vehicleTypeId:
+          type: string
+          format: uuid
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        licensePlate:
+          type: string
+          example: "51C-888.99"
+        driverLicenseNo:
+          type: string
+          example: "GPLX-790123456"
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverDocumentItem'
+
+    UpdateDriverOnlineRequest:
+      type: object
+      required:
+        - isOnline
+      properties:
+        isOnline:
+          type: boolean
+          example: true
+
+    RejectKycRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          example: "Ảnh chụp bằng lái xe bị mờ góc, vui lòng chụp lại rõ nét."
+
+    # ------------------
     # BOOKING SCHEMAS
     # ------------------
     EstimatePriceRequest:
@@ -172,6 +287,7 @@ components:
           default: CASH
 
     # ------------------
+    # ------------------
     # LOCATION SCHEMAS
     # ------------------
     UpdateLocationRequest:
@@ -186,6 +302,285 @@ components:
           type: number
         heading:
           type: number
+
+    # ------------------
+    # ADMIN PRICING & SURCHARGES SCHEMAS
+    # ------------------
+    PricingRuleItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicleTypeId:
+          type: string
+          format: uuid
+        basePrice:
+          type: number
+          example: 150000
+        baseDistanceKm:
+          type: number
+          example: 4
+        pricePerKm:
+          type: number
+          example: 18000
+        pricePerKmNext:
+          type: number
+          example: 14000
+        rushHourMultiplier:
+          type: number
+          example: 1.2
+        nightMultiplier:
+          type: number
+          example: 1.3
+
+    UpdatePricingRuleRequest:
+      type: object
+      properties:
+        basePrice:
+          type: number
+          example: 160000
+        baseDistanceKm:
+          type: number
+          example: 4
+        pricePerKm:
+          type: number
+          example: 19000
+        pricePerKmNext:
+          type: number
+          example: 15000
+        rushHourMultiplier:
+          type: number
+          example: 1.25
+        nightMultiplier:
+          type: number
+          example: 1.35
+
+    SurchargeServiceItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          example: "BOC_XEP_TANG_TRET"
+        name:
+          type: string
+          example: "Bốc xếp tầng trệt (dưới 50m)"
+        description:
+          type: string
+          example: "Bốc xếp hàng hóa lên xuống xe tại tầng trệt"
+        price:
+          type: number
+          example: 50000
+        unit:
+          type: string
+          example: "chuyến"
+        isOptional:
+          type: boolean
+          example: true
+        isAuto:
+          type: boolean
+          example: false
+        isActive:
+          type: boolean
+          example: true
+
+    CreateSurchargeServiceRequest:
+      type: object
+      required:
+        - code
+        - name
+        - price
+      properties:
+        code:
+          type: string
+          example: "DONG_GOI_HANG"
+        name:
+          type: string
+          example: "Dịch vụ đóng gói bọc màng PE"
+        description:
+          type: string
+          example: "Bọc màng co bảo vệ đồ đạc"
+        price:
+          type: number
+          example: 70000
+        unit:
+          type: string
+          example: "kiện"
+        isOptional:
+          type: boolean
+          default: true
+        isAuto:
+          type: boolean
+          default: false
+
+    UpdateSurchargeServiceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        unit:
+          type: string
+        isOptional:
+          type: boolean
+        isAuto:
+          type: boolean
+        isActive:
+          type: boolean
+
+    # ------------------
+    # ADMIN DRIVER MANAGEMENT SCHEMAS
+    # ------------------
+    DriverStatusUpdateRequest:
+      type: object
+      required:
+        - isActive
+      properties:
+        isActive:
+          type: boolean
+          example: true
+          description: "true = Hoạt động bình thường; false = Khóa tài xế"
+
+    # ------------------
+    # B2B CUSTOMER SCHEMAS
+    # ------------------
+    B2bCustomerItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyName:
+          type: string
+          example: "Công ty Cổ phần Vận tải & Logistics ABC"
+        taxCode:
+          type: string
+          example: "0312345678"
+        contactPerson:
+          type: string
+          example: "Nguyễn Văn Giám Đốc"
+        contactPhone:
+          type: string
+          example: "0909888999"
+        contactEmail:
+          type: string
+          example: "contact@abclogistics.vn"
+        address:
+          type: string
+          example: "123 Đường Tân Tạo, Bình Tân, TP.HCM"
+        creditLimit:
+          type: number
+          example: 50000000
+        currentDebt:
+          type: number
+          example: 12500000
+        availableCredit:
+          type: number
+          example: 37500000
+        discountPercent:
+          type: number
+          example: 10
+        paymentTermDays:
+          type: integer
+          example: 30
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, TERMINATED]
+          example: "ACTIVE"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateB2bCustomerRequest:
+      type: object
+      required:
+        - companyName
+        - taxCode
+        - contactPerson
+        - contactPhone
+      properties:
+        companyName:
+          type: string
+          example: "Công ty TNHH Thương mại Dịch vụ Ánh Dương"
+        taxCode:
+          type: string
+          example: "0399887766"
+        contactPerson:
+          type: string
+          example: "Trần Thị Trưởng Phòng"
+        contactPhone:
+          type: string
+          example: "0918776655"
+        contactEmail:
+          type: string
+          example: "ketoan@anhduong.vn"
+        address:
+          type: string
+          example: "456 Xa Lộ Hà Nội, TP. Thủ Đức, TP.HCM"
+        creditLimit:
+          type: number
+          default: 0
+          example: 30000000
+        discountPercent:
+          type: number
+          default: 0
+          example: 5
+        paymentTermDays:
+          type: integer
+          default: 30
+          example: 30
+
+    UpdateB2bCustomerRequest:
+      type: object
+      properties:
+        companyName:
+          type: string
+        contactPerson:
+          type: string
+        contactPhone:
+          type: string
+        contactEmail:
+          type: string
+        address:
+          type: string
+        creditLimit:
+          type: number
+        discountPercent:
+          type: number
+        paymentTermDays:
+          type: integer
+
+    UpdateB2bCustomerStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, TERMINATED]
+          example: "ACTIVE"
+
+    RecordB2bPaymentRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          type: number
+          example: 10000000
+          description: "Số tiền doanh nghiệp thanh toán trả nợ công nợ (VNĐ)"
+        note:
+          type: string
+          example: "Thanh toán ủy nhiệm chi đợt 1 tháng 10 qua VCB"
 
 security:
   - bearerAuth: []
@@ -231,6 +626,143 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
+
+  # ==========================================
+  # SỔ ĐỊA CHỈ KHÁCH HÀNG (ADDRESS BOOK)
+  # ==========================================
+  /customer/addresses:
+    get:
+      tags:
+        - Customer Address Book
+      summary: Lấy danh sách sổ địa chỉ đã lưu của khách hàng
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Danh sách địa chỉ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AddressItem'
+
+    post:
+      tags:
+        - Customer Address Book
+      summary: Thêm địa chỉ mới vào sổ địa chỉ
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAddressRequest'
+      responses:
+        '201':
+          description: Thêm địa chỉ thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/AddressItem'
+
+  /customer/addresses/{id}:
+    put:
+      tags:
+        - Customer Address Book
+      summary: Cập nhật thông tin địa chỉ
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAddressRequest'
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/AddressItem'
+
+    delete:
+      tags:
+        - Customer Address Book
+      summary: Xóa địa chỉ khỏi sổ
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Xóa thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /customer/addresses/{id}/default:
+    patch:
+      tags:
+        - Customer Address Book
+      summary: Đặt địa chỉ làm mặc định
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Đặt mặc định thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/AddressItem'
 
   # ==========================================
   # BOOKING MODULE (KHÁCH HÀNG)
@@ -296,6 +828,524 @@ paths:
                 items:
                   type: object
                   # Rút gọn schema trả về...
+
+  # ==========================================
+  # DRIVER KYC & STATUS MODULE
+  # ==========================================
+  /driver/vehicle-types:
+    get:
+      tags:
+        - Driver KYC
+      summary: Lấy danh sách các loại xe tải đang hoạt động
+      responses:
+        '200':
+          description: Danh sách loại xe
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+
+  /driver/profile:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - Driver KYC
+      summary: Lấy thông tin hồ sơ và giấy tờ tài xế
+      responses:
+        '200':
+          description: Thông tin hồ sơ tài xế
+        '401':
+          description: Chưa đăng nhập hoặc Token hết hạn
+
+  /driver/kyc/status:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - Driver KYC
+      summary: Lấy trạng thái phê duyệt KYC và điều kiện bật Trực tuyến
+      responses:
+        '200':
+          description: Chi tiết trạng thái KYC
+
+  /driver/kyc/submit:
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - Driver KYC
+      summary: Nộp hồ sơ KYC (CCCD, Bằng lái, Cà vẹt xe, Biển số)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitDriverKycRequest'
+      responses:
+        '200':
+          description: Nộp hồ sơ thành công, trạng thái chuyển sang PENDING
+        '400':
+          description: Thiếu giấy tờ hoặc định dạng không hợp lệ
+
+  /driver/status/online:
+    patch:
+      security:
+        - bearerAuth: []
+      tags:
+        - Driver Operations
+      summary: Bật/Tắt trạng thái Trực tuyến (Online / Offline Toggle)
+      description: |
+        Chỉ tài xế đã được Quản trị viên duyệt KYC (kycStatus = 'APPROVED')
+        và tài khoản đang hoạt động (isActive = true) mới được phép bật isOnline = true.
+        Nếu chưa duyệt, server chặn ngay lập tức với mã lỗi HTTP 403 Forbidden (KYC_NOT_APPROVED).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDriverOnlineRequest'
+      responses:
+        '200':
+          description: Cập nhật trạng thái thành công
+        '403':
+          description: Bị chặn do chưa duyệt KYC (KYC_NOT_APPROVED) hoặc tài khoản bị khóa
+
+  # ==========================================
+  # ADMIN MANAGEMENT MODULE (KYC, DRIVERS, PRICING, B2B)
+  # ==========================================
+  /admin/drivers:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin Management
+      summary: Danh sách toàn bộ tài xế (Lọc trạng thái KYC, online, tìm kiếm)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: kycStatus
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, APPROVED, REJECTED]
+        - name: isOnline
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          description: "Tìm kiếm theo họ tên, số điện thoại hoặc biển số xe"
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Danh sách tài xế theo điều kiện lọc
+
+  /admin/drivers/kyc-pending:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin KYC
+      summary: Danh sách hồ sơ tài xế đang chờ duyệt KYC
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách tài xế chờ duyệt
+
+  /admin/drivers/{driverId}:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin KYC
+      summary: Xem chi tiết hồ sơ tài xế và các giấy tờ đã nộp
+      parameters:
+        - name: driverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Chi tiết hồ sơ tài xế
+
+  /admin/drivers/{driverId}/status:
+    patch:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin Management
+      summary: Khóa hoặc mở khóa hoạt động của tài xế
+      description: "Khi isActive = false, hệ thống tự động cưỡng chế chuyển isOnline = false"
+      parameters:
+        - name: driverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverStatusUpdateRequest'
+      responses:
+        '200':
+          description: Cập nhật trạng thái hoạt động thành công
+
+  /admin/drivers/{driverId}/kyc/approve:
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin KYC
+      summary: Phê duyệt hồ sơ KYC tài xế (APPROVED)
+      parameters:
+        - name: driverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Duyệt hồ sơ thành công
+
+  /admin/drivers/{driverId}/kyc/reject:
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin KYC
+      summary: Từ chối hồ sơ KYC tài xế kèm lý do (REJECTED)
+      parameters:
+        - name: driverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectKycRequest'
+      responses:
+        '200':
+          description: Từ chối hồ sơ thành công
+
+  # ==========================================
+  # ADMIN PRICING & SURCHARGES MODULE
+  # ==========================================
+  /admin/pricing/rules:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin Pricing
+      summary: Lấy danh sách toàn bộ bảng giá các loại xe
+      responses:
+        '200':
+          description: Danh sách cấu hình bảng giá
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin Pricing
+      summary: Thiết lập bảng giá cho loại xe mới
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PricingRuleItem'
+      responses:
+        '201':
+          description: Thiết lập bảng giá thành công
+
+  /admin/pricing/rules/{vehicleTypeId}:
+    put:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin Pricing
+      summary: Cập nhật cấu hình bảng giá loại xe (Giá mở cửa, giá/km, hệ số cao điểm)
+      parameters:
+        - name: vehicleTypeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePricingRuleRequest'
+      responses:
+        '200':
+          description: Cập nhật bảng giá thành công
+
+  /admin/pricing/surcharges:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin Pricing
+      summary: Lấy danh sách toàn bộ dịch vụ phụ phí
+      responses:
+        '200':
+          description: Danh sách phụ phí
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin Pricing
+      summary: Thêm mới dịch vụ phụ phí
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSurchargeServiceRequest'
+      responses:
+        '201':
+          description: Tạo phụ phí thành công
+
+  /admin/pricing/surcharges/{code}:
+    put:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin Pricing
+      summary: Cập nhật biểu giá hoặc trạng thái phụ phí
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSurchargeServiceRequest'
+      responses:
+        '200':
+          description: Cập nhật phụ phí thành công
+
+  # ==========================================
+  # ADMIN B2B CUSTOMER MODULE
+  # ==========================================
+  /admin/b2b/customers:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin B2B
+      summary: Danh sách khách hàng doanh nghiệp B2B (Tìm kiếm, lọc trạng thái, phân trang)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, SUSPENDED, TERMINATED]
+        - name: search
+          in: query
+          description: "Tìm kiếm theo tên công ty, mã số thuế hoặc người liên hệ"
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Danh sách doanh nghiệp B2B
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin B2B
+      summary: Tạo mới đối tác khách hàng doanh nghiệp B2B
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateB2bCustomerRequest'
+      responses:
+        '201':
+          description: Tạo doanh nghiệp B2B thành công
+        '400':
+          description: Mã số thuế đã tồn tại
+
+  /admin/b2b/customers/{id}:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin B2B
+      summary: Xem chi tiết thông tin đối tác B2B (Dư nợ, hạn mức khả dụng, chiết khấu)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Chi tiết thông tin đối tác B2B
+    put:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin B2B
+      summary: Cập nhật thông tin đối tác doanh nghiệp B2B
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateB2bCustomerRequest'
+      responses:
+        '200':
+          description: Cập nhật thành công
+
+  /admin/b2b/customers/{id}/status:
+    patch:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin B2B
+      summary: Khóa hoặc kích hoạt tài khoản doanh nghiệp B2B
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateB2bCustomerStatusRequest'
+      responses:
+        '200':
+          description: Cập nhật trạng thái B2B thành công
+
+  /admin/b2b/customers/{id}/payment:
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin B2B
+      summary: Ghi nhận thanh toán công nợ và hoàn trả hạn mức khả dụng
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordB2bPaymentRequest'
+      responses:
+        '200':
+          description: Ghi nhận thanh toán công nợ thành công
+
+  # ==========================================
+  # PRICING PUBLIC / CLIENT MODULE
+  # ==========================================
+  /pricing/rules:
+    get:
+      tags:
+        - Pricing (Public)
+      summary: Lấy bảng giá niêm yết hiện hành theo các loại xe tải
+      responses:
+        '200':
+          description: Danh sách bảng giá theo loại xe
+
+  /pricing/services:
+    get:
+      tags:
+        - Pricing (Public)
+      summary: Lấy danh mục phụ phí dịch vụ cộng thêm (Bốc xếp, vào hẻm, giao nhiều điểm)
+      responses:
+        '200':
+          description: Danh mục phụ phí hoạt động
+
+  /pricing/estimate:
+    post:
+      tags:
+        - Pricing (Public)
+      summary: Tính giá cước ước tính theo tọa độ GPS và phụ phí kèm theo (Engine V1)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimatePriceRequest'
+      responses:
+        '200':
+          description: Chi tiết cước phí ước tính
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstimatePriceResponse'
 
   # ==========================================
   # DRIVER OPERATION MODULE

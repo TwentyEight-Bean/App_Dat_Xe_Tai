@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "api": "tsx src/server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "format": "oxfmt"
