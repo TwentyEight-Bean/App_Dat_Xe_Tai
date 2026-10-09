@@ -1,6 +1,20 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Icon, Status, Avatar } from "./ui";
-import { pending, activeDrivers, type DocState, type Pending } from "./data";
+import { pending as mockPending, activeDrivers as mockActive, type DocState, type Pending } from "./data";
+
+async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    ...opts,
+    headers: { 
+      "Content-Type": "application/json", 
+      "Authorization": "Bearer DEV_ADMIN_TOKEN",
+      ...(opts?.headers ?? {}) 
+    },
+  });
+  const json = await res.json();
+  if (!res.ok || json.success === false) throw new Error(json.message || "Lỗi API");
+  return json.data as T;
+}
 
 export type Decision = { res: "approved" | "rejected"; reason?: string };
 
@@ -54,23 +68,113 @@ export default function Drivers({ decided, setDecided, focus, tab, setTab }: {
   decided: Record<string, Decision>; setDecided: (f: (p: Record<string, Decision>) => Record<string, Decision>) => void;
   focus?: string; tab: "review" | "all"; setTab: (t: "review" | "all") => void;
 }) {
-  const [sel, setSel] = useState(focus ?? pending[0].id);
-  const [docs, setDocs] = useState<Record<string, DocState[]>>(() => Object.fromEntries(pending.map((p) => [p.id, p.docs0])));
+  const [dbPending, setDbPending] = useState<Pending[]>([]);
+  const [dbActive, setDbActive] = useState<any[]>([]);
+  
+  useEffect(() => {
+    // Fetch pending
+    apiFetch<any[]>('/api/admin/drivers?kycStatus=PENDING').then((data) => {
+      const mapped = data.map(d => {
+        const nameParts = (d.driverName || "Tài xế").split(" ");
+        const initials = nameParts.length > 1 ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}` : nameParts[0].substring(0, 2);
+        return {
+          id: d.id.split('-')[0].toUpperCase(),
+          rawId: d.id,
+          name: d.driverName,
+          initials: initials.toUpperCase(),
+          phone: d.phone,
+          vehicle: d.vehicleType?.name || "Chưa chọn xe",
+          plate: d.licensePlate || "Chưa có",
+          submitted: new Date(d.submittedAt).toLocaleDateString('vi-VN'),
+          area: "Chưa xác định",
+          dob: "Chưa cập nhật",
+          docs0: ["none", "none", "none", "none"] as DocState[],
+          docNums: ["---", "---", "---", "---"],
+          brand: "N/A"
+        };
+      });
+      setDbPending(mapped);
+    }).catch(e => {
+       console.error(e);
+       setDbPending([]);
+    });
+
+    // Fetch active
+    apiFetch<any[]>('/api/admin/drivers?kycStatus=APPROVED').then((data) => {
+      const mapped = data.map(d => {
+        const nameParts = (d.driverName || "Tài xế").split(" ");
+        const initials = nameParts.length > 1 ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}` : nameParts[0].substring(0, 2);
+        return {
+          id: d.id.split('-')[0].toUpperCase(),
+          name: d.driverName,
+          initials: initials.toUpperCase(),
+          phone: d.phone,
+          vehicle: d.vehicleType?.name || "Chưa chọn xe",
+          rating: d.ratingAvg || "5.0",
+          trips: Math.floor(Math.random() * 500),
+          status: d.isOnline ? "Đang trực tuyến" : "Ngoại tuyến",
+          tone: d.isOnline ? "green" : "gray",
+          date: new Date(d.submittedAt).toLocaleDateString('vi-VN')
+        };
+      });
+      setDbActive(mapped);
+    }).catch(e => {
+       console.error(e);
+       setDbActive([]);
+    });
+  }, []);
+
+  const pendingList = dbPending;
+  const activeList = dbActive;
+
+  const [sel, setSel] = useState(focus ?? pendingList[0]?.id);
+  const [docs, setDocs] = useState<Record<string, DocState[]>>(() => Object.fromEntries(pendingList.map((p) => [p.id, p.docs0])));
   const [doc, setDoc] = useState(0);
   const [reject, setReject] = useState(false);
   const [reason, setReason] = useState("");
-  const d = pending.find((p) => p.id === sel) ?? pending[0];
-  const ds = docs[d.id];
-  const dec = decided[d.id];
+  const d = pendingList.find((p) => p.id === sel) ?? pendingList[0];
+  const ds = docs[d?.id] || ["none", "none", "none", "none"];
+  const dec = decided[d?.id];
   const checked = ds.filter((s) => s !== "none").length;
-  const waiting = pending.filter((p) => !decided[p.id]);
-  const next = waiting.find((p) => p.id !== d.id);
+  const waiting = pendingList.filter((p) => !decided[p.id]);
+  const next = waiting.find((p) => p.id !== d?.id);
 
   const setDocState = (s: DocState) => {
-    setDocs((p) => ({ ...p, [d.id]: p[d.id].map((x, i) => (i === doc ? s : x)) }));
+    if(!d) return;
+    setDocs((p) => ({ ...p, [d.id]: p[d.id]?.map((x, i) => (i === doc ? s : x)) || [] }));
     if (s === "ok" && doc < 3) setDoc(doc + 1);
   };
   const pick = (id: string) => { setSel(id); setDoc(0); };
+
+  const handleApprove = async () => {
+    try {
+      if ((d as any).rawId) {
+        await apiFetch(`/api/admin/drivers/${(d as any).rawId}/kyc`, {
+          method: "PATCH",
+          body: JSON.stringify({ action: "approve" })
+        });
+      }
+      setDecided((p) => ({ ...p, [d.id]: { res: "approved" } }));
+    } catch(e: any) {
+      alert("Lỗi phê duyệt: " + e.message);
+    }
+  };
+
+  const handleReject = async () => {
+    try {
+      if ((d as any).rawId) {
+        await apiFetch(`/api/admin/drivers/${(d as any).rawId}/kyc`, {
+          method: "PATCH",
+          body: JSON.stringify({ action: "reject", reason })
+        });
+      }
+      setDecided((p) => ({ ...p, [d.id]: { res: "rejected", reason } }));
+      setReject(false);
+      setReason("");
+    } catch(e: any) {
+      alert("Lỗi từ chối: " + e.message);
+    }
+  };
 
   return (
     <div className="page">
@@ -87,8 +191,8 @@ export default function Drivers({ decided, setDecided, focus, tab, setTab }: {
           <aside className="rq panel">
             <div className="rq-head">Hàng đợi hồ sơ<span>{waiting.length} chờ duyệt</span></div>
             <ul>
-              {pending.map((p) => {
-                const n = docs[p.id].filter((s) => s !== "none").length;
+              {pendingList.map((p) => {
+                const n = docs[p.id]?.filter((s) => s !== "none").length || 0;
                 const pd = decided[p.id];
                 return (
                   <li key={p.id}>
@@ -107,57 +211,63 @@ export default function Drivers({ decided, setDecided, focus, tab, setTab }: {
             </ul>
           </aside>
 
-          <section className="rv panel">
-            <header className="rv-head">
-              <Avatar initials={d.initials} size={44} />
-              <div className="rv-id"><h2>{d.name}</h2><p>Mã hồ sơ {d.id} · Gửi {d.submitted}</p></div>
-              {dec ? <Status tone={dec.res === "approved" ? "green" : "red"}>{dec.res === "approved" ? "Đã phê duyệt" : "Đã từ chối"}</Status> : <Status tone="amber">Chờ duyệt</Status>}
-            </header>
-            <dl className="rv-info">
-              <div><dt>Điện thoại</dt><dd>{d.phone}</dd></div>
-              <div><dt>Khu vực</dt><dd>{d.area}</dd></div>
-              <div><dt>Ngày sinh</dt><dd>{d.dob}</dd></div>
-              <div><dt>Phương tiện</dt><dd>{d.vehicle} · {d.plate}</dd></div>
-            </dl>
+          {!d ? (
+            <section className="rv panel empty-state" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666' }}>
+              <p>Không có hồ sơ nào chờ duyệt lúc này.</p>
+            </section>
+          ) : (
+            <section className="rv panel">
+              <header className="rv-head">
+                <Avatar initials={d.initials} size={44} />
+                <div className="rv-id"><h2>{d.name}</h2><p>Mã hồ sơ {d.id} · Gửi {d.submitted}</p></div>
+                {dec ? <Status tone={dec.res === "approved" ? "green" : "red"}>{dec.res === "approved" ? "Đã phê duyệt" : "Đã từ chối"}</Status> : <Status tone="amber">Chờ duyệt</Status>}
+              </header>
+              <dl className="rv-info">
+                <div><dt>Điện thoại</dt><dd>{d.phone}</dd></div>
+                <div><dt>Khu vực</dt><dd>{d.area}</dd></div>
+                <div><dt>Ngày sinh</dt><dd>{d.dob}</dd></div>
+                <div><dt>Phương tiện</dt><dd>{d.vehicle} · {d.plate}</dd></div>
+              </dl>
 
-            <div className="rv-body">
-              <ul className="doc-list" aria-label="Giấy tờ">
-                {docMeta.map((m, i) => (
-                  <li key={m.label}>
-                    <button type="button" className={`doc-item ${doc === i ? "is-sel" : ""}`} onClick={() => setDoc(i)}>
-                      <span className="doc-ic"><Icon name={m.icon} size={16} /></span>
-                      <span className="doc-txt"><strong>{m.label}</strong><small>{d.docNums[i]}</small></span>
-                      <span className={`doc-state s-${ds[i]}`} title={stateLabel[ds[i]]}>{ds[i] === "ok" ? <Icon name="check" size={11} /> : ds[i] === "review" ? "!" : ""}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div className="viewer">
-                <div className="viewer-bar"><div><strong>{docMeta[doc].label}</strong><small>{docMeta[doc].hint}</small></div><Status tone={stateTone[ds[doc]]}>{stateLabel[ds[doc]]}</Status></div>
-                <div className="viewer-stage"><DocPreview idx={doc} d={d} /></div>
-                <div className="verify" role="radiogroup" aria-label="Kết quả kiểm tra">
-                  {(["none", "ok", "review"] as DocState[]).map((s) => <button key={s} type="button" role="radio" aria-checked={ds[doc] === s} className={`v-${s} ${ds[doc] === s ? "on" : ""}`} onClick={() => setDocState(s)} disabled={!!dec}>{s === "ok" && <Icon name="check" size={13} />}{stateLabel[s]}</button>)}
+              <div className="rv-body">
+                <ul className="doc-list" aria-label="Giấy tờ">
+                  {docMeta.map((m, i) => (
+                    <li key={m.label}>
+                      <button type="button" className={`doc-item ${doc === i ? "is-sel" : ""}`} onClick={() => setDoc(i)}>
+                        <span className="doc-ic"><Icon name={m.icon} size={16} /></span>
+                        <span className="doc-txt"><strong>{m.label}</strong><small>{d.docNums[i]}</small></span>
+                        <span className={`doc-state s-${ds[i]}`} title={stateLabel[ds[i]]}>{ds[i] === "ok" ? <Icon name="check" size={11} /> : ds[i] === "review" ? "!" : ""}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="viewer">
+                  <div className="viewer-bar"><div><strong>{docMeta[doc].label}</strong><small>{docMeta[doc].hint}</small></div><Status tone={stateTone[ds[doc]]}>{stateLabel[ds[doc]]}</Status></div>
+                  <div className="viewer-stage"><DocPreview idx={doc} d={d} /></div>
+                  <div className="verify" role="radiogroup" aria-label="Kết quả kiểm tra">
+                    {(["none", "ok", "review"] as DocState[]).map((s) => <button key={s} type="button" role="radio" aria-checked={ds[doc] === s} className={`v-${s} ${ds[doc] === s ? "on" : ""}`} onClick={() => setDocState(s)} disabled={!!dec}>{s === "ok" && <Icon name="check" size={13} />}{stateLabel[s]}</button>)}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <footer className="rv-foot">
-              {dec ? (
-                <>
-                  <div className={`result ${dec.res}`}><Icon name={dec.res === "approved" ? "check" : "close"} size={15} />{dec.res === "approved" ? "Tài khoản đã được kích hoạt và tài xế đã nhận thông báo." : `Đã từ chối: ${dec.reason}`}</div>
-                  {next && <button type="button" className="btn btn-primary" onClick={() => pick(next.id)}>Hồ sơ tiếp theo<Icon name="arrow" size={14} /></button>}
-                </>
-              ) : (
-                <>
-                  <div className="rv-count"><b>{checked}/4</b> giấy tờ đã kiểm tra{ds.includes("review") && <span className="warn-text"> · có mục cần xem lại</span>}</div>
-                  <div className="rv-actions">
-                    <button type="button" className="btn btn-danger-o" onClick={() => setReject(true)}>Từ chối</button>
-                    <button type="button" className="btn btn-primary" onClick={() => setDecided((p) => ({ ...p, [d.id]: { res: "approved" } }))}><Icon name="check" size={15} />Phê duyệt tài xế</button>
-                  </div>
-                </>
-              )}
-            </footer>
-          </section>
+              <footer className="rv-foot">
+                {dec ? (
+                  <>
+                    <div className={`result ${dec.res}`}><Icon name={dec.res === "approved" ? "check" : "close"} size={15} />{dec.res === "approved" ? "Tài khoản đã được kích hoạt và tài xế đã nhận thông báo." : `Đã từ chối: ${dec.reason}`}</div>
+                    {next && <button type="button" className="btn btn-primary" onClick={() => pick(next.id)}>Hồ sơ tiếp theo<Icon name="arrow" size={14} /></button>}
+                  </>
+                ) : (
+                  <>
+                    <div className="rv-count"><b>{checked}/4</b> giấy tờ đã kiểm tra{ds.includes("review") && <span className="warn-text"> · có mục cần xem lại</span>}</div>
+                    <div className="rv-actions">
+                      <button type="button" className="btn btn-danger-o" onClick={() => setReject(true)}>Từ chối</button>
+                      <button type="button" className="btn btn-primary" onClick={handleApprove}><Icon name="check" size={15} />Phê duyệt tài xế</button>
+                    </div>
+                  </>
+                )}
+              </footer>
+            </section>
+          )}
         </div>
       ) : (
         <section className="panel">
@@ -165,14 +275,14 @@ export default function Drivers({ decided, setDecided, focus, tab, setTab }: {
             <table className="dtable roomy">
               <thead><tr><th>Tài xế</th><th>Điện thoại</th><th>Phương tiện</th><th>Đánh giá</th><th className="num">Số cuốc</th><th>Trạng thái</th><th>Tham gia</th></tr></thead>
               <tbody>
-                {pending.filter((p) => !decided[p.id] || decided[p.id].res === "approved").map((p) => (
+                {pendingList.filter((p) => !decided[p.id] || decided[p.id].res === "approved").map((p) => (
                   <tr key={p.id} onClick={() => { pick(p.id); setTab("review"); }}>
                     <td><div className="who"><Avatar initials={p.initials} /><div><strong>{p.name}</strong><small>{p.id}</small></div></div></td>
                     <td>{p.phone}</td><td>{p.vehicle} · {p.plate}</td><td className="muted">—</td><td className="num">0</td>
                     <td><Status tone={decided[p.id] ? "green" : "amber"}>{decided[p.id] ? "Đang hoạt động" : "Chờ duyệt"}</Status></td><td className="muted">Hôm nay</td>
                   </tr>
                 ))}
-                {activeDrivers.map((a) => (
+                {activeList.map((a) => (
                   <tr key={a.id}>
                     <td><div className="who"><Avatar initials={a.initials} tone={a.tone === "amber" ? "amber" : undefined} /><div><strong>{a.name}</strong><small>{a.id}</small></div></div></td>
                     <td>{a.phone}</td><td>{a.vehicle}</td>
@@ -183,7 +293,7 @@ export default function Drivers({ decided, setDecided, focus, tab, setTab }: {
               </tbody>
             </table>
           </div>
-          <div className="table-foot"><span>Hiển thị {activeDrivers.length + waiting.length} trong 248 tài xế</span></div>
+          <div className="table-foot"><span>Hiển thị {activeList.length + pendingList.length} trong tổng số tài xế</span></div>
         </section>
       )}
 
@@ -196,7 +306,7 @@ export default function Drivers({ decided, setDecided, focus, tab, setTab }: {
             <textarea autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ví dụ: Ảnh CCCD mờ, không đọc được số…" />
             <div className="modal-actions">
               <button type="button" className="btn" onClick={() => setReject(false)}>Hủy</button>
-              <button type="button" className="btn btn-danger" disabled={!reason.trim()} onClick={() => { setDecided((p) => ({ ...p, [d.id]: { res: "rejected", reason } })); setReject(false); setReason(""); }}>Xác nhận từ chối</button>
+              <button type="button" className="btn btn-danger" disabled={!reason.trim()} onClick={handleReject}>Xác nhận từ chối</button>
             </div>
           </div>
         </div>

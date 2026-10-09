@@ -22,7 +22,7 @@ function makeStore<T>(initial: T) {
   };
 }
 
-export type SavedAddress = { id: number; type: "home" | "work" | "other"; name: string; address: string };
+export type SavedAddress = { id: number; realId?: string; type: "home" | "work" | "other"; name: string; address: string };
 
 const typeName = { home: "Nhà", work: "Công ty", other: "Khác" } as const;
 const labelOf = (a: SavedAddress) => (a.type === "other" && a.name.trim() ? a.name.trim() : typeName[a.type]);
@@ -182,7 +182,7 @@ function AIcon({ name, size = 20, strokeWidth = 1.8 }: { name: AI; size?: number
 
 /* ---------- small parts ---------- */
 
-type Page = "home" | "profile" | "addresses" | "addressEdit" | "payment" | "notifications" | "offers" | "privacy" | "help" | "signedout";
+type Page = "home" | "profile" | "addresses" | "addressEdit" | "payment" | "notifications" | "offers" | "privacy" | "help" | "signedout" | "loginOtp";
 
 function SubHead({ title, onBack }: { title: string; onBack: () => void }) {
   return (
@@ -280,6 +280,37 @@ export default function AccountScreen({
   const [toast, setToast] = useState("");
   const [confirmOut, setConfirmOut] = useState(false);
   const [focusContact, setFocusContact] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(
+    Boolean(typeof window !== "undefined" && localStorage.getItem("auth_token")),
+  );
+
+  const syncAddressesFromApi = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (!token) return;
+    try {
+      const res = await fetch("/api/v1/customer/addresses", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+        addressStore.set(
+          data.data.map((item: any, idx: number) => ({
+            id: idx + 1,
+            realId: item.id,
+            type: item.title?.toLowerCase().includes("nhà") ? "home" : item.title?.toLowerCase().includes("công ty") ? "work" : "other",
+            name: item.title || "",
+            address: item.addressText,
+          })),
+        );
+      }
+    } catch (err) {
+      console.warn("Could not sync addresses:", err);
+    }
+  };
+
+  useEffect(() => {
+    syncAddressesFromApi();
+  }, [isLoggedIn]);
 
   const profile = profileStore.use();
   const addresses = addressStore.use();
@@ -288,7 +319,7 @@ export default function AccountScreen({
   const privacy = privacyStore.use();
 
   useEffect(() => {
-    onNavHidden(page === "profile" || page === "addressEdit");
+    onNavHidden(page === "profile" || page === "addressEdit" || page === "loginOtp");
     return () => onNavHidden(false);
   }, [page]);
 
@@ -388,6 +419,10 @@ export default function AccountScreen({
                   className="secondary-button"
                   onClick={() => {
                     setConfirmOut(false);
+                    if (typeof window !== "undefined") {
+                      localStorage.removeItem("auth_token");
+                    }
+                    setIsLoggedIn(false);
                     go("signedout");
                   }}
                   type="button"
@@ -410,9 +445,9 @@ export default function AccountScreen({
             <AIcon name="user" size={28} />
           </span>
           <strong>Bạn đã đăng xuất</strong>
-          <p>Đăng nhập lại để tiếp tục đặt xe và xem đơn hàng.</p>
-          <button className="primary-button" onClick={() => go("home")} type="button">
-            <span>Đăng nhập lại</span>
+          <p>Đăng nhập lại bằng OTP để tiếp tục đặt xe và xem đơn hàng.</p>
+          <button className="primary-button" onClick={() => go("loginOtp")} type="button">
+            <span>Đăng nhập bằng OTP</span>
           </button>
         </div>
       </section>
@@ -613,6 +648,24 @@ export default function AccountScreen({
     );
   }
 
+  if (page === "loginOtp") {
+    return (
+      <LoginOtpPage
+        onBack={() => go("home")}
+        onSuccess={(phone, token) => {
+          setIsLoggedIn(true);
+          profileStore.set({
+            ...profile,
+            phone: phone,
+            name: profile.name && profile.name !== "Minh Anh" ? profile.name : `Khách hàng (${phone.slice(-4)})`,
+          });
+          setToast("Đăng nhập OTP thành công!");
+          go("home");
+        }}
+      />
+    );
+  }
+
   return (
     <HelpPage
       focusContact={focusContact}
@@ -620,6 +673,185 @@ export default function AccountScreen({
       orderOptions={orderOptions}
       supportOrder={supportOrder}
     />
+  );
+}
+
+/* ---------- login otp form ---------- */
+
+function LoginOtpPage({
+  onBack,
+  onSuccess,
+}: {
+  onBack: () => void;
+  onSuccess: (phone: string, token: string) => void;
+}) {
+  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [phone, setPhone] = useState("0988888888");
+  const [otp, setOtp] = useState("123456");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [countdown, setCountdown] = useState(60);
+  const [infoMsg, setInfoMsg] = useState("");
+
+  useEffect(() => {
+    let timer: any;
+    if (step === "otp" && countdown > 0) {
+      timer = setInterval(() => setCountdown((c) => c - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [step, countdown]);
+
+  const handleRequestOtp = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/auth/request-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || "Gửi mã OTP thất bại");
+      }
+      setStep("otp");
+      setCountdown(60);
+      setInfoMsg("Mã OTP đã gửi! Mã thử nghiệm miễn phí: 123456");
+    } catch (err: any) {
+      setError(err.message || "Không thể gửi OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, otp }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || "Xác thực OTP thất bại");
+      }
+      if (typeof window !== "undefined") {
+        localStorage.setItem("auth_token", data.token);
+        localStorage.setItem("user_phone", data.user.phone);
+      }
+      onSuccess(data.user.phone, data.token);
+    } catch (err: any) {
+      setError(err.message || "Xác thực OTP không thành công");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="orders-screen account-screen form">
+      <SubHead onBack={onBack} title="Đăng nhập bằng OTP" />
+      <div style={{ padding: "20px 16px" }}>
+        <div style={{ textAlign: "center", marginBottom: "20px" }}>
+          <div style={{ width: "56px", height: "56px", borderRadius: "28px", background: "#eff6ff", color: "#2563eb", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: "12px" }}>
+            <AIcon name="shield" size={28} />
+          </div>
+          <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "0 0 6px" }}>
+            {step === "phone" ? "Nhập số điện thoại" : "Xác thực mã OTP"}
+          </h2>
+          <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
+            {step === "phone"
+              ? "Hệ thống sẽ gửi mã xác thực One-Time Password đến số của bạn"
+              : `Mã xác thực gồm 6 chữ số đã được gửi tới ${phone}`}
+          </p>
+        </div>
+
+        {error && (
+          <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", padding: "10px 14px", borderRadius: "10px", fontSize: "13px", marginBottom: "16px" }}>
+            {error}
+          </div>
+        )}
+
+        {infoMsg && (
+          <div style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", padding: "10px 14px", borderRadius: "10px", fontSize: "13px", marginBottom: "16px" }}>
+            💡 {infoMsg}
+          </div>
+        )}
+
+        {step === "phone" ? (
+          <div>
+            <label className="acc-field">
+              <span>Số điện thoại di động</span>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Ví dụ: 0988888888"
+                autoFocus
+              />
+            </label>
+            <button
+              className="primary-button"
+              style={{ width: "100%", marginTop: "16px" }}
+              disabled={loading || !phone.trim()}
+              onClick={handleRequestOtp}
+              type="button"
+            >
+              <span>{loading ? "Đang gửi..." : "Gửi mã OTP (0 VNĐ)"}</span>
+            </button>
+          </div>
+        ) : (
+          <div>
+            <label className="acc-field">
+              <span>Mã OTP (6 chữ số)</span>
+              <input
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="123456"
+                maxLength={6}
+                autoFocus
+                style={{ fontSize: "20px", letterSpacing: "4px", textAlign: "center", fontWeight: "bold" }}
+              />
+            </label>
+
+            <button
+              className="primary-button"
+              style={{ width: "100%", marginTop: "16px" }}
+              disabled={loading || otp.trim().length !== 6}
+              onClick={handleVerifyOtp}
+              type="button"
+            >
+              <span>{loading ? "Đang xác thực..." : "Xác thực & Đăng nhập"}</span>
+            </button>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px" }}>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setStep("phone")}
+                style={{ fontSize: "13px" }}
+              >
+                Đổi số điện thoại
+              </button>
+              {countdown > 0 ? (
+                <span style={{ fontSize: "13px", color: "#64748b" }}>Gửi lại sau {countdown}s</span>
+              ) : (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={handleRequestOtp}
+                  style={{ fontSize: "13px" }}
+                >
+                  Gửi lại mã OTP
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -717,9 +949,52 @@ function AddressForm({
   const [address, setAddress] = useState(existing?.address ?? "");
   const list = addressStore.get();
 
-  const save = () => {
+  const save = async () => {
     if (!address.trim()) return;
-    const next: SavedAddress = { id: existing?.id ?? Date.now(), type, name: type === "other" ? name : "", address: address.trim() };
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    let serverId = existing?.realId;
+    if (token) {
+      try {
+        if (existing?.realId) {
+          await fetch(`/api/v1/customer/addresses/${existing.realId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              title: type === "other" ? (name.trim() || "Khác") : typeName[type],
+              addressText: address.trim(),
+            }),
+          });
+        } else {
+          const res = await fetch("/api/v1/customer/addresses", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              title: type === "other" ? (name.trim() || "Khác") : typeName[type],
+              addressText: address.trim(),
+              latitude: 10.7769,
+              longitude: 106.7009,
+            }),
+          });
+          const data = await res.json();
+          if (data.data?.id) serverId = data.data.id;
+        }
+      } catch (err) {
+        console.warn("Could not save address to API:", err);
+      }
+    }
+    const next: SavedAddress = {
+      id: existing?.id ?? Date.now(),
+      realId: serverId,
+      type,
+      name: type === "other" ? name : "",
+      address: address.trim(),
+    };
     addressStore.set(existing ? list.map((a) => (a.id === existing.id ? next : a)) : [...list, next]);
     onDone(existing ? "Đã cập nhật địa chỉ" : "Đã thêm địa chỉ");
   };
@@ -750,7 +1025,18 @@ function AddressForm({
       {existing && (
         <button
           className="acc-danger"
-          onClick={() => {
+          onClick={async () => {
+            const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+            if (token && existing.realId) {
+              try {
+                await fetch(`/api/v1/customer/addresses/${existing.realId}`, {
+                  method: "DELETE",
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+              } catch (err) {
+                console.warn("Could not delete address from API:", err);
+              }
+            }
             addressStore.set(list.filter((a) => a.id !== existing.id));
             onDone("Đã xóa địa chỉ");
           }}

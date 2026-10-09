@@ -1535,7 +1535,12 @@ export default function App() {
                 pickupAddr={pickup}
               />
               <header className="top-bar">
-                <div className="greeting">
+                <div
+                  className="greeting"
+                  onClick={() => navigateTab("Tài khoản")}
+                  style={{ cursor: "pointer" }}
+                  title="Xem tài khoản & Đăng nhập OTP"
+                >
                   <span className="avatar" aria-hidden="true">MA</span>
                   <span>
                     <span className="eyebrow">Chào buổi sáng,</span>

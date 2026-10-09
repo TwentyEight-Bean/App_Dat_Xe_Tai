@@ -6,6 +6,7 @@ import {
   timestamp, 
   boolean, 
   decimal, 
+  integer,
   pgEnum,
   jsonb,
   geometry,
@@ -20,6 +21,14 @@ export const kycStatusEnum = pgEnum('kyc_status', ['PENDING', 'APPROVED', 'REJEC
 export const bookingStatusEnum = pgEnum('booking_status', ['PENDING', 'SEARCHING', 'ACCEPTED', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED']);
 export const paymentMethodEnum = pgEnum('payment_method', ['CASH', 'WALLET', 'VNPAY', 'MOMO']);
 export const paymentStatusEnum = pgEnum('payment_status', ['UNPAID', 'PAID', 'REFUNDED']);
+
+export const driverDocTypeEnum = pgEnum('driver_doc_type', [
+  'CCCD_FRONT',
+  'CCCD_BACK',
+  'DRIVER_LICENSE',
+  'VEHICLE_REGISTRATION',
+  'PORTRAIT'
+]);
 
 // --- CORE TABLES ---
 
@@ -57,11 +66,27 @@ export const driverProfiles = pgTable('driver_profiles', {
   licensePlate: varchar('license_plate', { length: 20 }).unique(),
   driverLicenseNo: varchar('driver_license_no', { length: 50 }).unique(),
   kycStatus: kycStatusEnum('kyc_status').default('PENDING'),
+  rejectionReason: text('rejection_reason'),
   ratingAvg: decimal('rating_avg', { precision: 3, scale: 2 }).default('5.00'),
   isOnline: boolean('is_online').default(false),
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// 2.3.1 DRIVER_DOCUMENTS
+export const driverDocuments = pgTable('driver_documents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  driverId: uuid('driver_id').notNull().references(() => driverProfiles.id, { onDelete: 'cascade' }),
+  docType: driverDocTypeEnum('doc_type').notNull(),
+  fileUrl: text('file_url').notNull(),
+  docNumber: varchar('doc_number', { length: 100 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    driverDocIdx: index('idx_driver_documents_driver_id').on(table.driverId),
+  };
 });
 
 // 2.4 CUSTOMER_ADDRESSES
@@ -76,6 +101,21 @@ export const customerAddresses = pgTable('customer_addresses', {
   contactPhone: varchar('contact_phone', { length: 20 }),
   isDefault: boolean('is_default').default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// 2.5 OTP_VERIFICATIONS
+export const otpVerifications = pgTable('otp_verifications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  phone: varchar('phone', { length: 20 }).notNull(),
+  otpCode: varchar('otp_code', { length: 10 }).notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  isUsed: boolean('is_used').default(false).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    phoneIdx: index('idx_otp_verifications_phone').on(table.phone),
+  };
 });
 
 // --- SPATIAL TABLES ---
@@ -97,11 +137,48 @@ export const driverLocations = pgTable('driver_locations', {
 // 4.1 PRICING_RULES
 export const pricingRules = pgTable('pricing_rules', {
   id: uuid('id').defaultRandom().primaryKey(),
-  vehicleTypeId: uuid('vehicle_type_id').notNull().references(() => vehicleTypes.id),
+  vehicleTypeId: uuid('vehicle_type_id').notNull().unique().references(() => vehicleTypes.id),
   basePrice: decimal('base_price', { precision: 12, scale: 2 }).notNull(),
   baseDistanceKm: decimal('base_distance_km', { precision: 5, scale: 2 }).notNull(),
   pricePerKm: decimal('price_per_km', { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// 4.1.1 SURCHARGE_SERVICES
+export const surchargeServices = pgTable('surcharge_services', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  code: varchar('code', { length: 50 }).notNull().unique(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  price: decimal('price', { precision: 12, scale: 2 }).notNull(),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+// 4.1.2 B2B_CUSTOMERS
+export const b2bCustomers = pgTable('b2b_customers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  companyName: varchar('company_name', { length: 200 }).notNull(),
+  taxCode: varchar('tax_code', { length: 50 }).notNull().unique(),
+  businessAddress: text('business_address').notNull(),
+  contactName: varchar('contact_name', { length: 100 }).notNull(),
+  contactPhone: varchar('contact_phone', { length: 20 }).notNull(),
+  invoiceEmail: varchar('invoice_email', { length: 100 }),
+  creditLimit: decimal('credit_limit', { precision: 15, scale: 2 }).default('0'),
+  currentDebt: decimal('current_debt', { precision: 15, scale: 2 }).default('0'),
+  paymentTermDays: integer('payment_term_days').default(30),
+  discountPercent: decimal('discount_percent', { precision: 5, scale: 2 }).default('0'),
+  status: varchar('status', { length: 20 }).default('ACTIVE'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    taxCodeIdx: index('idx_b2b_customers_tax_code').on(table.taxCode),
+    statusIdx: index('idx_b2b_customers_status').on(table.status),
+  };
 });
 
 // 4.2 BOOKINGS

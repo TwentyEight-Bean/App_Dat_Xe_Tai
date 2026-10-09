@@ -1,0 +1,156 @@
+{
+  "info": {
+    "name": "App Đặt Xe Tải - Pricing Engine (Sprint 2 / Task 2.3)",
+    "description": "Bộ API kiểm thử Engine tính giá cước theo tọa độ GPS (Chế độ 1: Open-Source OSRM / Haversine 0 VNĐ) kết hợp bảng giá gốc xe tải, phụ phí bốc xếp/giờ đêm và phân bổ hoa hồng tài xế.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8443/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vehicleTypeId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Bảng giá & Danh mục phụ phí",
+      "item": [
+        {
+          "name": "1.1 Lấy danh sách bảng giá các loại xe (Pricing Rules)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/pricing/rules",
+              "host": ["{{baseUrl}}"],
+              "path": ["pricing", "rules"]
+            }
+          }
+        },
+        {
+          "name": "1.2 Lấy danh mục phụ phí dịch vụ (Surcharge Services)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/pricing/services",
+              "host": ["{{baseUrl}}"],
+              "path": ["pricing", "services"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Ước tính cước phí (Price Estimation)",
+      "item": [
+        {
+          "name": "2.1 Báo giá cự ly ngắn (<= 4km mở cửa)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleTypeId\": \"{{vehicleTypeId}}\",\n  \"originLat\": 10.7725,\n  \"originLng\": 106.6980,\n  \"destLat\": 10.7780,\n  \"destLng\": 106.6950,\n  \"services\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pricing/estimate",
+              "host": ["{{baseUrl}}"],
+              "path": ["pricing", "estimate"]
+            }
+          }
+        },
+        {
+          "name": "2.2 Báo giá cự ly dài (Bến Thành -> TSN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleTypeId\": \"{{vehicleTypeId}}\",\n  \"originLat\": 10.7725,\n  \"originLng\": 106.6980,\n  \"destLat\": 10.8185,\n  \"destLng\": 106.6588,\n  \"services\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pricing/estimate",
+              "host": ["{{baseUrl}}"],
+              "path": ["pricing", "estimate"]
+            }
+          }
+        },
+        {
+          "name": "2.3 Báo giá kèm phụ phí bốc xếp & thêm điểm dừng",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleTypeId\": \"{{vehicleTypeId}}\",\n  \"originLat\": 10.7725,\n  \"originLng\": 106.6980,\n  \"destLat\": 10.8185,\n  \"destLng\": 106.6588,\n  \"services\": [\"LOADING_FLOOR\", \"EXTRA_STOP\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pricing/estimate",
+              "host": ["{{baseUrl}}"],
+              "path": ["pricing", "estimate"]
+            }
+          }
+        },
+        {
+          "name": "2.4 Báo giá khung giờ đêm (Tự động cộng phụ phí ban đêm)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleTypeId\": \"{{vehicleTypeId}}\",\n  \"originLat\": 10.7725,\n  \"originLng\": 106.6980,\n  \"destLat\": 10.8185,\n  \"destLng\": 106.6588,\n  \"bookingTime\": \"2026-10-08T23:30:00+07:00\",\n  \"services\": [\"LOADING_FLOOR\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pricing/estimate",
+              "host": ["{{baseUrl}}"],
+              "path": ["pricing", "estimate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Quản trị viên (Admin Pricing Management)",
+      "item": [
+        {
+          "name": "3.1 Cập nhật bảng giá loại xe (Update Pricing Rule)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"basePrice\": 160000,\n  \"baseDistanceKm\": 4,\n  \"pricePerKm\": 16000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/pricing/rules/{{vehicleTypeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "pricing", "rules", "{{vehicleTypeId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

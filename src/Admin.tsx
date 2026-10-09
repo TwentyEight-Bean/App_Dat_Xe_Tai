@@ -7,19 +7,21 @@ import OrdersPage, { OrderDetail } from "./admin/Orders";
 import Drivers, { type Decision } from "./admin/Drivers";
 import Users from "./admin/Users";
 import Complaints from "./admin/Complaints";
+import Pricing from "./admin/Pricing";
 import MobileAdmin from "./admin/Mobile";
 
-type Section = "dashboard" | "orders" | "drivers" | "users" | "complaints" | "settings";
+type Section = "dashboard" | "pricing" | "orders" | "drivers" | "users" | "complaints" | "settings";
 type View = Section | "order-detail";
 
 const nav: { id: Section; label: string; icon: IconName }[] = [
   { id: "dashboard", label: "Tổng quan", icon: "grid" },
+  { id: "pricing", label: "Bảng giá", icon: "wallet" },
   { id: "orders", label: "Đơn hàng", icon: "orders" },
   { id: "drivers", label: "Tài xế", icon: "drivers" },
   { id: "users", label: "Người dùng", icon: "users" },
   { id: "complaints", label: "Khiếu nại", icon: "alert" },
 ];
-const crumb: Record<Section, string> = { dashboard: "Tổng quan", orders: "Đơn hàng", drivers: "Tài xế", users: "Người dùng", complaints: "Khiếu nại", settings: "Cài đặt" };
+const crumb: Record<Section, string> = { dashboard: "Tổng quan", pricing: "Bảng giá", orders: "Đơn hàng", drivers: "Tài xế", users: "Người dùng", complaints: "Khiếu nại", settings: "Cài đặt" };
 
 type Cmd = { label: string; hint: string; icon: IconName; fn: () => void };
 
@@ -131,6 +133,7 @@ export default function Admin() {
         </header>
         <main className="a-main">
           {view === "dashboard" && <Dashboard sel={sel} setSel={setSel} openOrder={openFull} goDrivers={goDrivers} goComplaints={goComplaints} pendingLeft={pendingLeft} newComplaints={newCs} />}
+          {view === "pricing" && <Pricing />}
           {view === "orders" && <OrdersPage activeId={orderDrawer} setActiveId={setOrderDrawer} openFull={openFull} />}
           {view === "order-detail" && <OrderDetail id={detailId} back={() => setView("orders")} />}
           {view === "drivers" && <Drivers key={tick} decided={decided} setDecided={setDecided} focus={driverFocus} tab={driverTab} setTab={setDriverTab} />}

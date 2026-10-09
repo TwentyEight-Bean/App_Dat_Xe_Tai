@@ -1,0 +1,527 @@
+{
+  "info": {
+    "name": "App Đặt Xe Tải - Admin Management & B2B (Sprint 2 / Task 2.4)",
+    "description": "Bộ API quản trị hệ thống: Quản lý bảng giá loại xe & phụ phí linh hoạt, Quản lý danh sách và kiểm duyệt tài xế (KYC/Khóa tài khoản), Quản lý đối tác doanh nghiệp B2B (Hạn mức công nợ, chiết khấu, thanh toán công nợ).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8443/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driverId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "b2bCustomerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vehicleTypeId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Xác thực Quản trị viên (Admin Auth)",
+      "item": [
+        {
+          "name": "1.1 Yêu cầu gửi OTP số Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0900000001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/request-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "request-otp"]
+            }
+          }
+        },
+        {
+          "name": "1.2 Xác thực OTP Admin (Lấy Admin Bearer Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.token) {",
+                  "    pm.collectionVariables.set('adminToken', jsonData.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0900000001\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-otp"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Quản lý Bảng giá & Phụ phí (Admin Pricing)",
+      "item": [
+        {
+          "name": "2.1 Xem toàn bộ bảng giá các loại xe",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/pricing/rules",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "pricing", "rules"]
+            }
+          }
+        },
+        {
+          "name": "2.2 Cập nhật bảng giá loại xe (VD: Xe 1 Tấn)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"basePrice\": 160000,\n  \"baseDistanceKm\": 4,\n  \"pricePerKm\": 19000,\n  \"pricePerKmNext\": 15000,\n  \"rushHourMultiplier\": 1.25,\n  \"nightMultiplier\": 1.35\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/pricing/rules/{{vehicleTypeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "pricing", "rules", "{{vehicleTypeId}}"]
+            }
+          }
+        },
+        {
+          "name": "2.3 Lấy danh mục phụ phí dịch vụ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/pricing/surcharges",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "pricing", "surcharges"]
+            }
+          }
+        },
+        {
+          "name": "2.4 Thêm mới phụ phí dịch vụ",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"DONG_GOI_PE\",\n  \"name\": \"Dịch vụ quấn màng PE chống trầy\",\n  \"description\": \"Quấn màng bọc bảo vệ hàng hóa cao cấp\",\n  \"price\": 70000,\n  \"unit\": \"kiện\",\n  \"isOptional\": true,\n  \"isAuto\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/pricing/surcharges",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "pricing", "surcharges"]
+            }
+          }
+        },
+        {
+          "name": "2.5 Cập nhật giá phụ phí",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bốc xếp tầng trệt (dưới 50m) - Đã chỉnh giá\",\n  \"price\": 60000,\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/pricing/surcharges/BOC_XEP_TANG_TRET",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "pricing", "surcharges", "BOC_XEP_TANG_TRET"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Quản lý Tài xế & Duyệt KYC (Admin Drivers)",
+      "item": [
+        {
+          "name": "3.1 Danh sách tất cả tài xế (Lọc KYC & Tìm kiếm)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers?page=1&limit=20&kycStatus=APPROVED&isOnline=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "kycStatus", "value": "APPROVED" },
+                { "key": "isOnline", "value": "false" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.2 Danh sách tài xế chờ duyệt KYC",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/kyc-pending?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "kyc-pending"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.3 Xem chi tiết hồ sơ tài xế & giấy tờ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "{{driverId}}"]
+            }
+          }
+        },
+        {
+          "name": "3.4 Phê duyệt hồ sơ KYC tài xế (Approve)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/kyc/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "{{driverId}}", "kyc", "approve"]
+            }
+          }
+        },
+        {
+          "name": "3.5 Từ chối hồ sơ KYC tài xế kèm lý do",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Ảnh mặt sau CCCD bị lóa sáng, vui lòng chụp lại rõ nét.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/kyc/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "{{driverId}}", "kyc", "reject"]
+            }
+          }
+        },
+        {
+          "name": "3.6 Khóa tài khoản tài xế (Khóa & ngắt Online)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "{{driverId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "3.7 Mở khóa tài khoản tài xế",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "{{driverId}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Quản lý Khách hàng Doanh nghiệp B2B (Admin B2B)",
+      "item": [
+        {
+          "name": "4.1 Danh sách khách hàng B2B (Phân trang & Tìm kiếm)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/b2b/customers?page=1&limit=20&status=ACTIVE",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "b2b", "customers"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "status", "value": "ACTIVE" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.2 Thêm mới khách hàng doanh nghiệp B2B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "    pm.collectionVariables.set('b2bCustomerId', jsonData.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Công ty Cổ phần Thương mại Vận tải Đông Dương\",\n  \"taxCode\": \"0319888999\",\n  \"contactPerson\": \"Lê Văn Thắng\",\n  \"contactPhone\": \"0988112233\",\n  \"contactEmail\": \"kinhdoanh@dongduonglogistics.vn\",\n  \"address\": \"Khu Công Nghiệp Tân Bình, Tân Phú, TP.HCM\",\n  \"creditLimit\": 50000000,\n  \"discountPercent\": 8,\n  \"paymentTermDays\": 30\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/b2b/customers",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "b2b", "customers"]
+            }
+          }
+        },
+        {
+          "name": "4.3 Xem chi tiết khách hàng B2B (Dư nợ & Hạn mức khả dụng)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/b2b/customers/{{b2bCustomerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "b2b", "customers", "{{b2bCustomerId}}"]
+            }
+          }
+        },
+        {
+          "name": "4.4 Cập nhật thông tin / hạn mức hợp đồng B2B",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"creditLimit\": 70000000,\n  \"discountPercent\": 10,\n  \"contactPhone\": \"0988999000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/b2b/customers/{{b2bCustomerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "b2b", "customers", "{{b2bCustomerId}}"]
+            }
+          }
+        },
+        {
+          "name": "4.5 Khóa tài khoản khách hàng B2B (SUSPENDED)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SUSPENDED\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/b2b/customers/{{b2bCustomerId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "b2b", "customers", "{{b2bCustomerId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "4.6 Ghi nhận thanh toán công nợ B2B",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 15000000,\n  \"note\": \"Thanh toán ủy nhiệm chi qua ngân hàng VCB số giao dịch #VCB98271\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/b2b/customers/{{b2bCustomerId}}/payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "b2b", "customers", "{{b2bCustomerId}}", "payment"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

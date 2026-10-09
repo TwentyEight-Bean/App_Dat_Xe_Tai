@@ -1,0 +1,227 @@
+{
+  "info": {
+    "name": "App Đặt Xe Tải - Driver KYC & Online Status (Sprint 2 / Task 2.2)",
+    "description": "Bộ API kiểm thử toàn diện quy trình KYC tài xế, quản lý hồ sơ xe & giấy tờ, xét duyệt Admin (Duyệt/Từ chối), và cơ chế chặn nghiêm ngặt khi bật Trực tuyến.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8443/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "driverToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driverId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vehicleTypeId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Tài xế (Driver KYC Flow)",
+      "item": [
+        {
+          "name": "1.1 Lấy danh sách loại xe tải (Vehicle Types)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/driver/vehicle-types",
+              "host": ["{{baseUrl}}"],
+              "path": ["driver", "vehicle-types"]
+            }
+          }
+        },
+        {
+          "name": "1.2 Xem hồ sơ & giấy tờ tài xế (Get Driver Profile)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/driver/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["driver", "profile"]
+            }
+          }
+        },
+        {
+          "name": "1.3 Xem trạng thái KYC (Get KYC Status)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/driver/kyc/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["driver", "kyc/status"]
+            }
+          }
+        },
+        {
+          "name": "1.4 Thử bật Trực tuyến khi CHƯA DUYỆT (Kỳ vọng 403 Forbidden)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isOnline\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/driver/status/online",
+              "host": ["{{baseUrl}}"],
+              "path": ["driver", "status", "online"]
+            }
+          }
+        },
+        {
+          "name": "1.5 Nộp hồ sơ KYC & giấy tờ (Submit KYC)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleTypeId\": \"{{vehicleTypeId}}\",\n  \"licensePlate\": \"51C-888.99\",\n  \"driverLicenseNo\": \"GPLX-790123456\",\n  \"documents\": [\n    {\n      \"docType\": \"CCCD_FRONT\",\n      \"fileUrl\": \"https://res.cloudinary.com/demo/image/upload/cccd_front_sample.jpg\",\n      \"docNumber\": \"079201001234\"\n    },\n    {\n      \"docType\": \"CCCD_BACK\",\n      \"fileUrl\": \"https://res.cloudinary.com/demo/image/upload/cccd_back_sample.jpg\"\n    },\n    {\n      \"docType\": \"DRIVER_LICENSE\",\n      \"fileUrl\": \"https://res.cloudinary.com/demo/image/upload/driver_license_sample.jpg\",\n      \"docNumber\": \"GPLX-790123456\"\n    },\n    {\n      \"docType\": \"VEHICLE_REGISTRATION\",\n      \"fileUrl\": \"https://res.cloudinary.com/demo/image/upload/vehicle_registration_sample.jpg\",\n      \"docNumber\": \"CAVET-51C88899\"\n    },\n    {\n      \"docType\": \"PORTRAIT\",\n      \"fileUrl\": \"https://res.cloudinary.com/demo/image/upload/portrait_sample.jpg\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/driver/kyc/submit",
+              "host": ["{{baseUrl}}"],
+              "path": ["driver", "kyc", "submit"]
+            }
+          }
+        },
+        {
+          "name": "1.6 Bật Trực tuyến sau khi đã được duyệt (Online Toggle)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isOnline\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/driver/status/online",
+              "host": ["{{baseUrl}}"],
+              "path": ["driver", "status", "online"]
+            }
+          }
+        },
+        {
+          "name": "1.7 Tắt Trực tuyến (Offline Toggle)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isOnline\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/driver/status/online",
+              "host": ["{{baseUrl}}"],
+              "path": ["driver", "status", "online"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Quản trị viên (Admin Review Flow)",
+      "item": [
+        {
+          "name": "2.1 Lấy danh sách hồ sơ chờ duyệt (Pending KYC Drivers)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/kyc-pending?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "kyc-pending"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.2 Xem chi tiết hồ sơ tài xế (Get Driver Detail)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "{{driverId}}"]
+            }
+          }
+        },
+        {
+          "name": "2.3 Từ chối hồ sơ kèm lý do (Reject Driver KYC)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Ảnh CCCD chụp bị lóa đèn flash, vui lòng chụp lại rõ nét cả 2 mặt.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/kyc/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "{{driverId}}", "kyc", "reject"]
+            }
+          }
+        },
+        {
+          "name": "2.4 Phê duyệt hồ sơ tài xế (Approve Driver KYC)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/kyc/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", "{{driverId}}", "kyc", "approve"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,194 @@
+{
+  "info": {
+    "name": "App Đặt Xe Tải - Customer Auth & Address Book (Sprint 2 / Task 2.1)",
+    "description": "Bộ API kiểm thử cho Module Đăng ký/Đăng nhập OTP (VietGuys/eSMS/Mock) và Quản lý Sổ địa chỉ khách hàng.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8443/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "addressId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication (Xác thực OTP)",
+      "item": [
+        {
+          "name": "1.1 Yêu cầu gửi OTP (Request OTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0901234567\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/request-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "request-otp"]
+            }
+          }
+        },
+        {
+          "name": "1.2 Xác thực OTP & Nhận JWT Token (Verify OTP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.token) {",
+                  "  pm.collectionVariables.set('authToken', jsonData.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0901234567\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify-otp"]
+            }
+          }
+        },
+        {
+          "name": "1.3 Lấy thông tin tài khoản hiện tại (Get Me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Customer Address Book (Sổ địa chỉ)",
+      "item": [
+        {
+          "name": "2.1 Lấy danh sách sổ địa chỉ",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/customer/addresses",
+              "host": ["{{baseUrl}}"],
+              "path": ["customer", "addresses"]
+            }
+          }
+        },
+        {
+          "name": "2.2 Thêm địa chỉ mới vào sổ",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "  pm.collectionVariables.set('addressId', jsonData.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Kho hàng Tân Bình\",\n  \"addressText\": \"123 Cộng Hòa, Phường 12, Quận Tân Bình, TP.HCM\",\n  \"latitude\": 10.8014,\n  \"longitude\": 106.6521,\n  \"contactName\": \"Anh Tuấn (Thủ kho)\",\n  \"contactPhone\": \"0987654321\",\n  \"isDefault\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/customer/addresses",
+              "host": ["{{baseUrl}}"],
+              "path": ["customer", "addresses"]
+            }
+          }
+        },
+        {
+          "name": "2.3 Cập nhật địa chỉ",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Kho hàng Tân Bình (Cổng 2)\",\n  \"addressText\": \"123/4 Cộng Hòa, Phường 12, Quận Tân Bình, TP.HCM\",\n  \"latitude\": 10.8015,\n  \"longitude\": 106.6522,\n  \"contactName\": \"Anh Tuấn (Quản lý kho)\",\n  \"contactPhone\": \"0987654321\",\n  \"isDefault\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/customer/addresses/{{addressId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["customer", "addresses", "{{addressId}}"]
+            }
+          }
+        },
+        {
+          "name": "2.4 Đặt làm địa chỉ mặc định",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/customer/addresses/{{addressId}}/default",
+              "host": ["{{baseUrl}}"],
+              "path": ["customer", "addresses", "{{addressId}}", "default"]
+            }
+          }
+        },
+        {
+          "name": "2.5 Xóa địa chỉ khỏi sổ",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/customer/addresses/{{addressId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["customer", "addresses", "{{addressId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
