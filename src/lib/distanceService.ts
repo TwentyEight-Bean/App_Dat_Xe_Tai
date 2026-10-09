@@ -10,7 +10,7 @@
 export interface DistanceResult {
   distanceKm: number;
   durationMinutes: number;
-  routingSource: 'OSRM_OPENSOURCE' | 'HAVERSINE_LOCAL';
+  routingSource: 'GOONG_API' | 'HAVERSINE_LOCAL';
 }
 
 /**
@@ -56,7 +56,7 @@ export function calculateHaversineDistance(
 
 /**
  * Tính khoảng cách thực tế giữa điểm đi (Origin) và điểm đến (Destination)
- * Ưu tiên gọi OSRM OpenStreetMap -> Nếu quá 1.5s hoặc lỗi mạng thì tự động chuyển Haversine
+ * Ưu tiên gọi Goong.io -> Nếu quá 1.5s hoặc lỗi mạng thì tự động chuyển Haversine
  */
 export async function calculateRouteDistance(
   originLat: number,
@@ -95,15 +95,14 @@ export async function calculateRouteDistance(
     };
   }
 
-  // 1. Thử gọi Open-Source OSRM Routing Engine (OpenStreetMap)
+  // 1. Thử gọi Goong.io API
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1800); // 1.8s timeout
 
-    // Chú ý: OSRM nhận định dạng {lng},{lat};{lng},{lat} (Kinh độ trước, Vĩ độ sau)
-    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=false`;
+    const goongUrl = `https://rsapi.goong.io/Direction?origin=${originLat},${originLng}&destination=${destLat},${destLng}&vehicle=truck&api_key=${process.env.GOONG_API_KEY || ''}`;
 
-    const res = await fetch(osrmUrl, {
+    const res = await fetch(goongUrl, {
       signal: controller.signal,
       headers: {
         'User-Agent': 'TruckBookingApp/1.0',
@@ -114,10 +113,10 @@ export async function calculateRouteDistance(
 
     if (res.ok) {
       const data = await res.json();
-      if (data.code === 'Ok' && Array.isArray(data.routes) && data.routes.length > 0) {
-        const route = data.routes[0];
-        const distanceMeters = route.distance || 0;
-        const durationSeconds = route.duration || 0;
+      if (data.routes && data.routes.length > 0) {
+        const leg = data.routes[0].legs[0];
+        const distanceMeters = leg.distance.value || 0;
+        const durationSeconds = leg.duration.value || 0;
 
         const distanceKm = Math.max(0.5, Number((distanceMeters / 1000).toFixed(1)));
         const durationMinutes = Math.max(5, Math.round(durationSeconds / 60));
@@ -125,12 +124,12 @@ export async function calculateRouteDistance(
         return {
           distanceKm,
           durationMinutes,
-          routingSource: 'OSRM_OPENSOURCE',
+          routingSource: 'GOONG_API',
         };
       }
     }
   } catch (error) {
-    // Không ném lỗi ra ngoài khi OSRM timeout hoặc mạng chậm, chuyển ngay sang Fallback Haversine
+    // Không ném lỗi ra ngoài khi timeout hoặc mạng chậm, chuyển ngay sang Fallback Haversine
   }
 
   // 2. Dự phòng (Fallback): Tính bằng Haversine Urban Formula siêu tốc (< 1ms, 0 VNĐ)

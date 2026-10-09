@@ -11,6 +11,24 @@ import { ApiError } from './errors';
 /**
  * 1. Lấy danh sách hồ sơ tài xế đang chờ phê duyệt KYC
  */
+export async function getAllUsers() {
+  const allUsers = await db
+    .select({
+      id: users.id,
+      fullName: users.fullName,
+      phone: users.phone,
+      email: users.email,
+      role: users.role,
+      status: users.status,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(eq(users.role, 'CUSTOMER'))
+    .orderBy(desc(users.createdAt));
+  
+  return allUsers;
+}
+
 export async function getPendingKycDrivers(page = 1, limit = 20) {
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(100, Math.max(1, limit));

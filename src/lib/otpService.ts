@@ -198,17 +198,17 @@ export async function verifyOtp(rawPhone: string, inputOtp: string): Promise<Ver
     userRecord = insertedUsers[0];
     isNewUser = true;
 
-    // Khởi tạo ví tiền rỗng cho khách hàng mới
-    try {
-      await db.insert(wallets).values({
-        userId: userRecord.id,
-        balance: '0',
-        lockedBalance: '0',
-        currency: 'VND',
-      });
-    } catch (walletErr) {
-      console.warn('[Wallet Init Warning] Không thể tạo ví tự động:', walletErr);
-    }
+    // Khởi tạo ví tiền rỗng cho khách hàng mới (Đã comment cho Sprint 2, sẽ làm ở Sprint 4)
+    // try {
+    //   await db.insert(wallets).values({
+    //     userId: userRecord.id,
+    //     balance: '0',
+    //     lockedBalance: '0',
+    //     currency: 'VND',
+    //   });
+    // } catch (walletErr) {
+    //   console.warn('[Wallet Init Warning] Không thể tạo ví tự động:', walletErr);
+    // }
   } else {
     userRecord = existingUsers[0];
 

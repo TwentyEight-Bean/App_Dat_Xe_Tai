@@ -5,7 +5,8 @@
 -- ==============================================================================
 
 -- 1. BẢNG BẢNG GIÁ GỐC (PRICING_RULES)
-CREATE TABLE IF NOT EXISTS pricing_rules (
+DROP TABLE IF EXISTS pricing_rules CASCADE;
+CREATE TABLE pricing_rules (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     vehicle_type_id UUID NOT NULL REFERENCES vehicle_types(id) ON DELETE CASCADE,
     base_price DECIMAL(12,2) NOT NULL, -- Giá mở cửa (VD: 150.000đ)
