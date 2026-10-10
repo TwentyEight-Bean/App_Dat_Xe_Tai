@@ -1,40 +1,51 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react"
 
 /* ---------- types & store ---------- */
 
-export type Side = "customer" | "driver";
+export type Side = "customer" | "driver"
 
 export type Msg = {
-  id: number;
-  from: Side;
-  kind: "text" | "location";
-  text: string;
-  time: string;
-};
+  id: number
+  from: Side
+  kind: "text" | "location"
+  text: string
+  time: string
+}
 
 export type Conv = {
-  id: string;
-  driverName: string;
-  driverInitials: string;
-  customerName: string;
-  vehicle: string;
-  order: string;
-  status: "active" | "completed";
-  endedAt?: string;
-  messages: Msg[];
-  unread: Record<Side, number>;
-};
+  id: string
+  driverName: string
+  driverInitials: string
+  customerName: string
+  vehicle: string
+  order: string
+  status: "active" | "completed"
+  endedAt?: string
+  messages: Msg[]
+  unread: Record<Side, number>
+}
 
-export const CURRENT_CONV = "c1";
+export const CURRENT_CONV = "c1"
 
-let seq = 100;
-const m = (from: Side, text: string, time: string, kind: Msg["kind"] = "text"): Msg => ({
+let seq = 100
+const m = (
+  from: Side,
+  text: string,
+  time: string,
+  kind: Msg["kind"] = "text",
+): Msg => ({
   id: ++seq,
   from,
   kind,
   text,
   time,
-});
+})
 
 let state: Conv[] = [
   {
@@ -48,7 +59,11 @@ let state: Conv[] = [
     unread: { customer: 1, driver: 0 },
     messages: [
       m("driver", "Chào bạn, mình là Minh, tài xế nhận đơn #DH1024.", "10:24"),
-      m("customer", "Chào anh, hàng là 6 thùng carton, để sẵn ở cổng nhé.", "10:26"),
+      m(
+        "customer",
+        "Chào anh, hàng là 6 thùng carton, để sẵn ở cổng nhé.",
+        "10:26",
+      ),
       m("driver", "Ok bạn, mình đang chạy từ Quận 3 qua.", "10:27"),
       m("customer", "Bạn tới đâu rồi?", "10:31"),
       m("driver", "Anh sắp tới điểm lấy rồi nhé", "10:32"),
@@ -86,115 +101,148 @@ let state: Conv[] = [
       m("driver", "Giao hàng thành công nhé bạn.", "10:02"),
     ],
   },
-];
+]
 
-const viewing: Record<Side, string | null> = { customer: null, driver: null };
-const listeners = new Set<() => void>();
-const emit = () => listeners.forEach((l) => l());
+const viewing: Record<Side, string | null> = { customer: null, driver: null }
+const listeners = new Set<() => void>()
+const emit = () => listeners.forEach((l) => l())
 const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => listeners.delete(l);
-};
+  listeners.add(l)
+  return () => listeners.delete(l)
+}
 
 const nextTime = (c: Conv) => {
-  const [h, mm] = (c.messages[c.messages.length - 1]?.time ?? "10:32").split(":").map(Number);
-  const t = h * 60 + mm + 1;
-  return `${String(Math.floor(t / 60) % 24).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-};
+  const [h, mm] = (c.messages[c.messages.length - 1]?.time ?? "10:32")
+    .split(":")
+    .map(Number)
+  const t = h * 60 + mm + 1
+  return `${String(Math.floor(t / 60) % 24).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`
+}
 
 const update = (id: string, fn: (c: Conv) => Conv) => {
-  state = state.map((c) => (c.id === id ? fn(c) : c));
-  emit();
-};
+  state = state.map((c) => (c.id === id ? fn(c) : c))
+  emit()
+}
 
-export function sendMessage(id: string, from: Side, text: string, kind: Msg["kind"] = "text") {
-  const to: Side = from === "customer" ? "driver" : "customer";
+export function sendMessage(
+  id: string,
+  from: Side,
+  text: string,
+  kind: Msg["kind"] = "text",
+) {
+  const to: Side = from === "customer" ? "driver" : "customer"
   update(id, (c) => ({
     ...c,
     messages: [...c.messages, m(from, text, nextTime(c), kind)],
     unread: { ...c.unread, [to]: viewing[to] === id ? 0 : c.unread[to] + 1 },
-  }));
+  }))
 }
 
 export function markRead(id: string, side: Side) {
-  const c = state.find((x) => x.id === id);
-  if (!c || c.unread[side] === 0) return;
-  update(id, (x) => ({ ...x, unread: { ...x.unread, [side]: 0 } }));
+  const c = state.find((x) => x.id === id)
+  if (!c || c.unread[side] === 0) return
+  update(id, (x) => ({ ...x, unread: { ...x.unread, [side]: 0 } }))
 }
 
 export function setOrderStatus(id: string, status: Conv["status"]) {
-  const c = state.find((x) => x.id === id);
-  if (!c || c.status === status) return;
-  update(id, (x) => ({ ...x, status, endedAt: status === "completed" ? "Vừa xong" : undefined }));
+  const c = state.find((x) => x.id === id)
+  if (!c || c.status === status) return
+  update(id, (x) => ({
+    ...x,
+    status,
+    endedAt: status === "completed" ? "Vừa xong" : undefined,
+  }))
 }
 
 const replyFor = (text: string, kind: Msg["kind"]) => {
-  if (kind === "location") return "Mình thấy vị trí rồi nhé, mình tới ngay.";
-  if (text === "Bạn tới đâu rồi?") return "Mình còn khoảng 3 phút nữa tới nhé.";
-  if (text === "Khi tới gọi mình nhé") return "Ok bạn, mình tới sẽ gọi.";
-  if (text === "Mình đang ở điểm lấy hàng") return "Mình thấy rồi, mình tới ngay.";
-  return "Mình nhận được rồi nhé.";
-};
+  if (kind === "location") return "Mình thấy vị trí rồi nhé, mình tới ngay."
+  if (text === "Bạn tới đâu rồi?") return "Mình còn khoảng 3 phút nữa tới nhé."
+  if (text === "Khi tới gọi mình nhé") return "Ok bạn, mình tới sẽ gọi."
+  if (text === "Mình đang ở điểm lấy hàng")
+    return "Mình thấy rồi, mình tới ngay."
+  return "Mình nhận được rồi nhé."
+}
 
-const replyTimers = new Map<string, number>();
-export function scheduleReply(id: string, from: Side, text: string, kind: Msg["kind"]) {
-  window.clearTimeout(replyTimers.get(id));
-  const delay = 2200;
+const replyTimers = new Map<string, number>()
+export function scheduleReply(
+  id: string,
+  from: Side,
+  text: string,
+  kind: Msg["kind"],
+) {
+  window.clearTimeout(replyTimers.get(id))
+  const delay = 2200
   replyTimers.set(
     id,
     window.setTimeout(() => {
-      const c = state.find((x) => x.id === id);
-      if (!c || c.status !== "active") return;
+      const c = state.find((x) => x.id === id)
+      if (!c || c.status !== "active") return
       sendMessage(
         id,
         from === "customer" ? "driver" : "customer",
-        from === "customer" ? replyFor(text, kind) : "Vâng, mình ở cổng số 2 nhé.",
-      );
+        from === "customer"
+          ? replyFor(text, kind)
+          : "Vâng, mình ở cổng số 2 nhé.",
+      )
     }, delay),
-  );
+  )
 }
 
-let ambientStarted = false;
+let ambientStarted = false
 export function startAmbient() {
-  if (ambientStarted) return;
-  ambientStarted = true;
+  if (ambientStarted) return
+  ambientStarted = true
   window.setTimeout(() => {
-    const c = state.find((x) => x.id === CURRENT_CONV);
-    if (c?.status === "active") sendMessage(CURRENT_CONV, "driver", "Hàng có cần bốc xếp giúp không bạn?");
-  }, 20000);
+    const c = state.find((x) => x.id === CURRENT_CONV)
+    if (c?.status === "active")
+      sendMessage(CURRENT_CONV, "driver", "Hàng có cần bốc xếp giúp không bạn?")
+  }, 20000)
 }
 
 export function simulateCustomerPing() {
   window.setTimeout(() => {
-    const c = state.find((x) => x.id === CURRENT_CONV);
-    if (c?.status === "active") sendMessage(CURRENT_CONV, "customer", "Mình ở cổng số 2, bác tài tới nhắn mình nhé.");
-  }, 6000);
+    const c = state.find((x) => x.id === CURRENT_CONV)
+    if (c?.status === "active")
+      sendMessage(
+        CURRENT_CONV,
+        "customer",
+        "Mình ở cổng số 2, bác tài tới nhắn mình nhé.",
+      )
+  }, 6000)
 }
 
 export function useConvs() {
-  return useSyncExternalStore(subscribe, () => state);
+  return useSyncExternalStore(subscribe, () => state)
 }
 
 export function useUnread(side: Side) {
-  return useConvs().reduce((n, c) => n + c.unread[side], 0);
+  return useConvs().reduce((n, c) => n + c.unread[side], 0)
 }
 
 export function useViewing(side: Side, id: string | null) {
   useEffect(() => {
-    if (!id) return;
-    viewing[side] = id;
-    markRead(id, side);
+    if (!id) return
+    viewing[side] = id
+    markRead(id, side)
     return () => {
-      viewing[side] = null;
-    };
-  }, [side, id]);
+      viewing[side] = null
+    }
+  }, [side, id])
 }
 
 /* ---------- icons ---------- */
 
-type CI = "back" | "send" | "plus" | "pin" | "phone" | "truck" | "check" | "chevron" | "keyboard" | "lock";
+type CI = "back" | "send" | "plus" | "pin" | "phone" | "truck" | "check" | "chevron" | "keyboard" | "lock"
 
-function CIcon({ name, size = 20, strokeWidth = 1.8 }: { name: CI; size?: number; strokeWidth?: number }) {
+function CIcon({
+  name,
+  size = 20,
+  strokeWidth = 1.8,
+}: {
+  name: CI
+  size?: number
+  strokeWidth?: number
+}) {
   const paths: Record<CI, ReactNode> = {
     back: <path d="m15 18-6-6 6-6" />,
     send: <path d="M12 19V5m-5 5 5-5 5 5" />,
@@ -229,7 +277,7 @@ function CIcon({ name, size = 20, strokeWidth = 1.8 }: { name: CI; size?: number
         <path d="M8 11V8a4 4 0 0 1 8 0v3" />
       </>
     ),
-  };
+  }
   return (
     <svg
       aria-hidden="true"
@@ -244,22 +292,26 @@ function CIcon({ name, size = 20, strokeWidth = 1.8 }: { name: CI; size?: number
     >
       {paths[name]}
     </svg>
-  );
+  )
 }
 
 /* ---------- messages list (customer) ---------- */
 
 export function MessagesScreen({ onOpen }: { onOpen: (id: string) => void }) {
-  const convs = useConvs();
-  const active = convs.filter((c) => c.status === "active");
-  const recent = convs.filter((c) => c.status === "completed");
+  const convs = useConvs()
+  const active = convs.filter((c) => c.status === "active")
+  const recent = convs.filter((c) => c.status === "completed")
 
   const row = (c: Conv) => {
-    const last = c.messages[c.messages.length - 1];
-    const unread = c.unread.customer;
+    const last = c.messages[c.messages.length - 1]
+    const unread = c.unread.customer
     return (
       <li key={c.id}>
-        <button className={`conv-row ${unread ? "unread" : ""}`} onClick={() => onOpen(c.id)} type="button">
+        <button
+          className={`conv-row ${unread ? "unread" : ""}`}
+          onClick={() => onOpen(c.id)}
+          type="button"
+        >
           <span className="driver-avatar small" aria-hidden="true">
             {c.driverInitials}
             {c.status === "active" && <span className="driver-online" />}
@@ -283,8 +335,8 @@ export function MessagesScreen({ onOpen }: { onOpen: (id: string) => void }) {
           )}
         </button>
       </li>
-    );
-  };
+    )
+  }
 
   return (
     <section className="orders-screen messages-screen">
@@ -304,34 +356,55 @@ export function MessagesScreen({ onOpen }: { onOpen: (id: string) => void }) {
         </>
       )}
     </section>
-  );
+  )
 }
 
 /* ---------- chat ---------- */
 
 const quickReplies: Record<Side, string[]> = {
-  customer: ["Bạn tới đâu rồi?", "Khi tới gọi mình nhé", "Mình đang ở điểm lấy hàng"],
+  customer: [
+    "Bạn tới đâu rồi?",
+    "Khi tới gọi mình nhé",
+    "Mình đang ở điểm lấy hàng",
+  ],
   driver: ["Mình đang đến", "Mình đã tới điểm lấy", "Mình sẽ gọi khi tới"],
-};
+}
 
 const sharedPlace: Record<Side, string> = {
   customer: "21 Nguyễn Đình Chiểu, Q.1",
   driver: "Gần 45 Pasteur, Q.1",
-};
+}
 
 function MiniMap() {
   return (
-    <svg aria-hidden="true" className="loc-map" preserveAspectRatio="xMidYMid slice" viewBox="0 0 200 84">
+    <svg
+      aria-hidden="true"
+      className="loc-map"
+      preserveAspectRatio="xMidYMid slice"
+      viewBox="0 0 200 84"
+    >
       <rect fill="#e7eae0" height="84" width="200" />
       <path d="M0 58 L200 40" stroke="#fff" strokeWidth="9" />
       <path d="M70 0 L92 84" stroke="#fff" strokeWidth="7" />
       <path d="M150 0 L138 84" stroke="#f3eee2" strokeWidth="5" />
       <path d="M0 20 L200 14" stroke="#f3eee2" strokeWidth="4" />
-      <path d="M118 84 C130 70 160 70 200 76" fill="none" stroke="#cfe5f3" strokeWidth="10" />
+      <path
+        d="M118 84 C130 70 160 70 200 76"
+        fill="none"
+        stroke="#cfe5f3"
+        strokeWidth="10"
+      />
       <circle cx="98" cy="44" fill="#1f6bf2" fillOpacity=".18" r="15" />
-      <circle cx="98" cy="44" fill="#1f6bf2" r="6" stroke="#fff" strokeWidth="2.5" />
+      <circle
+        cx="98"
+        cy="44"
+        fill="#1f6bf2"
+        r="6"
+        stroke="#fff"
+        strokeWidth="2.5"
+      />
     </svg>
-  );
+  )
 }
 
 export function ChatScreen({
@@ -342,45 +415,53 @@ export function ChatScreen({
   onTrip,
   onOpenMap,
 }: {
-  convId: string;
-  side: Side;
-  moving?: boolean;
-  onBack: () => void;
-  onTrip?: () => void;
-  onOpenMap: () => void;
+  convId: string
+  side: Side
+  moving?: boolean
+  onBack: () => void
+  onTrip?: () => void
+  onOpenMap: () => void
 }) {
-  const conv = useConvs().find((c) => c.id === convId);
-  useViewing(side, convId);
-  const [draft, setDraft] = useState("");
-  const [menu, setMenu] = useState(false);
-  const [typing, setTyping] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
-  const count = conv?.messages.length ?? 0;
+  const conv = useConvs().find((c) => c.id === convId)
+  useViewing(side, convId)
+  const [draft, setDraft] = useState("")
+  const [menu, setMenu] = useState(false)
+  const [typing, setTyping] = useState(false)
+  const endRef = useRef<HTMLDivElement>(null)
+  const count = conv?.messages.length ?? 0
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
-  }, [count]);
+    endRef.current?.scrollIntoView({ block: "end" })
+  }, [count])
 
-  if (!conv) return null;
-  const done = conv.status === "completed";
-  const isDriver = side === "driver";
-  const name = isDriver ? conv.customerName : conv.driverName;
-  const initials = isDriver ? "LA" : conv.driverInitials;
-  const quickOnly = isDriver && moving && !typing;
+  if (!conv) return null
+  const done = conv.status === "completed"
+  const isDriver = side === "driver"
+  const name = isDriver ? conv.customerName : conv.driverName
+  const initials = isDriver ? "LA" : conv.driverInitials
+  const quickOnly = isDriver && moving && !typing
 
   const send = (text: string, kind: Msg["kind"] = "text") => {
-    const t = text.trim();
-    if (!t || done) return;
-    sendMessage(convId, side, t, kind);
-    scheduleReply(convId, side, t, kind);
-    setDraft("");
-    setMenu(false);
-  };
+    const t = text.trim()
+    if (!t || done) return
+    sendMessage(convId, side, t, kind)
+    scheduleReply(convId, side, t, kind)
+    setDraft("")
+    setMenu(false)
+  }
 
   return (
-    <section className={`chat-screen ${isDriver ? "as-driver" : ""}`} aria-label={`Trò chuyện với ${name}`}>
+    <section
+      className={`chat-screen ${isDriver ? "as-driver" : ""}`}
+      aria-label={`Trò chuyện với ${name}`}
+    >
       <header className="chat-head">
-        <button aria-label="Quay lại" className="chat-icon-btn" onClick={onBack} type="button">
+        <button
+          aria-label="Quay lại"
+          className="chat-icon-btn"
+          onClick={onBack}
+          type="button"
+        >
           <CIcon name="back" size={22} />
         </button>
         <span className="driver-avatar small" aria-hidden="true">
@@ -397,14 +478,23 @@ export function ChatScreen({
                 : "Trực tuyến · Đang giao hàng"}
           </small>
         </span>
-        <a aria-label={`Gọi ${name}`} className="chat-icon-btn call" href="tel:" onClick={(e) => e.preventDefault()}>
+        <a
+          aria-label={`Gọi ${name}`}
+          className="chat-icon-btn call"
+          href="tel:"
+          onClick={(e) => e.preventDefault()}
+        >
           <CIcon name="phone" size={20} />
         </a>
       </header>
 
       <div className={`chat-order ${done ? "done" : ""}`}>
         <span className="chat-order-icon">
-          <CIcon name={done ? "check" : "truck"} size={18} strokeWidth={done ? 2.6 : 1.8} />
+          <CIcon
+            name={done ? "check" : "truck"}
+            size={18}
+            strokeWidth={done ? 2.6 : 1.8}
+          />
         </span>
         <span className="chat-order-copy">
           <strong>{done ? "Đơn hàng đã hoàn thành" : "Đơn đang giao"}</strong>
@@ -423,7 +513,10 @@ export function ChatScreen({
       <div className="chat-thread" role="log" aria-live="polite">
         <p className="chat-day">Hôm nay</p>
         {conv.messages.map((msg) => (
-          <div className={`bubble-row ${msg.from === side ? "mine" : "theirs"}`} key={msg.id}>
+          <div
+            className={`bubble-row ${msg.from === side ? "mine" : "theirs"}`}
+            key={msg.id}
+          >
             {msg.kind === "location" ? (
               <div className="bubble loc-bubble">
                 <MiniMap />
@@ -432,7 +525,11 @@ export function ChatScreen({
                     <CIcon name="pin" size={15} />
                     {msg.text}
                   </span>
-                  <button className="loc-link" onClick={onOpenMap} type="button">
+                  <button
+                    className="loc-link"
+                    onClick={onOpenMap}
+                    type="button"
+                  >
                     Xem trên bản đồ
                   </button>
                 </div>
@@ -459,7 +556,11 @@ export function ChatScreen({
         <footer className="chat-foot">
           {menu && (
             <div className="chat-menu" role="menu">
-              <button onClick={() => send(sharedPlace[side], "location")} role="menuitem" type="button">
+              <button
+                onClick={() => send(sharedPlace[side], "location")}
+                role="menuitem"
+                type="button"
+              >
                 <span className="chat-menu-icon">
                   <CIcon name="pin" size={18} />
                 </span>
@@ -479,11 +580,20 @@ export function ChatScreen({
           </div>
           {quickOnly ? (
             <div className="composer-moving glass glass-strong">
-              <button aria-label="Gửi vị trí" className="chat-plus" onClick={() => send(sharedPlace.driver, "location")} type="button">
+              <button
+                aria-label="Gửi vị trí"
+                className="chat-plus"
+                onClick={() => send(sharedPlace.driver, "location")}
+                type="button"
+              >
                 <CIcon name="pin" size={22} />
               </button>
               <span>Đang di chuyển · Hãy dùng trả lời nhanh</span>
-              <button className="composer-type" onClick={() => setTyping(true)} type="button">
+              <button
+                className="composer-type"
+                onClick={() => setTyping(true)}
+                type="button"
+              >
                 <CIcon name="keyboard" size={20} />
                 <span>Nhập</span>
               </button>
@@ -492,8 +602,8 @@ export function ChatScreen({
             <form
               className="composer glass glass-strong"
               onSubmit={(e) => {
-                e.preventDefault();
-                send(draft);
+                e.preventDefault()
+                send(draft)
               }}
             >
               <button
@@ -512,7 +622,12 @@ export function ChatScreen({
                 placeholder="Nhập tin nhắn..."
                 value={draft}
               />
-              <button aria-label="Gửi" className="chat-send" disabled={!draft.trim()} type="submit">
+              <button
+                aria-label="Gửi"
+                className="chat-send"
+                disabled={!draft.trim()}
+                type="submit"
+              >
                 <CIcon name="send" size={20} strokeWidth={2.4} />
               </button>
             </form>
@@ -520,5 +635,5 @@ export function ChatScreen({
         </footer>
       )}
     </section>
-  );
+  )
 }

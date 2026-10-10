@@ -1,46 +1,48 @@
-import { useEffect, useState } from "react";
-import { Icon, Status } from "./ui";
-import { vnd } from "./data";
+import { useEffect, useState } from "react"
+import { Icon, Status } from "./ui"
+import { vnd } from "./data"
 
 /* ── Types ── */
 type PricingRule = {
-  id: string;
-  vehicleTypeId: string;
-  basePrice: string;
-  baseDistanceKm: string;
-  pricePerKm: string;
-  vehicleCode: string;
-  vehicleName: string;
-  payloadCapacityKg: string;
-  dimensionsLxwxh: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+  id: string
+  vehicleTypeId: string
+  basePrice: string
+  baseDistanceKm: string
+  pricePerKm: string
+  vehicleCode: string
+  vehicleName: string
+  payloadCapacityKg: string
+  dimensionsLxwxh: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 type Surcharge = {
-  id: string;
-  code: string;
-  name: string;
-  price: string;
-  description: string | null;
-  isActive: boolean;
-};
+  id: string
+  code: string
+  name: string
+  price: string
+  description: string | null
+  isActive: boolean
+}
 
 /* ── helpers ── */
 const fmtVnd = (v: string | number) => {
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  if (isNaN(n)) return "—";
-  return n.toLocaleString("vi-VN") + "đ";
-};
+  const n = typeof v === "string" ? parseFloat(v) : v
+  if (isNaN(n)) return "—"
+  return n.toLocaleString("vi-VN") + "đ"
+}
 const fmtKm = (v: string | number) => {
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  return isNaN(n) ? "—" : `${n} km`;
-};
+  const n = typeof v === "string" ? parseFloat(v) : v
+  return isNaN(n) ? "—" : `${n} km`
+}
 const fmtWeight = (v: string) => {
-  const n = parseFloat(v);
-  if (isNaN(n)) return v;
-  return n >= 1000 ? `${(n / 1000).toLocaleString("vi-VN")} tấn` : `${n.toLocaleString("vi-VN")} kg`;
-};
+  const n = parseFloat(v)
+  if (isNaN(n)) return v
+  return n >= 1000
+    ? `${(n / 1000).toLocaleString("vi-VN")} tấn`
+    : `${n.toLocaleString("vi-VN")} kg`
+}
 
 const vehicleIcons: Record<string, string> = {
   MOTORBIKE: "🏍️",
@@ -51,21 +53,22 @@ const vehicleIcons: Record<string, string> = {
   TRUCK_2T: "🚛",
   TRUCK_5T: "🚛",
   TRUCK_10T: "🚛",
-};
+}
 
 /* ── API fetch wrapper ── */
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...opts,
-    headers: { 
-      "Content-Type": "application/json", 
-      "Authorization": "Bearer DEV_ADMIN_TOKEN",
-      ...(opts?.headers ?? {}) 
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer DEV_ADMIN_TOKEN",
+      ...(opts?.headers ?? {}),
     },
-  });
-  const json = await res.json();
-  if (!res.ok || json.success === false) throw new Error(json.message || "Lỗi API");
-  return json.data as T;
+  })
+  const json = await res.json()
+  if (!res.ok || json.success === false)
+    throw new Error(json.message || "Lỗi API")
+  return json.data as T
 }
 
 /* ── Inline Edit Modal ── */
@@ -74,19 +77,19 @@ function EditRuleModal({
   onClose,
   onSaved,
 }: {
-  rule: PricingRule;
-  onClose: () => void;
-  onSaved: () => void;
+  rule: PricingRule
+  onClose: () => void
+  onSaved: () => void
 }) {
-  const [basePrice, setBasePrice] = useState(rule.basePrice);
-  const [baseKm, setBaseKm] = useState(rule.baseDistanceKm);
-  const [perKm, setPerKm] = useState(rule.pricePerKm);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
+  const [basePrice, setBasePrice] = useState(rule.basePrice)
+  const [baseKm, setBaseKm] = useState(rule.baseDistanceKm)
+  const [perKm, setPerKm] = useState(rule.pricePerKm)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState("")
 
   const save = async () => {
-    setSaving(true);
-    setErr("");
+    setSaving(true)
+    setErr("")
     try {
       await apiFetch(`/api/admin/pricing/rules/${rule.vehicleTypeId}`, {
         method: "PATCH",
@@ -95,14 +98,14 @@ function EditRuleModal({
           baseDistanceKm: parseFloat(baseKm),
           pricePerKm: parseFloat(perKm),
         }),
-      });
-      onSaved();
+      })
+      onSaved()
     } catch (e: any) {
-      setErr(e.message);
+      setErr(e.message)
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
   return (
     <div className="scrim" role="presentation" onMouseDown={onClose}>
@@ -150,7 +153,9 @@ function EditRuleModal({
               min={0}
               step={500}
             />
-            <small className="pr-hint">Phí tính thêm cho mỗi km vượt cự ly mở cửa</small>
+            <small className="pr-hint">
+              Phí tính thêm cho mỗi km vượt cự ly mở cửa
+            </small>
           </label>
         </div>
 
@@ -158,63 +163,86 @@ function EditRuleModal({
 
         <div className="pr-preview">
           <Icon name="route" size={14} />
-          <span>Ví dụ 10 km: <b>{fmtVnd(parseFloat(basePrice) + Math.max(0, 10 - parseFloat(baseKm)) * parseFloat(perKm))}</b></span>
+          <span>
+            Ví dụ 10 km:{" "}
+            <b>
+              {fmtVnd(
+                parseFloat(basePrice) +
+                  Math.max(0, 10 - parseFloat(baseKm)) * parseFloat(perKm),
+              )}
+            </b>
+          </span>
         </div>
 
         <div className="modal-actions">
           <button type="button" className="btn" onClick={onClose}>
             Hủy
           </button>
-          <button type="button" className="btn btn-primary" disabled={saving} onClick={save}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={saving}
+            onClick={save}
+          >
             {saving ? "Đang lưu…" : "Lưu thay đổi"}
           </button>
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 /* ── Surcharge Edit Modal ── */
 function EditSurchargeModal({
   item,
   onClose,
-  onSaved,
+  onSaved, // null = create new
 }: {
-  item: Surcharge | null; // null = create new
-  onClose: () => void;
-  onSaved: () => void;
+  item: Surcharge | null
+  onClose: () => void
+  onSaved: () => void
 }) {
-  const isNew = !item;
-  const [code, setCode] = useState(item?.code ?? "");
-  const [name, setName] = useState(item?.name ?? "");
-  const [price, setPrice] = useState(item?.price ?? "0");
-  const [desc, setDesc] = useState(item?.description ?? "");
-  const [active, setActive] = useState(item?.isActive ?? true);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
+  const isNew = !item
+  const [code, setCode] = useState(item?.code ?? "")
+  const [name, setName] = useState(item?.name ?? "")
+  const [price, setPrice] = useState(item?.price ?? "0")
+  const [desc, setDesc] = useState(item?.description ?? "")
+  const [active, setActive] = useState(item?.isActive ?? true)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState("")
 
   const save = async () => {
-    setSaving(true);
-    setErr("");
+    setSaving(true)
+    setErr("")
     try {
       if (isNew) {
         await apiFetch("/api/admin/pricing/surcharges", {
           method: "POST",
-          body: JSON.stringify({ code, name, price: parseFloat(price), description: desc }),
-        });
+          body: JSON.stringify({
+            code,
+            name,
+            price: parseFloat(price),
+            description: desc,
+          }),
+        })
       } else {
         await apiFetch(`/api/admin/pricing/surcharges/${item!.code}`, {
           method: "PATCH",
-          body: JSON.stringify({ name, price: parseFloat(price), description: desc, isActive: active }),
-        });
+          body: JSON.stringify({
+            name,
+            price: parseFloat(price),
+            description: desc,
+            isActive: active,
+          }),
+        })
       }
-      onSaved();
+      onSaved()
     } catch (e: any) {
-      setErr(e.message);
+      setErr(e.message)
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
   return (
     <div className="scrim" role="presentation" onMouseDown={onClose}>
@@ -228,7 +256,11 @@ function EditSurchargeModal({
           <Icon name="layers" size={20} />
         </div>
         <h3>{isNew ? "Thêm phụ phí mới" : `Sửa phụ phí · ${item!.name}`}</h3>
-        <p>{isNew ? "Tạo một loại phụ phí dịch vụ mới." : "Cập nhật thông tin phụ phí dịch vụ."}</p>
+        <p>
+          {isNew
+            ? "Tạo một loại phụ phí dịch vụ mới."
+            : "Cập nhật thông tin phụ phí dịch vụ."}
+        </p>
 
         <div className="pr-form">
           <label className="pr-field">
@@ -303,7 +335,7 @@ function EditSurchargeModal({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 const DEFAULT_RULES: PricingRule[] = [
@@ -372,14 +404,15 @@ const DEFAULT_RULES: PricingRule[] = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
-];
+]
 
 const DEFAULT_SURCHARGES: Surcharge[] = [
   {
     id: "s-loading-floor",
     code: "LOADING_FLOOR",
     name: "Bốc xếp tầng trệt",
-    description: "Tài xế hỗ trợ bốc xếp hàng hóa lên/xuống xe tại tầng trệt (bán kính dưới 10m)",
+    description:
+      "Tài xế hỗ trợ bốc xếp hàng hóa lên/xuống xe tại tầng trệt (bán kính dưới 10m)",
     price: "50000",
     isActive: true,
   },
@@ -387,7 +420,8 @@ const DEFAULT_SURCHARGES: Surcharge[] = [
     id: "s-loading-stairs",
     code: "LOADING_STAIRS",
     name: "Bốc xếp lầu / thang bộ",
-    description: "Khuân vác hàng hóa lên/xuống cầu thang bộ (không có thang máy)",
+    description:
+      "Khuân vác hàng hóa lên/xuống cầu thang bộ (không có thang máy)",
     price: "100000",
     isActive: true,
   },
@@ -395,7 +429,8 @@ const DEFAULT_SURCHARGES: Surcharge[] = [
     id: "s-extra-helper",
     code: "EXTRA_HELPER",
     name: "Thêm 1 người bốc xếp theo xe",
-    description: "Bố trí thêm 1 phụ xe đi cùng hỗ trợ bốc xếp các kiện hàng cồng kềnh",
+    description:
+      "Bố trí thêm 1 phụ xe đi cùng hỗ trợ bốc xếp các kiện hàng cồng kềnh",
     price: "200000",
     isActive: true,
   },
@@ -411,52 +446,58 @@ const DEFAULT_SURCHARGES: Surcharge[] = [
     id: "s-extra-stop",
     code: "EXTRA_STOP",
     name: "Thêm điểm giao hàng phụ",
-    description: "Dừng thêm 1 điểm trên cùng tuyến đường (bán kính lệch dưới 5km)",
+    description:
+      "Dừng thêm 1 điểm trên cùng tuyến đường (bán kính lệch dưới 5km)",
     price: "35000",
     isActive: true,
   },
-];
+]
 
 /* ── Main Pricing Page ── */
 export default function Pricing() {
-  const [tab, setTab] = useState<"rules" | "surcharges">("rules");
-  const [rules, setRules] = useState<PricingRule[]>([]);
-  const [surcharges, setSurcharges] = useState<Surcharge[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [editRule, setEditRule] = useState<PricingRule | null>(null);
-  const [editSurcharge, setEditSurcharge] = useState<Surcharge | null | "new">(null);
+  const [tab, setTab] = useState<"rules" | "surcharges">("rules")
+  const [rules, setRules] = useState<PricingRule[]>([])
+  const [surcharges, setSurcharges] = useState<Surcharge[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [editRule, setEditRule] = useState<PricingRule | null>(null)
+  const [editSurcharge, setEditSurcharge] = useState<Surcharge | null | "new">(
+    null,
+  )
 
   const fetchAll = async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true)
+    setError("")
     try {
       const [r, s] = await Promise.all([
         apiFetch<PricingRule[]>("/api/pricing/rules"),
         apiFetch<Surcharge[]>("/api/pricing/services"),
-      ]);
-      setRules(r.length > 0 ? r : DEFAULT_RULES);
-      setSurcharges(s.length > 0 ? s : DEFAULT_SURCHARGES);
+      ])
+      setRules(r.length > 0 ? r : DEFAULT_RULES)
+      setSurcharges(s.length > 0 ? s : DEFAULT_SURCHARGES)
     } catch (e: any) {
-      console.warn("Pricing API fetch failed, loading default fallback data:", e.message);
-      setRules(DEFAULT_RULES);
-      setSurcharges(DEFAULT_SURCHARGES);
+      console.warn(
+        "Pricing API fetch failed, loading default fallback data:",
+        e.message,
+      )
+      setRules(DEFAULT_RULES)
+      setSurcharges(DEFAULT_SURCHARGES)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   useEffect(() => {
-    fetchAll();
-  }, []);
+    fetchAll()
+  }, [])
 
   const refresh = () => {
-    setEditRule(null);
-    setEditSurcharge(null);
-    fetchAll();
-  };
+    setEditRule(null)
+    setEditSurcharge(null)
+    fetchAll()
+  }
 
-  const activeSurcharges = surcharges.filter((s) => s.isActive).length;
+  const activeSurcharges = surcharges.filter((s) => s.isActive).length
 
   return (
     <div className="page pricing-page">
@@ -467,12 +508,21 @@ export default function Pricing() {
         </div>
         <div className="h-row">
           {tab === "surcharges" && (
-            <button type="button" className="btn btn-primary" onClick={() => setEditSurcharge("new")}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setEditSurcharge("new")}
+            >
               <Icon name="layers" size={14} />
               Thêm phụ phí
             </button>
           )}
-          <button type="button" className="btn" onClick={fetchAll} disabled={loading}>
+          <button
+            type="button"
+            className="btn"
+            onClick={fetchAll}
+            disabled={loading}
+          >
             <Icon name="clock" size={14} />
             {loading ? "Đang tải…" : "Làm mới"}
           </button>
@@ -522,14 +572,24 @@ export default function Pricing() {
       {/* Tabs */}
       <div className="pr-tabs">
         <div className="seg">
-          <button type="button" className={tab === "rules" ? "on" : ""} onClick={() => setTab("rules")}>
+          <button
+            type="button"
+            className={tab === "rules" ? "on" : ""}
+            onClick={() => setTab("rules")}
+          >
             <Icon name="truck" size={14} />
             Cước vận chuyển
           </button>
-          <button type="button" className={tab === "surcharges" ? "on" : ""} onClick={() => setTab("surcharges")}>
+          <button
+            type="button"
+            className={tab === "surcharges" ? "on" : ""}
+            onClick={() => setTab("surcharges")}
+          >
             <Icon name="layers" size={14} />
             Phụ phí dịch vụ
-            {activeSurcharges > 0 && <span className="seg-badge">{activeSurcharges}</span>}
+            {activeSurcharges > 0 && (
+              <span className="seg-badge">{activeSurcharges}</span>
+            )}
           </button>
         </div>
       </div>
@@ -556,7 +616,9 @@ export default function Pricing() {
           {rules.map((r) => (
             <div className="pr-card panel" key={r.id}>
               <div className="pr-card-head">
-                <span className="pr-vehicle-icon">{vehicleIcons[r.vehicleCode] ?? "🚚"}</span>
+                <span className="pr-vehicle-icon">
+                  {vehicleIcons[r.vehicleCode] ?? "🚚"}
+                </span>
                 <div className="pr-card-title">
                   <strong>{r.vehicleName}</strong>
                   <small>
@@ -564,7 +626,11 @@ export default function Pricing() {
                     {r.dimensionsLxwxh ? ` · ${r.dimensionsLxwxh}` : ""}
                   </small>
                 </div>
-                <button type="button" className="btn btn-sm" onClick={() => setEditRule(r)}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setEditRule(r)}
+                >
                   Sửa giá
                 </button>
               </div>
@@ -599,7 +665,8 @@ export default function Pricing() {
                   <b>
                     {fmtVnd(
                       parseFloat(r.basePrice) +
-                        Math.max(0, 10 - parseFloat(r.baseDistanceKm)) * parseFloat(r.pricePerKm),
+                        Math.max(0, 10 - parseFloat(r.baseDistanceKm)) *
+                          parseFloat(r.pricePerKm),
                     )}
                   </b>
                 </div>
@@ -608,7 +675,8 @@ export default function Pricing() {
                   <b>
                     {fmtVnd(
                       parseFloat(r.basePrice) +
-                        Math.max(0, 25 - parseFloat(r.baseDistanceKm)) * parseFloat(r.pricePerKm),
+                        Math.max(0, 25 - parseFloat(r.baseDistanceKm)) *
+                          parseFloat(r.pricePerKm),
                     )}
                   </b>
                 </div>
@@ -668,7 +736,11 @@ export default function Pricing() {
                       </Status>
                     </td>
                     <td>
-                      <button type="button" className="btn btn-sm" onClick={() => setEditSurcharge(s)}>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => setEditSurcharge(s)}
+                      >
                         Sửa
                       </button>
                     </td>
@@ -686,7 +758,8 @@ export default function Pricing() {
           </div>
           <div className="table-foot">
             <span>
-              Tổng: <b>{surcharges.length}</b> phụ phí · <b>{activeSurcharges}</b> đang hoạt động
+              Tổng: <b>{surcharges.length}</b> phụ phí ·{" "}
+              <b>{activeSurcharges}</b> đang hoạt động
             </span>
           </div>
         </section>
@@ -709,13 +782,22 @@ export default function Pricing() {
             <span className="pr-tag result">Tổng cước</span>
           </div>
           <div className="pr-formula-note">
-            <small>Hoa hồng sàn: <b>20%</b> cước vận chuyển · Tài xế nhận: <b>80%</b> cước + <b>100%</b> phụ phí bốc xếp</small>
+            <small>
+              Hoa hồng sàn: <b>20%</b> cước vận chuyển · Tài xế nhận: <b>80%</b>{" "}
+              cước + <b>100%</b> phụ phí bốc xếp
+            </small>
           </div>
         </div>
       </section>
 
       {/* Edit modals */}
-      {editRule && <EditRuleModal rule={editRule} onClose={() => setEditRule(null)} onSaved={refresh} />}
+      {editRule && (
+        <EditRuleModal
+          rule={editRule}
+          onClose={() => setEditRule(null)}
+          onSaved={refresh}
+        />
+      )}
       {editSurcharge && (
         <EditSurchargeModal
           item={editSurcharge === "new" ? null : editSurcharge}
@@ -724,5 +806,5 @@ export default function Pricing() {
         />
       )}
     </div>
-  );
+  )
 }

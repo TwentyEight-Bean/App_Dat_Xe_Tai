@@ -1,38 +1,33 @@
-import { eq, and, ne } from 'drizzle-orm';
-import { db } from '../db';
+import { eq, and, ne } from "drizzle-orm"
+import { db } from "../db"
 import {
   driverProfiles,
   driverDocuments,
   vehicleTypes,
   users,
-} from '../db/schema';
-import { ApiError } from './errors';
+} from "../db/schema"
+import { ApiError } from "./errors"
 
-export type DriverDocType =
-  | 'CCCD_FRONT'
-  | 'CCCD_BACK'
-  | 'DRIVER_LICENSE'
-  | 'VEHICLE_REGISTRATION'
-  | 'PORTRAIT';
+export type DriverDocType = "CCCD_FRONT" | "CCCD_BACK" | "DRIVER_LICENSE" | "VEHICLE_REGISTRATION" | "PORTRAIT"
 
 export const REQUIRED_KYC_DOC_TYPES: DriverDocType[] = [
-  'CCCD_FRONT',
-  'CCCD_BACK',
-  'DRIVER_LICENSE',
-  'VEHICLE_REGISTRATION',
-];
+  "CCCD_FRONT",
+  "CCCD_BACK",
+  "DRIVER_LICENSE",
+  "VEHICLE_REGISTRATION",
+]
 
 export interface SubmitKycDocumentDto {
-  docType: DriverDocType;
-  fileUrl: string;
-  docNumber?: string;
+  docType: DriverDocType
+  fileUrl: string
+  docNumber?: string
 }
 
 export interface SubmitDriverKycDto {
-  vehicleTypeId?: string;
-  licensePlate?: string;
-  driverLicenseNo?: string;
-  documents: SubmitKycDocumentDto[];
+  vehicleTypeId?: string
+  licensePlate?: string
+  driverLicenseNo?: string
+  documents: SubmitKycDocumentDto[]
 }
 
 /**
@@ -42,7 +37,7 @@ export async function getVehicleTypes() {
   return await db
     .select()
     .from(vehicleTypes)
-    .where(eq(vehicleTypes.isActive, true));
+    .where(eq(vehicleTypes.isActive, true))
 }
 
 /**
@@ -50,13 +45,17 @@ export async function getVehicleTypes() {
  */
 export async function getOrCreateDriverProfile(userId: string) {
   if (!userId) {
-    throw new ApiError(400, 'Thiếu thông tin người dùng (userId)');
+    throw new ApiError(400, "Thiếu thông tin người dùng (userId)")
   }
 
   // Kiểm tra user có tồn tại không
-  const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const userList = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
   if (userList.length === 0) {
-    throw new ApiError(404, 'Không tìm thấy người dùng trong hệ thống');
+    throw new ApiError(404, "Không tìm thấy người dùng trong hệ thống")
   }
 
   // Tìm hồ sơ tài xế hiện có
@@ -64,10 +63,10 @@ export async function getOrCreateDriverProfile(userId: string) {
     .select()
     .from(driverProfiles)
     .where(eq(driverProfiles.userId, userId))
-    .limit(1);
+    .limit(1)
 
   if (profile.length > 0) {
-    return profile[0];
+    return profile[0]
   }
 
   // Nếu chưa có, tạo mới hồ sơ tài xế với trạng thái mặc định
@@ -75,18 +74,18 @@ export async function getOrCreateDriverProfile(userId: string) {
     .insert(driverProfiles)
     .values({
       userId,
-      kycStatus: 'PENDING',
+      kycStatus: "PENDING",
       isOnline: false,
       isActive: true,
     })
-    .returning();
+    .returning()
 
   // Đảm bảo role của user là DRIVER
-  if (userList[0].role !== 'DRIVER') {
-    await db.update(users).set({ role: 'DRIVER' }).where(eq(users.id, userId));
+  if (userList[0].role !== "DRIVER") {
+    await db.update(users).set({ role: "DRIVER" }).where(eq(users.id, userId))
   }
 
-  return inserted[0];
+  return inserted[0]
 }
 
 /**
@@ -94,31 +93,31 @@ export async function getOrCreateDriverProfile(userId: string) {
  */
 export async function getDriverProfile(userId: string) {
   if (!userId) {
-    throw new ApiError(400, 'Thiếu thông tin người dùng (userId)');
+    throw new ApiError(400, "Thiếu thông tin người dùng (userId)")
   }
 
   const profile = await db
     .select()
     .from(driverProfiles)
     .where(eq(driverProfiles.userId, userId))
-    .limit(1);
+    .limit(1)
 
   if (profile.length === 0) {
-    return null;
+    return null
   }
 
-  const p = profile[0];
+  const p = profile[0]
 
   // Lấy thông tin loại xe
-  let vehicleType = null;
+  let vehicleType = null
   if (p.vehicleTypeId) {
     const vList = await db
       .select()
       .from(vehicleTypes)
       .where(eq(vehicleTypes.id, p.vehicleTypeId))
-      .limit(1);
+      .limit(1)
     if (vList.length > 0) {
-      vehicleType = vList[0];
+      vehicleType = vList[0]
     }
   }
 
@@ -134,57 +133,67 @@ export async function getDriverProfile(userId: string) {
     })
     .from(users)
     .where(eq(users.id, userId))
-    .limit(1);
+    .limit(1)
 
   // Lấy danh sách tài liệu
   const docs = await db
     .select()
     .from(driverDocuments)
-    .where(eq(driverDocuments.driverId, p.id));
+    .where(eq(driverDocuments.driverId, p.id))
 
   return {
     ...p,
     user: uList[0] || null,
     vehicleType,
     documents: docs,
-  };
+  }
 }
 
 /**
  * 4. Nộp hồ sơ KYC tài xế (Giấy tờ, Biển số, Loại xe, Số bằng lái)
  */
-export async function submitDriverKyc(userId: string, data: SubmitDriverKycDto) {
+export async function submitDriverKyc(
+  userId: string,
+  data: SubmitDriverKycDto,
+) {
   if (!userId) {
-    throw new ApiError(400, 'Thiếu thông tin người dùng');
+    throw new ApiError(400, "Thiếu thông tin người dùng")
   }
 
   if (!data || !Array.isArray(data.documents) || data.documents.length === 0) {
-    throw new ApiError(400, 'Danh sách giấy tờ (documents) không được để trống');
+    throw new ApiError(400, "Danh sách giấy tờ (documents) không được để trống")
   }
 
   // Xác thực từng giấy tờ
   const validDocTypes: DriverDocType[] = [
-    'CCCD_FRONT',
-    'CCCD_BACK',
-    'DRIVER_LICENSE',
-    'VEHICLE_REGISTRATION',
-    'PORTRAIT',
-  ];
+    "CCCD_FRONT",
+    "CCCD_BACK",
+    "DRIVER_LICENSE",
+    "VEHICLE_REGISTRATION",
+    "PORTRAIT",
+  ]
 
   for (const doc of data.documents) {
     if (!validDocTypes.includes(doc.docType)) {
       throw new ApiError(
         400,
-        `Loại tài liệu "${doc.docType}" không hợp lệ. Cho phép: ${validDocTypes.join(', ')}`
-      );
+        `Loại tài liệu "${doc.docType}" không hợp lệ. Cho phép: ${validDocTypes.join(", ")}`,
+      )
     }
-    if (!doc.fileUrl || typeof doc.fileUrl !== 'string' || !doc.fileUrl.trim()) {
-      throw new ApiError(400, `Đường dẫn ảnh/tài liệu "${doc.docType}" không được để trống`);
+    if (
+      !doc.fileUrl ||
+      typeof doc.fileUrl !== "string" ||
+      !doc.fileUrl.trim()
+    ) {
+      throw new ApiError(
+        400,
+        `Đường dẫn ảnh/tài liệu "${doc.docType}" không được để trống`,
+      )
     }
   }
 
   // Lấy hoặc khởi tạo profile
-  const profile = await getOrCreateDriverProfile(userId);
+  const profile = await getOrCreateDriverProfile(userId)
 
   // Kiểm tra loại xe nếu có gửi lên
   if (data.vehicleTypeId) {
@@ -192,67 +201,73 @@ export async function submitDriverKyc(userId: string, data: SubmitDriverKycDto) 
       .select()
       .from(vehicleTypes)
       .where(eq(vehicleTypes.id, data.vehicleTypeId))
-      .limit(1);
+      .limit(1)
     if (vCheck.length === 0) {
-      throw new ApiError(400, 'Mã loại xe (vehicleTypeId) không tồn tại');
+      throw new ApiError(400, "Mã loại xe (vehicleTypeId) không tồn tại")
     }
   }
 
   // Kiểm tra biển số xe trùng lặp với tài xế khác
   if (data.licensePlate) {
-    const cleanPlate = data.licensePlate.trim().toUpperCase();
+    const cleanPlate = data.licensePlate.trim().toUpperCase()
     const existingPlate = await db
       .select()
       .from(driverProfiles)
       .where(
         and(
           eq(driverProfiles.licensePlate, cleanPlate),
-          ne(driverProfiles.id, profile.id)
-        )
+          ne(driverProfiles.id, profile.id),
+        ),
       )
-      .limit(1);
+      .limit(1)
 
     if (existingPlate.length > 0) {
-      throw new ApiError(400, `Biển số xe "${cleanPlate}" đã được đăng ký bởi tài xế khác`);
+      throw new ApiError(
+        400,
+        `Biển số xe "${cleanPlate}" đã được đăng ký bởi tài xế khác`,
+      )
     }
-    data.licensePlate = cleanPlate;
+    data.licensePlate = cleanPlate
   }
 
   // Kiểm tra số GPLX trùng lặp với tài xế khác
   if (data.driverLicenseNo) {
-    const cleanLicense = data.driverLicenseNo.trim();
+    const cleanLicense = data.driverLicenseNo.trim()
     const existingLicense = await db
       .select()
       .from(driverProfiles)
       .where(
         and(
           eq(driverProfiles.driverLicenseNo, cleanLicense),
-          ne(driverProfiles.id, profile.id)
-        )
+          ne(driverProfiles.id, profile.id),
+        ),
       )
-      .limit(1);
+      .limit(1)
 
     if (existingLicense.length > 0) {
-      throw new ApiError(400, `Số giấy phép lái xe "${cleanLicense}" đã được đăng ký bởi tài xế khác`);
+      throw new ApiError(
+        400,
+        `Số giấy phép lái xe "${cleanLicense}" đã được đăng ký bởi tài xế khác`,
+      )
     }
-    data.driverLicenseNo = cleanLicense;
+    data.driverLicenseNo = cleanLicense
   }
 
   // Cập nhật thông tin hồ sơ tài xế: chuyển về PENDING để admin xét duyệt
   const updateFields: any = {
-    kycStatus: 'PENDING',
+    kycStatus: "PENDING",
     rejectionReason: null, // Reset lý do từ chối cũ
     updatedAt: new Date(),
-  };
+  }
 
-  if (data.vehicleTypeId) updateFields.vehicleTypeId = data.vehicleTypeId;
-  if (data.licensePlate) updateFields.licensePlate = data.licensePlate;
-  if (data.driverLicenseNo) updateFields.driverLicenseNo = data.driverLicenseNo;
+  if (data.vehicleTypeId) updateFields.vehicleTypeId = data.vehicleTypeId
+  if (data.licensePlate) updateFields.licensePlate = data.licensePlate
+  if (data.driverLicenseNo) updateFields.driverLicenseNo = data.driverLicenseNo
 
   await db
     .update(driverProfiles)
     .set(updateFields)
-    .where(eq(driverProfiles.id, profile.id));
+    .where(eq(driverProfiles.id, profile.id))
 
   // Lưu hoặc cập nhật các giấy tờ
   for (const doc of data.documents) {
@@ -262,9 +277,9 @@ export async function submitDriverKyc(userId: string, data: SubmitDriverKycDto) 
       .where(
         and(
           eq(driverDocuments.driverId, profile.id),
-          eq(driverDocuments.docType, doc.docType)
-        )
-      );
+          eq(driverDocuments.docType, doc.docType),
+        ),
+      )
 
     // Chèn giấy tờ mới
     await db.insert(driverDocuments).values({
@@ -272,18 +287,18 @@ export async function submitDriverKyc(userId: string, data: SubmitDriverKycDto) 
       docType: doc.docType,
       fileUrl: doc.fileUrl.trim(),
       docNumber: doc.docNumber ? doc.docNumber.trim() : null,
-    });
+    })
   }
 
   // Trả về hồ sơ đầy đủ sau khi nộp
-  return await getDriverProfile(userId);
+  return await getDriverProfile(userId)
 }
 
 /**
  * 5. Lấy trạng thái KYC hiện tại của tài xế
  */
 export async function getDriverKycStatus(userId: string) {
-  const profile = await getDriverProfile(userId);
+  const profile = await getDriverProfile(userId)
   if (!profile) {
     return {
       hasProfile: false,
@@ -292,16 +307,19 @@ export async function getDriverKycStatus(userId: string) {
       isActive: false,
       canGoOnline: false,
       missingDocuments: REQUIRED_KYC_DOC_TYPES,
-      message: 'Chưa có hồ sơ tài xế',
-    };
+      message: "Chưa có hồ sơ tài xế",
+    }
   }
 
-  const submittedDocTypes = (profile.documents || []).map((d: any) => d.docType as DriverDocType);
+  const submittedDocTypes = (profile.documents || []).map(
+    (d: any) => d.docType as DriverDocType,
+  )
   const missingDocuments = REQUIRED_KYC_DOC_TYPES.filter(
-    (reqDoc) => !submittedDocTypes.includes(reqDoc)
-  );
+    (reqDoc) => !submittedDocTypes.includes(reqDoc),
+  )
 
-  const canGoOnline = profile.kycStatus === 'APPROVED' && profile.isActive === true;
+  const canGoOnline =
+    profile.kycStatus === "APPROVED" && profile.isActive === true
 
   return {
     hasProfile: true,
@@ -316,62 +334,65 @@ export async function getDriverKycStatus(userId: string) {
     vehicleType: profile.vehicleType,
     documentsCount: profile.documents.length,
     missingDocuments,
-  };
+  }
 }
 
 /**
  * 6. Bật/Tắt trạng thái Trực tuyến (Online / Offline Toggle)
- * 
+ *
  * RÀNG BUỘC NGHIÊM NGẶT:
  * - Nếu isOnline = true, bắt buộc kycStatus === 'APPROVED' và isActive === true.
  * - Nếu không thỏa mãn, chặn ngay với mã lỗi 403 Forbidden (KYC_NOT_APPROVED).
  */
 export async function setDriverOnlineStatus(userId: string, isOnline: boolean) {
   if (!userId) {
-    throw new ApiError(400, 'Thiếu thông tin người dùng');
+    throw new ApiError(400, "Thiếu thông tin người dùng")
   }
 
-  if (typeof isOnline !== 'boolean') {
-    throw new ApiError(400, 'Trạng thái isOnline phải là giá trị boolean (true/false)');
+  if (typeof isOnline !== "boolean") {
+    throw new ApiError(
+      400,
+      "Trạng thái isOnline phải là giá trị boolean (true/false)",
+    )
   }
 
   const profile = await db
     .select()
     .from(driverProfiles)
     .where(eq(driverProfiles.userId, userId))
-    .limit(1);
+    .limit(1)
 
   if (profile.length === 0) {
-    throw new ApiError(404, 'Không tìm thấy hồ sơ tài xế');
+    throw new ApiError(404, "Không tìm thấy hồ sơ tài xế")
   }
 
-  const p = profile[0];
+  const p = profile[0]
 
   // Khi tài xế muốn BẬT Trực tuyến (isOnline = true):
   if (isOnline) {
     // 1. Kiểm tra trạng thái phê duyệt KYC
-    if (p.kycStatus !== 'APPROVED') {
+    if (p.kycStatus !== "APPROVED") {
       const statusText =
-        p.kycStatus === 'PENDING'
-          ? 'Hồ sơ đang chờ Quản trị viên xét duyệt'
-          : p.kycStatus === 'REJECTED'
-          ? `Hồ sơ đã bị từ chối (${p.rejectionReason || 'Vui lòng nộp lại giấy tờ'})`
-          : 'Chưa hoàn tất nộp hồ sơ KYC';
+        p.kycStatus === "PENDING"
+          ? "Hồ sơ đang chờ Quản trị viên xét duyệt"
+          : p.kycStatus === "REJECTED"
+            ? `Hồ sơ đã bị từ chối (${p.rejectionReason || "Vui lòng nộp lại giấy tờ"})`
+            : "Chưa hoàn tất nộp hồ sơ KYC"
 
       throw new ApiError(
         403,
         `FORBIDDEN: Bạn chưa thể bật trực tuyến. ${statusText}. Chỉ tài xế có hồ sơ ĐÃ ĐƯỢC PHÊ DUYỆT mới có thể nhận chuyến.`,
-        'KYC_NOT_APPROVED'
-      );
+        "KYC_NOT_APPROVED",
+      )
     }
 
     // 2. Kiểm tra trạng thái hoạt động của tài khoản
     if (!p.isActive) {
       throw new ApiError(
         403,
-        'FORBIDDEN: Tài khoản tài xế của bạn đang bị tạm ngưng hoặc vô hiệu hóa. Vui lòng liên hệ tổng đài hỗ trợ.',
-        'DRIVER_INACTIVE'
-      );
+        "FORBIDDEN: Tài khoản tài xế của bạn đang bị tạm ngưng hoặc vô hiệu hóa. Vui lòng liên hệ tổng đài hỗ trợ.",
+        "DRIVER_INACTIVE",
+      )
     }
   }
 
@@ -383,14 +404,14 @@ export async function setDriverOnlineStatus(userId: string, isOnline: boolean) {
       updatedAt: new Date(),
     })
     .where(eq(driverProfiles.id, p.id))
-    .returning();
+    .returning()
 
   return {
     driverId: p.id,
     isOnline: updated[0].isOnline,
     kycStatus: updated[0].kycStatus,
     message: isOnline
-      ? 'Đã bật trạng thái trực tuyến thành công. Bạn đã sẵn sàng nhận chuyến!'
-      : 'Đã tắt trạng thái trực tuyến. Bạn đang ở chế độ nghỉ (Ngoại tuyến).',
-  };
+      ? "Đã bật trạng thái trực tuyến thành công. Bạn đã sẵn sàng nhận chuyến!"
+      : "Đã tắt trạng thái trực tuyến. Bạn đang ở chế độ nghỉ (Ngoại tuyến).",
+  }
 }

@@ -1,71 +1,90 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react"
 
 /* ---------- tiny shared store ---------- */
 
 function makeStore<T>(initial: T) {
-  let value = initial;
-  const listeners = new Set<() => void>();
+  let value = initial
+  const listeners = new Set<() => void>()
   return {
     use: () =>
       useSyncExternalStore(
         (l) => {
-          listeners.add(l);
-          return () => listeners.delete(l);
+          listeners.add(l)
+          return () => listeners.delete(l)
         },
         () => value,
       ),
     set: (next: T) => {
-      value = next;
-      listeners.forEach((l) => l());
+      value = next
+      listeners.forEach((l) => l())
     },
     get: () => value,
-  };
+  }
 }
 
-export type SavedAddress = { id: number; realId?: string; type: "home" | "work" | "other"; name: string; address: string };
+export type SavedAddress = {
+  id: number
+  realId?: string
+  type: "home" | "work" | "other"
+  name: string
+  address: string
+}
 
-const typeName = { home: "Nhà", work: "Công ty", other: "Khác" } as const;
-const labelOf = (a: SavedAddress) => (a.type === "other" && a.name.trim() ? a.name.trim() : typeName[a.type]);
+const typeName = { home: "Nhà", work: "Công ty", other: "Khác" } as const
+const labelOf = (a: SavedAddress) =>
+  a.type === "other" && a.name.trim() ? a.name.trim() : typeName[a.type]
 
 const addressStore = makeStore<SavedAddress[]>([
-  { id: 1, type: "home", name: "", address: "Chung cư Sunrise City, 27 Nguyễn Hữu Thọ, Q.7" },
-  { id: 2, type: "work", name: "", address: "Tòa nhà Bitexco, 2 Hải Triều, Q.1" },
-  { id: 3, type: "other", name: "Kho hàng", address: "55 Kinh Dương Vương, Bình Tân" },
-]);
-export const useAddresses = addressStore.use;
+  {
+    id: 1,
+    type: "home",
+    name: "",
+    address: "Chung cư Sunrise City, 27 Nguyễn Hữu Thọ, Q.7",
+  },
+  {
+    id: 2,
+    type: "work",
+    name: "",
+    address: "Tòa nhà Bitexco, 2 Hải Triều, Q.1",
+  },
+  {
+    id: 3,
+    type: "other",
+    name: "Kho hàng",
+    address: "55 Kinh Dương Vương, Bình Tân",
+  },
+])
+export const useAddresses = addressStore.use
 
-const profileStore = makeStore({ name: "Minh Anh", phone: "0912 345 678", email: "minhanh@example.com", photo: "" });
-const payStore = makeStore<"cash" | "wallet">("cash");
-const notifStore = makeStore({ orders: true, messages: true, promos: false });
-const privacyStore = makeStore({ location: true, lock: false });
+const profileStore = makeStore({
+  name: "Minh Anh",
+  phone: "0912 345 678",
+  email: "minhanh@example.com",
+  photo: "",
+})
+const payStore = makeStore<"cash" | "wallet">("cash")
+const notifStore = makeStore({ orders: true, messages: true, promos: false })
+const privacyStore = makeStore({ location: true, lock: false })
 
 /* ---------- icons ---------- */
 
-type AI =
-  | "back"
-  | "chevron"
-  | "user"
-  | "pin"
-  | "card"
-  | "tag"
-  | "help"
-  | "phone"
-  | "bell"
-  | "shield"
-  | "logout"
-  | "pencil"
-  | "home"
-  | "building"
-  | "plus"
-  | "check"
-  | "camera"
-  | "mail"
-  | "cash"
-  | "wallet"
-  | "box"
-  | "chat";
+type AI = "back" | "chevron" | "user" | "pin" | "card" | "tag" | "help" | "phone" | "bell" | "shield" | "logout" | "pencil" | "home" | "building" | "plus" | "check" | "camera" | "mail" | "cash" | "wallet" | "box" | "chat"
 
-function AIcon({ name, size = 20, strokeWidth = 1.8 }: { name: AI; size?: number; strokeWidth?: number }) {
+function AIcon({
+  name,
+  size = 20,
+  strokeWidth = 1.8,
+}: {
+  name: AI
+  size?: number
+  strokeWidth?: number
+}) {
   const paths: Record<AI, ReactNode> = {
     back: <path d="m15 18-6-6 6-6" />,
     chevron: <path d="m9 18 6-6-6-6" />,
@@ -108,7 +127,9 @@ function AIcon({ name, size = 20, strokeWidth = 1.8 }: { name: AI; size?: number
         <path d="M10 21h4" />
       </>
     ),
-    shield: <path d="M12 3 5 6v6c0 4.500 3 7.500 7 9 4-1.500 7-4.500 7-9V6l-7-3Z" />,
+    shield: (
+      <path d="M12 3 5 6v6c0 4.500 3 7.500 7 9 4-1.500 7-4.500 7-9V6l-7-3Z" />
+    ),
     logout: (
       <>
         <path d="M10 4H5v16h5" />
@@ -161,8 +182,10 @@ function AIcon({ name, size = 20, strokeWidth = 1.8 }: { name: AI; size?: number
         <path d="m4 7.500 8 4.500 8-4.500M12 12v9" />
       </>
     ),
-    chat: <path d="M21 12a8 8 0 0 1-9 8 9 9 0 0 1-4-.9L3 21l1.8-4A8 8 0 1 1 21 12Z" />,
-  };
+    chat: (
+      <path d="M21 12a8 8 0 0 1-9 8 9 9 0 0 1-4-.9L3 21l1.8-4A8 8 0 1 1 21 12Z" />
+    ),
+  }
   return (
     <svg
       aria-hidden="true"
@@ -177,23 +200,28 @@ function AIcon({ name, size = 20, strokeWidth = 1.8 }: { name: AI; size?: number
     >
       {paths[name]}
     </svg>
-  );
+  )
 }
 
 /* ---------- small parts ---------- */
 
-type Page = "home" | "profile" | "addresses" | "addressEdit" | "payment" | "notifications" | "offers" | "privacy" | "help" | "signedout" | "loginOtp";
+type Page = "home" | "profile" | "addresses" | "addressEdit" | "payment" | "notifications" | "offers" | "privacy" | "help" | "signedout" | "loginOtp"
 
-function SubHead({ title, onBack }: { title: string; onBack: () => void }) {
+function SubHead({ title, onBack }: { title: string onBack: () => void }) {
   return (
     <header className="orders-head">
-      <button aria-label="Quay lại" className="icon-button back-button" onClick={onBack} type="button">
+      <button
+        aria-label="Quay lại"
+        className="icon-button back-button"
+        onClick={onBack}
+        type="button"
+      >
         <AIcon name="back" size={20} />
       </button>
       <h1>{title}</h1>
       <span className="head-spacer" />
     </header>
-  );
+  )
 }
 
 function Row({
@@ -202,10 +230,10 @@ function Row({
   value,
   onClick,
 }: {
-  icon: AI;
-  label: string;
-  value?: string;
-  onClick: () => void;
+  icon: AI
+  label: string
+  value?: string
+  onClick: () => void
 }) {
   return (
     <li>
@@ -218,7 +246,7 @@ function Row({
         <AIcon name="chevron" size={16} />
       </button>
     </li>
-  );
+  )
 }
 
 function Switch({
@@ -227,14 +255,20 @@ function Switch({
   label,
   hint,
 }: {
-  on: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-  hint: string;
+  on: boolean
+  onChange: (v: boolean) => void
+  label: string
+  hint: string
 }) {
   return (
     <li>
-      <button aria-checked={on} className="acc-row switch" onClick={() => onChange(!on)} role="switch" type="button">
+      <button
+        aria-checked={on}
+        className="acc-row switch"
+        onClick={() => onChange(!on)}
+        role="switch"
+        type="button"
+      >
         <span className="acc-row-text">
           <strong>{label}</strong>
           <small>{hint}</small>
@@ -244,7 +278,7 @@ function Switch({
         </span>
       </button>
     </li>
-  );
+  )
 }
 
 function Toast({ text }: { text: string }) {
@@ -253,12 +287,12 @@ function Toast({ text }: { text: string }) {
       <AIcon name="check" size={16} strokeWidth={2.6} />
       {text}
     </div>
-  );
+  )
 }
 
 /* ---------- main ---------- */
 
-export type OrderOption = { id: string; label: string };
+export type OrderOption = { id: string label: string }
 
 export default function AccountScreen({
   supportOrder,
@@ -268,81 +302,90 @@ export default function AccountScreen({
   onBackToOrder,
   onNavHidden,
 }: {
-  supportOrder: string | null;
-  orderOptions: OrderOption[];
-  canUseAddress: boolean;
-  onUseAddress: (address: string) => void;
-  onBackToOrder: () => void;
-  onNavHidden: (hidden: boolean) => void;
+  supportOrder: string | null
+  orderOptions: OrderOption[]
+  canUseAddress: boolean
+  onUseAddress: (address: string) => void
+  onBackToOrder: () => void
+  onNavHidden: (hidden: boolean) => void
 }) {
-  const [page, setPage] = useState<Page>(supportOrder ? "help" : "home");
-  const [editId, setEditId] = useState<number | null>(null);
-  const [toast, setToast] = useState("");
-  const [confirmOut, setConfirmOut] = useState(false);
-  const [focusContact, setFocusContact] = useState(false);
+  const [page, setPage] = useState<Page>(supportOrder ? "help" : "home")
+  const [editId, setEditId] = useState<number | null>(null)
+  const [toast, setToast] = useState("")
+  const [confirmOut, setConfirmOut] = useState(false)
+  const [focusContact, setFocusContact] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(
-    Boolean(typeof window !== "undefined" && localStorage.getItem("auth_token")),
-  );
+    Boolean(
+      typeof window !== "undefined" && localStorage.getItem("auth_token"),
+    ),
+  )
 
   const syncAddressesFromApi = async () => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-    if (!token) return;
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+    if (!token) return
     try {
       const res = await fetch("/api/v1/customer/addresses", {
         headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      })
+      const data = await res.json()
       if (data.success && Array.isArray(data.data) && data.data.length > 0) {
         addressStore.set(
           data.data.map((item: any, idx: number) => ({
             id: idx + 1,
             realId: item.id,
-            type: item.title?.toLowerCase().includes("nhà") ? "home" : item.title?.toLowerCase().includes("công ty") ? "work" : "other",
+            type: item.title?.toLowerCase().includes("nhà")
+              ? "home"
+              : item.title?.toLowerCase().includes("công ty")
+                ? "work"
+                : "other",
             name: item.title || "",
             address: item.addressText,
           })),
-        );
+        )
       }
     } catch (err) {
-      console.warn("Could not sync addresses:", err);
+      console.warn("Could not sync addresses:", err)
     }
-  };
+  }
 
   useEffect(() => {
-    syncAddressesFromApi();
-  }, [isLoggedIn]);
+    syncAddressesFromApi()
+  }, [isLoggedIn])
 
-  const profile = profileStore.use();
-  const addresses = addressStore.use();
-  const pay = payStore.use();
-  const notif = notifStore.use();
-  const privacy = privacyStore.use();
-
-  useEffect(() => {
-    onNavHidden(page === "profile" || page === "addressEdit" || page === "loginOtp");
-    return () => onNavHidden(false);
-  }, [page]);
+  const profile = profileStore.use()
+  const addresses = addressStore.use()
+  const pay = payStore.use()
+  const notif = notifStore.use()
+  const privacy = privacyStore.use()
 
   useEffect(() => {
-    if (!toast) return;
-    const t = window.setTimeout(() => setToast(""), 2200);
-    return () => window.clearTimeout(t);
-  }, [toast]);
+    onNavHidden(
+      page === "profile" || page === "addressEdit" || page === "loginOtp",
+    )
+    return () => onNavHidden(false)
+  }, [page])
 
-  const go = (p: Page) => setPage(p);
+  useEffect(() => {
+    if (!toast) return
+    const t = window.setTimeout(() => setToast(""), 2200)
+    return () => window.clearTimeout(t)
+  }, [toast])
+
+  const go = (p: Page) => setPage(p)
   const initials = profile.name
     .trim()
     .split(/\s+/)
     .map((w) => w[0])
     .join("")
     .slice(0, 2)
-    .toUpperCase();
+    .toUpperCase()
 
   const Avatar = ({ big }: { big?: boolean }) => (
     <span className={`acc-avatar ${big ? "big" : ""}`} aria-hidden="true">
       {profile.photo ? <img alt="" src={profile.photo} /> : initials}
     </span>
-  );
+  )
 
   /* ----- home ----- */
   if (page === "home") {
@@ -358,15 +401,28 @@ export default function AccountScreen({
             <strong>{profile.name}</strong>
             <small>{profile.phone}</small>
           </span>
-          <button className="text-button" onClick={() => go("profile")} type="button">
+          <button
+            className="text-button"
+            onClick={() => go("profile")}
+            type="button"
+          >
             Chỉnh sửa
           </button>
         </div>
 
         <h2 className="conv-section">Tài khoản</h2>
         <ul className="acc-list">
-          <Row icon="user" label="Thông tin cá nhân" onClick={() => go("profile")} />
-          <Row icon="pin" label="Địa chỉ đã lưu" onClick={() => go("addresses")} value={`${addresses.length}`} />
+          <Row
+            icon="user"
+            label="Thông tin cá nhân"
+            onClick={() => go("profile")}
+          />
+          <Row
+            icon="pin"
+            label="Địa chỉ đã lưu"
+            onClick={() => go("addresses")}
+            value={`${addresses.length}`}
+          />
           <Row
             icon="card"
             label="Phương thức thanh toán"
@@ -377,29 +433,50 @@ export default function AccountScreen({
 
         <h2 className="conv-section">Ưu đãi</h2>
         <ul className="acc-list">
-          <Row icon="tag" label="Ưu đãi của tôi" onClick={() => go("offers")} value="2" />
+          <Row
+            icon="tag"
+            label="Ưu đãi của tôi"
+            onClick={() => go("offers")}
+            value="2"
+          />
         </ul>
 
         <h2 className="conv-section">Hỗ trợ</h2>
         <ul className="acc-list">
-          <Row icon="help" label="Trung tâm trợ giúp" onClick={() => go("help")} />
+          <Row
+            icon="help"
+            label="Trung tâm trợ giúp"
+            onClick={() => go("help")}
+          />
           <Row
             icon="phone"
             label="Liên hệ hỗ trợ"
             onClick={() => {
-              setFocusContact(true);
-              go("help");
+              setFocusContact(true)
+              go("help")
             }}
           />
         </ul>
 
         <h2 className="conv-section">Cài đặt</h2>
         <ul className="acc-list">
-          <Row icon="bell" label="Thông báo" onClick={() => go("notifications")} />
-          <Row icon="shield" label="Quyền riêng tư & bảo mật" onClick={() => go("privacy")} />
+          <Row
+            icon="bell"
+            label="Thông báo"
+            onClick={() => go("notifications")}
+          />
+          <Row
+            icon="shield"
+            label="Quyền riêng tư & bảo mật"
+            onClick={() => go("privacy")}
+          />
         </ul>
 
-        <button className="acc-logout" onClick={() => setConfirmOut(true)} type="button">
+        <button
+          className="acc-logout"
+          onClick={() => setConfirmOut(true)}
+          type="button"
+        >
           <AIcon name="logout" size={18} />
           Đăng xuất
         </button>
@@ -408,22 +485,31 @@ export default function AccountScreen({
 
         {confirmOut && (
           <div className="acc-scrim" onClick={() => setConfirmOut(false)}>
-            <div aria-modal="true" className="acc-dialog" onClick={(e) => e.stopPropagation()} role="dialog">
+            <div
+              aria-modal="true"
+              className="acc-dialog"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+            >
               <strong>Đăng xuất khỏi tài khoản?</strong>
               <p>Bạn có thể đăng nhập lại bất cứ lúc nào bằng số điện thoại.</p>
               <div>
-                <button className="secondary-button" onClick={() => setConfirmOut(false)} type="button">
+                <button
+                  className="secondary-button"
+                  onClick={() => setConfirmOut(false)}
+                  type="button"
+                >
                   Hủy
                 </button>
                 <button
                   className="secondary-button"
                   onClick={() => {
-                    setConfirmOut(false);
+                    setConfirmOut(false)
                     if (typeof window !== "undefined") {
-                      localStorage.removeItem("auth_token");
+                      localStorage.removeItem("auth_token")
                     }
-                    setIsLoggedIn(false);
-                    go("signedout");
+                    setIsLoggedIn(false)
+                    go("signedout")
                   }}
                   type="button"
                 >
@@ -434,7 +520,7 @@ export default function AccountScreen({
           </div>
         )}
       </section>
-    );
+    )
   }
 
   if (page === "signedout") {
@@ -446,12 +532,16 @@ export default function AccountScreen({
           </span>
           <strong>Bạn đã đăng xuất</strong>
           <p>Đăng nhập lại bằng OTP để tiếp tục đặt xe và xem đơn hàng.</p>
-          <button className="primary-button" onClick={() => go("loginOtp")} type="button">
+          <button
+            className="primary-button"
+            onClick={() => go("loginOtp")}
+            type="button"
+          >
             <span>Đăng nhập bằng OTP</span>
           </button>
         </div>
       </section>
-    );
+    )
   }
 
   if (page === "profile") {
@@ -460,12 +550,12 @@ export default function AccountScreen({
         Avatar={Avatar}
         onBack={() => go("home")}
         onSaved={() => {
-          setToast("Đã lưu thay đổi");
-          go("home");
+          setToast("Đã lưu thay đổi")
+          go("home")
         }}
         toast={toast}
       />
-    );
+    )
   }
 
   if (page === "addresses") {
@@ -476,13 +566,26 @@ export default function AccountScreen({
           {addresses.map((a) => (
             <li className="addr-item" key={a.id}>
               <span className={`addr-icon ${a.type}`}>
-                <AIcon name={a.type === "home" ? "home" : a.type === "work" ? "building" : "pin"} size={19} />
+                <AIcon
+                  name={
+                    a.type === "home"
+                      ? "home"
+                      : a.type === "work"
+                        ? "building"
+                        : "pin"
+                  }
+                  size={19}
+                />
               </span>
               <span className="addr-copy">
                 <strong>{labelOf(a)}</strong>
                 <small>{a.address}</small>
                 {canUseAddress && (
-                  <button className="text-button" onClick={() => onUseAddress(a.address)} type="button">
+                  <button
+                    className="text-button"
+                    onClick={() => onUseAddress(a.address)}
+                    type="button"
+                  >
                     Giao đến đây
                   </button>
                 )}
@@ -491,8 +594,8 @@ export default function AccountScreen({
                 aria-label={`Sửa địa chỉ ${labelOf(a)}`}
                 className="acc-edit"
                 onClick={() => {
-                  setEditId(a.id);
-                  go("addressEdit");
+                  setEditId(a.id)
+                  go("addressEdit")
                 }}
                 type="button"
               >
@@ -504,8 +607,8 @@ export default function AccountScreen({
         <button
           className="secondary-button acc-add"
           onClick={() => {
-            setEditId(null);
-            go("addressEdit");
+            setEditId(null)
+            go("addressEdit")
           }}
           type="button"
         >
@@ -514,7 +617,7 @@ export default function AccountScreen({
         </button>
         {toast && <Toast text={toast} />}
       </section>
-    );
+    )
   }
 
   if (page === "addressEdit") {
@@ -523,18 +626,28 @@ export default function AccountScreen({
         existing={addresses.find((a) => a.id === editId) ?? null}
         onBack={() => go("addresses")}
         onDone={(msg) => {
-          setToast(msg);
-          go("addresses");
+          setToast(msg)
+          go("addresses")
         }}
       />
-    );
+    )
   }
 
   if (page === "payment") {
     const methods = [
-      { id: "cash" as const, icon: "cash" as AI, name: "Tiền mặt", hint: "Trả cho tài xế khi nhận hàng" },
-      { id: "wallet" as const, icon: "wallet" as AI, name: "Ví điện tử", hint: "Đã liên kết · ••• 678" },
-    ];
+      {
+        id: "cash" as const,
+        icon: "cash" as AI,
+        name: "Tiền mặt",
+        hint: "Trả cho tài xế khi nhận hàng",
+      },
+      {
+        id: "wallet" as const,
+        icon: "wallet" as AI,
+        name: "Ví điện tử",
+        hint: "Đã liên kết · ••• 678",
+      },
+    ]
     return (
       <section className="orders-screen account-screen">
         <SubHead onBack={() => go("home")} title="Phương thức thanh toán" />
@@ -545,8 +658,8 @@ export default function AccountScreen({
                 aria-pressed={pay === m.id}
                 className="acc-row"
                 onClick={() => {
-                  payStore.set(m.id);
-                  setToast("Đã đổi phương thức mặc định");
+                  payStore.set(m.id)
+                  setToast("Đã đổi phương thức mặc định")
                 }}
                 type="button"
               >
@@ -567,10 +680,12 @@ export default function AccountScreen({
             </li>
           ))}
         </ul>
-        <p className="acc-note">Phương thức mặc định sẽ được chọn sẵn cho các đơn mới.</p>
+        <p className="acc-note">
+          Phương thức mặc định sẽ được chọn sẵn cho các đơn mới.
+        </p>
         {toast && <Toast text={toast} />}
       </section>
-    );
+    )
   }
 
   if (page === "notifications") {
@@ -598,7 +713,7 @@ export default function AccountScreen({
           />
         </ul>
       </section>
-    );
+    )
   }
 
   if (page === "privacy") {
@@ -620,7 +735,7 @@ export default function AccountScreen({
           />
         </ul>
       </section>
-    );
+    )
   }
 
   if (page === "offers") {
@@ -629,8 +744,16 @@ export default function AccountScreen({
         <SubHead onBack={() => go("home")} title="Ưu đãi của tôi" />
         <ul className="acc-list">
           {[
-            { code: "GIAO30", text: "Giảm 30.000đ cho đơn từ 150.000đ", exp: "Hết hạn 30/10" },
-            { code: "VANMOI", text: "Giảm 15% cuốc Xe van đầu tháng", exp: "Hết hạn 05/11" },
+            {
+              code: "GIAO30",
+              text: "Giảm 30.000đ cho đơn từ 150.000đ",
+              exp: "Hết hạn 30/10",
+            },
+            {
+              code: "VANMOI",
+              text: "Giảm 15% cuốc Xe van đầu tháng",
+              exp: "Hết hạn 05/11",
+            },
           ].map((o) => (
             <li className="offer-item" key={o.code}>
               <span className="acc-row-icon">
@@ -645,7 +768,7 @@ export default function AccountScreen({
           ))}
         </ul>
       </section>
-    );
+    )
   }
 
   if (page === "loginOtp") {
@@ -653,17 +776,20 @@ export default function AccountScreen({
       <LoginOtpPage
         onBack={() => go("home")}
         onSuccess={(phone, token) => {
-          setIsLoggedIn(true);
+          setIsLoggedIn(true)
           profileStore.set({
             ...profile,
             phone: phone,
-            name: profile.name && profile.name !== "Minh Anh" ? profile.name : `Khách hàng (${phone.slice(-4)})`,
-          });
-          setToast("Đăng nhập OTP thành công!");
-          go("home");
+            name:
+              profile.name && profile.name !== "Minh Anh"
+                ? profile.name
+                : `Khách hàng (${phone.slice(-4)})`,
+          })
+          setToast("Đăng nhập OTP thành công!")
+          go("home")
         }}
       />
-    );
+    )
   }
 
   return (
@@ -673,7 +799,7 @@ export default function AccountScreen({
       orderOptions={orderOptions}
       supportOrder={supportOrder}
     />
-  );
+  )
 }
 
 /* ---------- login otp form ---------- */
@@ -682,82 +808,96 @@ function LoginOtpPage({
   onBack,
   onSuccess,
 }: {
-  onBack: () => void;
-  onSuccess: (phone: string, token: string) => void;
+  onBack: () => void
+  onSuccess: (phone: string, token: string) => void
 }) {
-  const [step, setStep] = useState<"phone" | "otp">("phone");
-  const [phone, setPhone] = useState("0988888888");
-  const [otp, setOtp] = useState("123456");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [countdown, setCountdown] = useState(60);
-  const [infoMsg, setInfoMsg] = useState("");
+  const [step, setStep] = useState<"phone" | "otp">("phone")
+  const [phone, setPhone] = useState("0988888888")
+  const [otp, setOtp] = useState("123456")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [countdown, setCountdown] = useState(60)
+  const [infoMsg, setInfoMsg] = useState("")
 
   useEffect(() => {
-    let timer: any;
+    let timer: any
     if (step === "otp" && countdown > 0) {
-      timer = setInterval(() => setCountdown((c) => c - 1), 1000);
+      timer = setInterval(() => setCountdown((c) => c - 1), 1000)
     }
-    return () => clearInterval(timer);
-  }, [step, countdown]);
+    return () => clearInterval(timer)
+  }, [step, countdown])
 
   const handleRequestOtp = async () => {
-    setError("");
-    setLoading(true);
+    setError("")
+    setLoading(true)
     try {
       const res = await fetch("/api/v1/auth/request-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone }),
-      });
-      const data = await res.json();
+      })
+      const data = await res.json()
       if (!data.success) {
-        throw new Error(data.message || "Gửi mã OTP thất bại");
+        throw new Error(data.message || "Gửi mã OTP thất bại")
       }
-      setStep("otp");
-      setCountdown(60);
-      setInfoMsg("Mã OTP đã gửi! Mã thử nghiệm miễn phí: 123456");
+      setStep("otp")
+      setCountdown(60)
+      setInfoMsg("Mã OTP đã gửi! Mã thử nghiệm miễn phí: 123456")
     } catch (err: any) {
-      setError(err.message || "Không thể gửi OTP");
+      setError(err.message || "Không thể gửi OTP")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleVerifyOtp = async () => {
-    setError("");
-    setLoading(true);
+    setError("")
+    setLoading(true)
     try {
       const res = await fetch("/api/v1/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, otp }),
-      });
-      const data = await res.json();
+      })
+      const data = await res.json()
       if (!data.success) {
-        throw new Error(data.message || "Xác thực OTP thất bại");
+        throw new Error(data.message || "Xác thực OTP thất bại")
       }
       if (typeof window !== "undefined") {
-        localStorage.setItem("auth_token", data.token);
-        localStorage.setItem("user_phone", data.user.phone);
+        localStorage.setItem("auth_token", data.token)
+        localStorage.setItem("user_phone", data.user.phone)
       }
-      onSuccess(data.user.phone, data.token);
+      onSuccess(data.user.phone, data.token)
     } catch (err: any) {
-      setError(err.message || "Xác thực OTP không thành công");
+      setError(err.message || "Xác thực OTP không thành công")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <section className="orders-screen account-screen form">
       <SubHead onBack={onBack} title="Đăng nhập bằng OTP" />
       <div style={{ padding: "20px 16px" }}>
         <div style={{ textAlign: "center", marginBottom: "20px" }}>
-          <div style={{ width: "56px", height: "56px", borderRadius: "28px", background: "#eff6ff", color: "#2563eb", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: "12px" }}>
+          <div
+            style={{
+              width: "56px",
+              height: "56px",
+              borderRadius: "28px",
+              background: "#eff6ff",
+              color: "#2563eb",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "12px",
+            }}
+          >
             <AIcon name="shield" size={28} />
           </div>
-          <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "0 0 6px" }}>
+          <h2
+            style={{ fontSize: "18px", fontWeight: "bold", margin: "0 0 6px" }}
+          >
             {step === "phone" ? "Nhập số điện thoại" : "Xác thực mã OTP"}
           </h2>
           <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
@@ -768,13 +908,33 @@ function LoginOtpPage({
         </div>
 
         {error && (
-          <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", padding: "10px 14px", borderRadius: "10px", fontSize: "13px", marginBottom: "16px" }}>
+          <div
+            style={{
+              background: "#fef2f2",
+              color: "#b91c1c",
+              border: "1px solid #fecaca",
+              padding: "10px 14px",
+              borderRadius: "10px",
+              fontSize: "13px",
+              marginBottom: "16px",
+            }}
+          >
             {error}
           </div>
         )}
 
         {infoMsg && (
-          <div style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", padding: "10px 14px", borderRadius: "10px", fontSize: "13px", marginBottom: "16px" }}>
+          <div
+            style={{
+              background: "#f0fdf4",
+              color: "#15803d",
+              border: "1px solid #bbf7d0",
+              padding: "10px 14px",
+              borderRadius: "10px",
+              fontSize: "13px",
+              marginBottom: "16px",
+            }}
+          >
             💡 {infoMsg}
           </div>
         )}
@@ -812,7 +972,12 @@ function LoginOtpPage({
                 placeholder="123456"
                 maxLength={6}
                 autoFocus
-                style={{ fontSize: "20px", letterSpacing: "4px", textAlign: "center", fontWeight: "bold" }}
+                style={{
+                  fontSize: "20px",
+                  letterSpacing: "4px",
+                  textAlign: "center",
+                  fontWeight: "bold",
+                }}
               />
             </label>
 
@@ -823,10 +988,19 @@ function LoginOtpPage({
               onClick={handleVerifyOtp}
               type="button"
             >
-              <span>{loading ? "Đang xác thực..." : "Xác thực & Đăng nhập"}</span>
+              <span>
+                {loading ? "Đang xác thực..." : "Xác thực & Đăng nhập"}
+              </span>
             </button>
 
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: "14px",
+              }}
+            >
               <button
                 type="button"
                 className="text-button"
@@ -836,7 +1010,9 @@ function LoginOtpPage({
                 Đổi số điện thoại
               </button>
               {countdown > 0 ? (
-                <span style={{ fontSize: "13px", color: "#64748b" }}>Gửi lại sau {countdown}s</span>
+                <span style={{ fontSize: "13px", color: "#64748b" }}>
+                  Gửi lại sau {countdown}s
+                </span>
               ) : (
                 <button
                   type="button"
@@ -852,7 +1028,7 @@ function LoginOtpPage({
         )}
       </div>
     </section>
-  );
+  )
 }
 
 /* ---------- profile form ---------- */
@@ -863,30 +1039,44 @@ function ProfileForm({
   onSaved,
   toast,
 }: {
-  Avatar: (p: { big?: boolean }) => ReactNode;
-  onBack: () => void;
-  onSaved: () => void;
-  toast: string;
+  Avatar: (p: { big?: boolean }) => ReactNode
+  onBack: () => void
+  onSaved: () => void
+  toast: string
 }) {
-  const p = profileStore.get();
-  const [name, setName] = useState(p.name);
-  const [email, setEmail] = useState(p.email);
-  const [photo, setPhoto] = useState(p.photo);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const emailOk = /^\S+@\S+\.\S+$/.test(email.trim());
-  const dirty = name !== p.name || email !== p.email || photo !== p.photo;
-  const valid = name.trim().length > 1 && emailOk;
+  const p = profileStore.get()
+  const [name, setName] = useState(p.name)
+  const [email, setEmail] = useState(p.email)
+  const [photo, setPhoto] = useState(p.photo)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const emailOk = /^\S+@\S+\.\S+$/.test(email.trim())
+  const dirty = name !== p.name || email !== p.email || photo !== p.photo
+  const valid = name.trim().length > 1 && emailOk
 
   return (
     <section className="orders-screen account-screen form">
       <SubHead onBack={onBack} title="Thông tin cá nhân" />
       <div className="acc-photo">
         <span className="acc-avatar big" aria-hidden="true">
-          {photo ? <img alt="" src={photo} /> : name.trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+          {photo ? (
+            <img alt="" src={photo} />
+          ) : (
+            name
+              .trim()
+              .split(/\s+/)
+              .map((w) => w[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase()
+          )}
         </span>
         <span>
           <strong>Ảnh đại diện</strong>
-          <button className="text-button" onClick={() => fileRef.current?.click()} type="button">
+          <button
+            className="text-button"
+            onClick={() => fileRef.current?.click()}
+            type="button"
+          >
             Đổi ảnh
           </button>
         </span>
@@ -894,8 +1084,8 @@ function ProfileForm({
           accept="image/*"
           hidden
           onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) setPhoto(URL.createObjectURL(f));
+            const f = e.target.files?.[0]
+            if (f) setPhoto(URL.createObjectURL(f))
           }}
           ref={fileRef}
           type="file"
@@ -904,7 +1094,11 @@ function ProfileForm({
 
       <label className="acc-field">
         <span>Họ và tên</span>
-        <input autoComplete="name" onChange={(e) => setName(e.target.value)} value={name} />
+        <input
+          autoComplete="name"
+          onChange={(e) => setName(e.target.value)}
+          value={name}
+        />
       </label>
       <label className="acc-field readonly">
         <span>Số điện thoại</span>
@@ -913,7 +1107,12 @@ function ProfileForm({
       </label>
       <label className={`acc-field ${email && !emailOk ? "invalid" : ""}`}>
         <span>Email</span>
-        <input autoComplete="email" inputMode="email" onChange={(e) => setEmail(e.target.value)} value={email} />
+        <input
+          autoComplete="email"
+          inputMode="email"
+          onChange={(e) => setEmail(e.target.value)}
+          value={email}
+        />
         {email && !emailOk && <small className="err">Email chưa hợp lệ</small>}
       </label>
 
@@ -921,8 +1120,13 @@ function ProfileForm({
         className="primary-button acc-save"
         disabled={!dirty || !valid}
         onClick={() => {
-          profileStore.set({ ...p, name: name.trim(), email: email.trim(), photo });
-          onSaved();
+          profileStore.set({
+            ...p,
+            name: name.trim(),
+            email: email.trim(),
+            photo,
+          })
+          onSaved()
         }}
         type="button"
       >
@@ -930,7 +1134,7 @@ function ProfileForm({
       </button>
       {toast && <Toast text={toast} />}
     </section>
-  );
+  )
 }
 
 /* ---------- address form ---------- */
@@ -940,19 +1144,22 @@ function AddressForm({
   onBack,
   onDone,
 }: {
-  existing: SavedAddress | null;
-  onBack: () => void;
-  onDone: (msg: string) => void;
+  existing: SavedAddress | null
+  onBack: () => void
+  onDone: (msg: string) => void
 }) {
-  const [type, setType] = useState<SavedAddress["type"]>(existing?.type ?? "home");
-  const [name, setName] = useState(existing?.name ?? "");
-  const [address, setAddress] = useState(existing?.address ?? "");
-  const list = addressStore.get();
+  const [type, setType] = useState<SavedAddress["type"]>(
+    existing?.type ?? "home",
+  )
+  const [name, setName] = useState(existing?.name ?? "")
+  const [address, setAddress] = useState(existing?.address ?? "")
+  const list = addressStore.get()
 
   const save = async () => {
-    if (!address.trim()) return;
-    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-    let serverId = existing?.realId;
+    if (!address.trim()) return
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+    let serverId = existing?.realId
     if (token) {
       try {
         if (existing?.realId) {
@@ -963,10 +1170,10 @@ function AddressForm({
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              title: type === "other" ? (name.trim() || "Khác") : typeName[type],
+              title: type === "other" ? name.trim() || "Khác" : typeName[type],
               addressText: address.trim(),
             }),
-          });
+          })
         } else {
           const res = await fetch("/api/v1/customer/addresses", {
             method: "POST",
@@ -975,17 +1182,17 @@ function AddressForm({
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              title: type === "other" ? (name.trim() || "Khác") : typeName[type],
+              title: type === "other" ? name.trim() || "Khác" : typeName[type],
               addressText: address.trim(),
               latitude: 10.7769,
               longitude: 106.7009,
             }),
-          });
-          const data = await res.json();
-          if (data.data?.id) serverId = data.data.id;
+          })
+          const data = await res.json()
+          if (data.data?.id) serverId = data.data.id
         }
       } catch (err) {
-        console.warn("Could not save address to API:", err);
+        console.warn("Could not save address to API:", err)
       }
     }
     const next: SavedAddress = {
@@ -994,17 +1201,34 @@ function AddressForm({
       type,
       name: type === "other" ? name : "",
       address: address.trim(),
-    };
-    addressStore.set(existing ? list.map((a) => (a.id === existing.id ? next : a)) : [...list, next]);
-    onDone(existing ? "Đã cập nhật địa chỉ" : "Đã thêm địa chỉ");
-  };
+    }
+    addressStore.set(
+      existing
+        ? list.map((a) => (a.id === existing.id ? next : a))
+        : [...list, next],
+    )
+    onDone(existing ? "Đã cập nhật địa chỉ" : "Đã thêm địa chỉ")
+  }
 
   return (
     <section className="orders-screen account-screen form">
-      <SubHead onBack={onBack} title={existing ? "Sửa địa chỉ" : "Thêm địa chỉ"} />
-      <div className="filter-tabs acc-types" role="group" aria-label="Loại địa chỉ">
+      <SubHead
+        onBack={onBack}
+        title={existing ? "Sửa địa chỉ" : "Thêm địa chỉ"}
+      />
+      <div
+        className="filter-tabs acc-types"
+        role="group"
+        aria-label="Loại địa chỉ"
+      >
         {(["home", "work", "other"] as const).map((t) => (
-          <button aria-pressed={type === t} className={type === t ? "on" : ""} key={t} onClick={() => setType(t)} type="button">
+          <button
+            aria-pressed={type === t}
+            className={type === t ? "on" : ""}
+            key={t}
+            onClick={() => setType(t)}
+            type="button"
+          >
             {typeName[t]}
           </button>
         ))}
@@ -1012,33 +1236,49 @@ function AddressForm({
       {type === "other" && (
         <label className="acc-field">
           <span>Tên gợi nhớ</span>
-          <input onChange={(e) => setName(e.target.value)} placeholder="Ví dụ: Kho hàng" value={name} />
+          <input
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ví dụ: Kho hàng"
+            value={name}
+          />
         </label>
       )}
       <label className="acc-field">
         <span>Địa chỉ đầy đủ</span>
-        <input onChange={(e) => setAddress(e.target.value)} placeholder="Số nhà, đường, quận" value={address} />
+        <input
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Số nhà, đường, quận"
+          value={address}
+        />
       </label>
-      <button className="primary-button acc-save" disabled={!address.trim()} onClick={save} type="button">
+      <button
+        className="primary-button acc-save"
+        disabled={!address.trim()}
+        onClick={save}
+        type="button"
+      >
         <span>Lưu địa chỉ</span>
       </button>
       {existing && (
         <button
           className="acc-danger"
           onClick={async () => {
-            const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+            const token =
+              typeof window !== "undefined"
+                ? localStorage.getItem("auth_token")
+                : null
             if (token && existing.realId) {
               try {
                 await fetch(`/api/v1/customer/addresses/${existing.realId}`, {
                   method: "DELETE",
                   headers: { Authorization: `Bearer ${token}` },
-                });
+                })
               } catch (err) {
-                console.warn("Could not delete address from API:", err);
+                console.warn("Could not delete address from API:", err)
               }
             }
-            addressStore.set(list.filter((a) => a.id !== existing.id));
-            onDone("Đã xóa địa chỉ");
+            addressStore.set(list.filter((a) => a.id !== existing.id))
+            onDone("Đã xóa địa chỉ")
           }}
           type="button"
         >
@@ -1046,18 +1286,35 @@ function AddressForm({
         </button>
       )}
     </section>
-  );
+  )
 }
 
 /* ---------- help ---------- */
 
 const faqs = [
-  { q: "Cách tính giá cước như thế nào?", a: "Giá dựa trên quãng đường, loại xe và phí dịch vụ. Bạn luôn thấy giá ước tính trước khi đặt." },
-  { q: "Tôi có thể hủy đơn không?", a: "Bạn có thể hủy miễn phí trước khi tài xế đến điểm lấy hàng." },
-  { q: "Hàng hóa nào không được vận chuyển?", a: "Hàng cấm, chất dễ cháy nổ và động vật sống không được nhận vận chuyển." },
-  { q: "Khi nào tôi thanh toán?", a: "Với tiền mặt, bạn trả cho tài xế sau khi hàng được giao thành công." },
-];
-const issues = ["Tài xế đến trễ", "Hàng bị hư hỏng hoặc thất lạc", "Tính sai cước phí", "Vấn đề khác"];
+  {
+    q: "Cách tính giá cước như thế nào?",
+    a: "Giá dựa trên quãng đường, loại xe và phí dịch vụ. Bạn luôn thấy giá ước tính trước khi đặt.",
+  },
+  {
+    q: "Tôi có thể hủy đơn không?",
+    a: "Bạn có thể hủy miễn phí trước khi tài xế đến điểm lấy hàng.",
+  },
+  {
+    q: "Hàng hóa nào không được vận chuyển?",
+    a: "Hàng cấm, chất dễ cháy nổ và động vật sống không được nhận vận chuyển.",
+  },
+  {
+    q: "Khi nào tôi thanh toán?",
+    a: "Với tiền mặt, bạn trả cho tài xế sau khi hàng được giao thành công.",
+  },
+]
+const issues = [
+  "Tài xế đến trễ",
+  "Hàng bị hư hỏng hoặc thất lạc",
+  "Tính sai cước phí",
+  "Vấn đề khác",
+]
 
 function HelpPage({
   supportOrder,
@@ -1065,20 +1322,20 @@ function HelpPage({
   focusContact,
   onBack,
 }: {
-  supportOrder: string | null;
-  orderOptions: OrderOption[];
-  focusContact: boolean;
-  onBack: () => void;
+  supportOrder: string | null
+  orderOptions: OrderOption[]
+  focusContact: boolean
+  onBack: () => void
 }) {
-  const [open, setOpen] = useState<number | null>(null);
-  const [issue, setIssue] = useState<string | null>(null);
-  const [orderId, setOrderId] = useState(supportOrder ?? "");
-  const [sent, setSent] = useState("");
-  const contactRef = useRef<HTMLHeadingElement>(null);
+  const [open, setOpen] = useState<number | null>(null)
+  const [issue, setIssue] = useState<string | null>(null)
+  const [orderId, setOrderId] = useState(supportOrder ?? "")
+  const [sent, setSent] = useState("")
+  const contactRef = useRef<HTMLHeadingElement>(null)
 
   useEffect(() => {
-    if (focusContact) contactRef.current?.scrollIntoView({ block: "start" });
-  }, [focusContact]);
+    if (focusContact) contactRef.current?.scrollIntoView({ block: "start" })
+  }, [focusContact])
 
   return (
     <section className="orders-screen account-screen">
@@ -1097,7 +1354,12 @@ function HelpPage({
       <ul className="acc-list">
         {faqs.map((f, i) => (
           <li key={f.q}>
-            <button aria-expanded={open === i} className="acc-row faq" onClick={() => setOpen(open === i ? null : i)} type="button">
+            <button
+              aria-expanded={open === i}
+              className="acc-row faq"
+              onClick={() => setOpen(open === i ? null : i)}
+              type="button"
+            >
               <span className="acc-row-label">{f.q}</span>
               <span className={`acc-chev ${open === i ? "open" : ""}`}>
                 <AIcon name="chevron" size={16} />
@@ -1115,14 +1377,12 @@ function HelpPage({
             <AIcon name="check" size={22} strokeWidth={2.6} />
           </span>
           <strong>Đã gửi yêu cầu</strong>
-          <p>
-            Chúng tôi sẽ phản hồi về đơn {sent} trong vòng 15 phút.
-          </p>
+          <p>Chúng tôi sẽ phản hồi về đơn {sent} trong vòng 15 phút.</p>
           <button
             className="text-button"
             onClick={() => {
-              setSent("");
-              setIssue(null);
+              setSent("")
+              setIssue(null)
             }}
             type="button"
           >
@@ -1134,7 +1394,10 @@ function HelpPage({
           {!supportOrder && (
             <label className="acc-field select">
               <span>Chọn đơn hàng</span>
-              <select onChange={(e) => setOrderId(e.target.value)} value={orderId}>
+              <select
+                onChange={(e) => setOrderId(e.target.value)}
+                value={orderId}
+              >
                 <option value="">Chọn đơn cần hỗ trợ</option>
                 {orderOptions.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -1147,7 +1410,12 @@ function HelpPage({
           <ul className="acc-list">
             {issues.map((s) => (
               <li key={s}>
-                <button aria-pressed={issue === s} className="acc-row" onClick={() => setIssue(s)} type="button">
+                <button
+                  aria-pressed={issue === s}
+                  className="acc-row"
+                  onClick={() => setIssue(s)}
+                  type="button"
+                >
                   <span className="acc-row-label">{s}</span>
                   <span className={`acc-radio ${issue === s ? "on" : ""}`}>
                     <i />
@@ -1156,7 +1424,12 @@ function HelpPage({
               </li>
             ))}
           </ul>
-          <button className="primary-button acc-save" disabled={!issue || !orderId} onClick={() => setSent(orderId)} type="button">
+          <button
+            className="primary-button acc-save"
+            disabled={!issue || !orderId}
+            onClick={() => setSent(orderId)}
+            type="button"
+          >
             <span>Gửi yêu cầu</span>
           </button>
         </>
@@ -1192,5 +1465,5 @@ function HelpPage({
         </li>
       </ul>
     </section>
-  );
+  )
 }

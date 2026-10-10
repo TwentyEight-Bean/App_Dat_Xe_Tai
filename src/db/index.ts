@@ -1,14 +1,16 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as dotenv from 'dotenv';
-import * as schema from './schema';
+import { drizzle } from "drizzle-orm/postgres-js"
+import postgres from "postgres"
+import * as dotenv from "dotenv"
+import * as schema from "./schema"
 
-dotenv.config();
+dotenv.config()
 
 // Lấy URL kết nối từ môi trường
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';
+const connectionString =
+  process.env.DATABASE_URL ||
+  "postgresql://postgres:postgres@localhost:5432/postgres"
 
 // Disable prefetch as it is not supported for "Transaction" pool mode
-export const client = postgres(connectionString, { prepare: false });
+export const client = postgres(connectionString, { prepare: false })
 
-export const db = drizzle(client, { schema });
+export const db = drizzle(client, { schema })
