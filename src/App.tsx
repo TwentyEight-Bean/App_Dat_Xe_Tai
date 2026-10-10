@@ -1,33 +1,29 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import AccountScreen, { useAddresses } from "./account";
-import { ChatScreen, CURRENT_CONV, MessagesScreen, setOrderStatus, startAmbient, useUnread } from "./chat";
-import { runTabTransition, type TabDirection } from "./tabMotion";
-import InteractiveMap from "./InteractiveMap";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react"
+import AccountScreen, { useAddresses } from "./account"
+import {
+  ChatScreen,
+  CURRENT_CONV,
+  MessagesScreen,
+  setOrderStatus,
+  startAmbient,
+  useUnread,
+} from "./chat"
+import { runTabTransition, type TabDirection } from "./tabMotion"
+import InteractiveMap from "./InteractiveMap"
 
-type IconName =
-  | "home"
-  | "orders"
-  | "message"
-  | "user"
-  | "bell"
-  | "pin"
-  | "arrow"
-  | "target"
-  | "layers"
-  | "chevron"
-  | "chevron-up"
-  | "chevron-down"
-  | "close"
-  | "check"
-  | "truck"
-  | "phone"
-  | "star";
+type IconName = "home" | "orders" | "message" | "user" | "bell" | "pin" | "arrow" | "target" | "layers" | "chevron" | "chevron-up" | "chevron-down" | "close" | "check" | "truck" | "phone" | "star"
 
 type IconProps = {
-  name: IconName;
-  size?: number;
-  strokeWidth?: number;
-};
+  name: IconName
+  size?: number
+  strokeWidth?: number
+}
 
 function Icon({ name, size = 20, strokeWidth = 1.8 }: IconProps) {
   const paths: Record<IconName, ReactNode> = {
@@ -95,7 +91,9 @@ function Icon({ name, size = 20, strokeWidth = 1.8 }: IconProps) {
     phone: (
       <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.700c.1 1 .4 1.9.7 2.800a2 2 0 0 1-.5 2.100L8.1 9.900a16 16 0 0 0 6 6l1.3-1.300a2 2 0 0 1 2.1-.5c.9.3 1.8.600 2.8.700a2 2 0 0 1 1.7 2Z" />
     ),
-    star: <path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.200L12 17l-5.6 3 1.2-6.200L3 9.500l6.3-.8z" />,
+    star: (
+      <path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.200L12 17l-5.6 3 1.2-6.200L3 9.500l6.3-.8z" />
+    ),
     truck: (
       <>
         <path d="M3 6h11v11H3zM14 10h4l3 3v4h-7z" />
@@ -103,7 +101,7 @@ function Icon({ name, size = 20, strokeWidth = 1.8 }: IconProps) {
         <circle cx="18" cy="18" r="2" />
       </>
     ),
-  };
+  }
 
   return (
     <svg
@@ -119,43 +117,68 @@ function Icon({ name, size = 20, strokeWidth = 1.8 }: IconProps) {
     >
       {paths[name]}
     </svg>
-  );
+  )
 }
 
 type IconButtonProps = {
-  label: string;
-  icon: IconName;
-  onClick?: () => void;
-  badge?: boolean;
-  className?: string;
-};
+  label: string
+  icon: IconName
+  onClick?: () => void
+  badge?: boolean
+  className?: string
+}
 
-function IconButton({ label, icon, onClick, badge, className = "" }: IconButtonProps) {
+function IconButton({
+  label,
+  icon,
+  onClick,
+  badge,
+  className = "",
+}: IconButtonProps) {
   return (
-    <button className={`icon-button glass ${className}`} aria-label={label} onClick={onClick} type="button">
+    <button
+      className={`icon-button glass ${className}`}
+      aria-label={label}
+      onClick={onClick}
+      type="button"
+    >
       <Icon name={icon} />
       {badge && <span className="notification-dot" />}
     </button>
-  );
+  )
 }
 
 type LocationInputProps = {
-  kind: "pickup" | "destination";
-  value: string;
-  placeholder: string;
-  onChange: (value: string) => void;
-  error?: boolean;
-};
+  kind: "pickup" | "destination"
+  value: string
+  placeholder: string
+  onChange: (value: string) => void
+  error?: boolean
+}
 
-function LocationInput({ kind, value, placeholder, onChange, error }: LocationInputProps) {
-  const isPickup = kind === "pickup";
+function LocationInput({
+  kind,
+  value,
+  placeholder,
+  onChange,
+  error,
+}: LocationInputProps) {
+  const isPickup = kind === "pickup"
   return (
     <label className={`location-field ${error ? "invalid" : ""}`}>
-      <span className={`location-marker ${isPickup ? "pickup" : "destination"}`}>
-        {isPickup ? <span className="marker-dot" /> : <Icon name="arrow" size={15} strokeWidth={2.4} />}
+      <span
+        className={`location-marker ${isPickup ? "pickup" : "destination"}`}
+      >
+        {isPickup ? (
+          <span className="marker-dot" />
+        ) : (
+          <Icon name="arrow" size={15} strokeWidth={2.4} />
+        )}
       </span>
       <span className="field-copy">
-        <span className="field-label">{isPickup ? "Điểm lấy hàng" : "Điểm giao hàng"}</span>
+        <span className="field-label">
+          {isPickup ? "Điểm lấy hàng" : "Điểm giao hàng"}
+        </span>
         <input
           aria-label={isPickup ? "Điểm lấy hàng" : "Điểm giao hàng"}
           aria-describedby={error ? "destination-error" : undefined}
@@ -179,25 +202,52 @@ function LocationInput({ kind, value, placeholder, onChange, error }: LocationIn
         <Icon name="chevron" size={18} />
       )}
     </label>
-  );
+  )
 }
 
 type Vehicle = {
-  id: string;
-  name: string;
-  detail: string;
-  price: string;
-  type: "bike" | "van" | "truck-sm" | "truck-lg";
-};
+  id: string
+  name: string
+  detail: string
+  price: string
+  type: "bike" | "van" | "truck-sm" | "truck-lg"
+}
 
 const vehicles: Vehicle[] = [
-  { id: "small", name: "Xe tải nhỏ", detail: "Đến 100kg", price: "89.000đ", type: "bike" },
-  { id: "van", name: "Xe van", detail: "Đến 500kg", price: "149.000đ", type: "van" },
-  { id: "500", name: "Tải 500kg", detail: "Thùng 2m", price: "189.000đ", type: "truck-sm" },
-  { id: "1000", name: "Tải 1 tấn", detail: "Thùng 3m", price: "259.000đ", type: "truck-lg" },
-];
+  {
+    id: "small",
+    name: "Xe tải nhỏ",
+    detail: "Đến 100kg",
+    price: "89.000đ",
+    type: "bike",
+  },
+  {
+    id: "van",
+    name: "Xe van",
+    detail: "Đến 500kg",
+    price: "149.000đ",
+    type: "van",
+  },
+  {
+    id: "500",
+    name: "Tải 500kg",
+    detail: "Thùng 2m",
+    price: "189.000đ",
+    type: "truck-sm",
+  },
+  {
+    id: "1000",
+    name: "Tải 1 tấn",
+    detail: "Thùng 3m",
+    price: "259.000đ",
+    type: "truck-lg",
+  },
+]
 
-const vehicleShapes: Record<Vehicle["type"], { wheels: number[]; art: ReactNode }> = {
+const vehicleShapes: Record<Vehicle["type"], {
+  wheels: number[]
+  art: ReactNode
+}> = {
   bike: {
     wheels: [15, 45],
     art: (
@@ -243,10 +293,10 @@ const vehicleShapes: Record<Vehicle["type"], { wheels: number[]; art: ReactNode 
       </>
     ),
   },
-};
+}
 
 function VehicleGlyph({ type }: { type: Vehicle["type"] }) {
-  const shape = vehicleShapes[type];
+  const shape = vehicleShapes[type]
   return (
     <svg aria-hidden="true" className="vehicle-glyph" viewBox="0 0 64 38">
       <ellipse cx="32" cy="34.5" rx="27" ry="2" fill="rgba(32,50,100,0.14)" />
@@ -259,20 +309,20 @@ function VehicleGlyph({ type }: { type: Vehicle["type"] }) {
         </g>
       ))}
     </svg>
-  );
+  )
 }
 
 function VehicleSelector({
   selected,
   onSelect,
 }: {
-  selected: string;
-  onSelect: (vehicle: Vehicle) => void;
+  selected: string
+  onSelect: (vehicle: Vehicle) => void
 }) {
   return (
     <div className="vehicle-list" role="radiogroup" aria-label="Chọn loại xe">
       {vehicles.map((vehicle) => {
-        const active = vehicle.id === selected;
+        const active = vehicle.id === selected
         return (
           <button
             aria-checked={active}
@@ -291,43 +341,51 @@ function VehicleSelector({
               </span>
             )}
           </button>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
 
-const navItems: { label: string; icon: IconName }[] = [
+const navItems: { label: string icon: IconName }[] = [
   { label: "Trang chủ", icon: "home" },
   { label: "Đơn hàng", icon: "orders" },
   { label: "Tin nhắn", icon: "message" },
   { label: "Tài khoản", icon: "user" },
-];
+]
 
-function BottomNavigation({ active, onChange }: { active: string; onChange: (label: string) => void }) {
-  const index = navItems.findIndex((item) => item.label === active);
-  const unread = useUnread("customer");
-  const [flow, setFlow] = useState<TabDirection | null>(null);
-  const flowTimer = useRef<number | null>(null);
+function BottomNavigation({
+  active,
+  onChange,
+}: {
+  active: string
+  onChange: (label: string) => void
+}) {
+  const index = navItems.findIndex((item) => item.label === active)
+  const unread = useUnread("customer")
+  const [flow, setFlow] = useState<TabDirection | null>(null)
+  const flowTimer = useRef<number | null>(null)
 
   useEffect(
     () => () => {
-      if (flowTimer.current) window.clearTimeout(flowTimer.current);
+      if (flowTimer.current) window.clearTimeout(flowTimer.current)
     },
     [],
-  );
+  )
 
   const select = (label: string, nextIndex: number) => {
-    if (nextIndex === index) return;
-    setFlow(nextIndex > index ? "right" : "left");
-    if (flowTimer.current) window.clearTimeout(flowTimer.current);
-    flowTimer.current = window.setTimeout(() => setFlow(null), 600);
-    onChange(label);
-  };
+    if (nextIndex === index) return
+    setFlow(nextIndex > index ? "right" : "left")
+    if (flowTimer.current) window.clearTimeout(flowTimer.current)
+    flowTimer.current = window.setTimeout(() => setFlow(null), 600)
+    onChange(label)
+  }
 
   return (
     <nav
-      className={`bottom-nav glass glass-strong ${flow ? `nav-flow-${flow}` : ""}`}
+      className={`bottom-nav glass glass-strong ${
+        flow ? `nav-flow-${flow}` : ""
+      }`}
       aria-label="Điều hướng chính"
       style={{ "--i": index } as CSSProperties}
     >
@@ -341,17 +399,19 @@ function BottomNavigation({ active, onChange }: { active: string; onChange: (lab
         >
           <span className="nav-icon">
             <Icon name={item.icon} size={21} />
-            {item.label === "Tin nhắn" && unread > 0 && <span className="message-dot" />}
+            {item.label === "Tin nhắn" && unread > 0 && (
+              <span className="message-dot" />
+            )}
           </span>
           <span>{item.label}</span>
         </button>
       ))}
     </nav>
-  );
+  )
 }
 
-type TrackPhase = "arriving" | "arrived" | "pickedup" | "delivering" | "delivered";
-type Phase = "booking" | "searching" | "found" | TrackPhase;
+type TrackPhase = "arriving" | "arrived" | "pickedup" | "delivering" | "delivered"
+type Phase = "booking" | "searching" | "found" | TrackPhase
 
 const PHASE_ORDER: Phase[] = [
   "booking",
@@ -362,7 +422,7 @@ const PHASE_ORDER: Phase[] = [
   "pickedup",
   "delivering",
   "delivered",
-];
+]
 
 const PHASE_DELAY: Partial<Record<Phase, number>> = {
   searching: 5200,
@@ -370,16 +430,16 @@ const PHASE_DELAY: Partial<Record<Phase, number>> = {
   arriving: 7000,
   arrived: 4000,
   pickedup: 3500,
-};
+}
 
-const DRIVER_PROGRESS: Partial<Record<Phase, { to: number; ms: number }>> = {
+const DRIVER_PROGRESS: Partial<Record<Phase, { to: number ms: number }>> = {
   found: { to: 0.3, ms: 4500 },
   arriving: { to: 0.92, ms: 7000 },
   arrived: { to: 1, ms: 1200 },
   pickedup: { to: 0, ms: 0 },
   delivering: { to: 0.93, ms: 9000 },
   delivered: { to: 1, ms: 900 },
-};
+}
 
 const nearbyDrivers = [
   { left: 66, top: 126 },
@@ -387,10 +447,10 @@ const nearbyDrivers = [
   { left: 122, top: 172 },
   { left: 300, top: 238 },
   { left: 236, top: 128 },
-];
+]
 
-const ROUTE_PATH = "M28 148 C78 150 118 184 160 194 S192 198 205 198";
-const ROUTE_B = "M205 198 C226 190 246 176 258 158 S282 126 292 112";
+const ROUTE_PATH = "M28 148 C78 150 118 184 160 194 S192 198 205 198"
+const ROUTE_B = "M205 198 C226 190 246 176 258 158 S282 126 292 112"
 
 function DriverMarker({
   path,
@@ -398,22 +458,22 @@ function DriverMarker({
   ms,
   hidden,
 }: {
-  path: string;
-  to: number;
-  ms: number;
-  hidden?: boolean;
+  path: string
+  to: number
+  ms: number
+  hidden?: boolean
 }) {
-  const [shown, setShown] = useState(0);
+  const [shown, setShown] = useState(0)
   useEffect(() => {
-    let inner = 0;
+    let inner = 0
     const outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => setShown(to));
-    });
+      inner = requestAnimationFrame(() => setShown(to))
+    })
     return () => {
-      cancelAnimationFrame(outer);
-      cancelAnimationFrame(inner);
-    };
-  }, [to]);
+      cancelAnimationFrame(outer)
+      cancelAnimationFrame(inner)
+    }
+  }, [to])
   return (
     <span
       className="driver-marker"
@@ -421,22 +481,30 @@ function DriverMarker({
         offsetPath: `path("${path}")`,
         offsetDistance: `${shown * 100}%`,
         opacity: hidden ? 0 : 1,
-        transition: `offset-distance ${ms}ms linear, opacity 400ms ease ${hidden ? 700 : 0}ms`,
+        transition: `offset-distance ${ms}ms linear, opacity 400ms ease ${
+          hidden ? 700 : 0
+        }ms`,
       }}
     >
       <Icon name="truck" size={15} strokeWidth={2} />
     </span>
-  );
+  )
 }
 
 function MapCanvas({ phase }: { phase: Phase }) {
-  const onPickupRoute = phase === "found" || phase === "arriving" || phase === "arrived";
-  const onDeliveryRoute = phase === "pickedup" || phase === "delivering" || phase === "delivered";
-  const progress = DRIVER_PROGRESS[phase];
-  const delivered = phase === "delivered";
+  const onPickupRoute =
+    phase === "found" || phase === "arriving" || phase === "arrived"
+  const onDeliveryRoute =
+    phase === "pickedup" || phase === "delivering" || phase === "delivered"
+  const progress = DRIVER_PROGRESS[phase]
+  const delivered = phase === "delivered"
 
   return (
-    <div className="map" aria-label="Bản đồ khu vực Thành phố Hồ Chí Minh" role="img">
+    <div
+      className="map"
+      aria-label="Bản đồ khu vực Thành phố Hồ Chí Minh"
+      role="img"
+    >
       <div className="map-grid" />
       <span className="park park-one">Công viên</span>
       <span className="park park-two" />
@@ -459,9 +527,13 @@ function MapCanvas({ phase }: { phase: Phase }) {
           aria-hidden="true"
           className="route-svg"
           key={onPickupRoute ? "a" : "b"}
-          viewBox="0 0 390 844" preserveAspectRatio="xMinYMin meet"
+          viewBox="0 0 390 844"
+          preserveAspectRatio="xMinYMin meet"
         >
-          <path className="route-casing" d={onPickupRoute ? ROUTE_PATH : ROUTE_B} />
+          <path
+            className="route-casing"
+            d={onPickupRoute ? ROUTE_PATH : ROUTE_B}
+          />
           <path
             className={`route-stroke ${onDeliveryRoute ? "delivery" : ""}`}
             d={onPickupRoute ? ROUTE_PATH : ROUTE_B}
@@ -473,9 +545,15 @@ function MapCanvas({ phase }: { phase: Phase }) {
       {onDeliveryRoute && (
         <span className={`dest-marker ${delivered ? "done" : ""}`}>
           <span className="dest-pin">
-            <Icon name={delivered ? "check" : "arrow"} size={15} strokeWidth={delivered ? 3 : 2.4} />
+            <Icon
+              name={delivered ? "check" : "arrow"}
+              size={15}
+              strokeWidth={delivered ? 3 : 2.4}
+            />
           </span>
-          <span className="dest-label">{delivered ? "Đã giao" : "Điểm giao"}</span>
+          <span className="dest-label">
+            {delivered ? "Đã giao" : "Điểm giao"}
+          </span>
         </span>
       )}
 
@@ -494,7 +572,11 @@ function MapCanvas({ phase }: { phase: Phase }) {
           <span
             className="nearby-driver"
             key={i}
-            style={{ left: d.left, top: d.top, animationDelay: `${i * 160}ms, ${i * 420}ms` }}
+            style={{
+              left: d.left,
+              top: d.top,
+              animationDelay: `${i * 160}ms, ${i * 420}ms`,
+            }}
           >
             <Icon name="truck" size={13} strokeWidth={2.1} />
           </span>
@@ -512,11 +594,11 @@ function MapCanvas({ phase }: { phase: Phase }) {
         <span className="pin-core" />
       </span>
     </div>
-  );
+  )
 }
 
 function SheetHandle({ onAdvance }: { onAdvance?: () => void }) {
-  if (!onAdvance) return <div className="sheet-handle" />;
+  if (!onAdvance) return <div className="sheet-handle" />
   return (
     <button
       aria-label="Chuyển sang bước tiếp theo (demo)"
@@ -526,10 +608,16 @@ function SheetHandle({ onAdvance }: { onAdvance?: () => void }) {
     >
       <span className="sheet-handle" />
     </button>
-  );
+  )
 }
 
-function RouteSummary({ pickup, destination }: { pickup: string; destination: string }) {
+function RouteSummary({
+  pickup,
+  destination,
+}: {
+  pickup: string
+  destination: string
+}) {
   return (
     <div className="route-summary">
       <span className="route-summary-line" />
@@ -546,7 +634,7 @@ function RouteSummary({ pickup, destination }: { pickup: string; destination: st
         <span>{destination}</span>
       </div>
     </div>
-  );
+  )
 }
 
 function SearchingSheet({
@@ -555,10 +643,10 @@ function SearchingSheet({
   vehicle,
   onCancel,
 }: {
-  pickup: string;
-  destination: string;
-  vehicle: Vehicle;
-  onCancel: () => void;
+  pickup: string
+  destination: string
+  vehicle: Vehicle
+  onCancel: () => void
 }) {
   return (
     <section className="booking-sheet phase-sheet" aria-live="polite">
@@ -599,7 +687,7 @@ function SearchingSheet({
         Hủy tìm tài xế
       </button>
     </section>
-  );
+  )
 }
 
 function FoundSheet({
@@ -610,14 +698,14 @@ function FoundSheet({
   onAdvance,
   onMessage,
 }: {
-  pickup: string;
-  destination: string;
-  vehicle: Vehicle;
-  onCancel: () => void;
-  onAdvance: () => void;
-  onMessage: () => void;
+  pickup: string
+  destination: string
+  vehicle: Vehicle
+  onCancel: () => void
+  onAdvance: () => void
+  onMessage: () => void
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
   return (
     <section className="booking-sheet phase-sheet" aria-live="polite">
       <SheetHandle onAdvance={onAdvance} />
@@ -665,7 +753,11 @@ function FoundSheet({
             <Icon name="phone" size={18} />
             <span>Gọi</span>
           </button>
-          <button className="secondary-button compact" onClick={onMessage} type="button">
+          <button
+            className="secondary-button compact"
+            onClick={onMessage}
+            type="button"
+          >
             <Icon name="message" size={18} />
             <span>Nhắn tin</span>
           </button>
@@ -692,20 +784,27 @@ function FoundSheet({
         {open && (
           <div className="details-body">
             <RouteSummary destination={destination} pickup={pickup} />
-            <button className="text-button cancel-link" onClick={onCancel} type="button">
+            <button
+              className="text-button cancel-link"
+              onClick={onCancel}
+              type="button"
+            >
               Hủy chuyến
             </button>
           </div>
         )}
       </div>
     </section>
-  );
+  )
 }
 
-const trackInfo: Record<
-  TrackPhase,
-  { title: string; message: string; eta?: string; icon: IconName; calm?: boolean }
-> = {
+const trackInfo: Record<TrackPhase, {
+  title: string
+  message: string
+  eta?: string
+  icon: IconName
+  calm?: boolean
+}> = {
   arriving: {
     title: "Tài xế đang đến",
     message: "Anh Minh cách bạn khoảng 1,2 km",
@@ -736,15 +835,21 @@ const trackInfo: Record<
     icon: "check",
     calm: true,
   },
-};
+}
 
-const stepLabels = ["Đã đặt", "Tài xế nhận", "Đã lấy hàng", "Đang giao", "Đã giao"];
+const stepLabels = [
+  "Đã đặt",
+  "Tài xế nhận",
+  "Đã lấy hàng",
+  "Đang giao",
+  "Đã giao",
+]
 
 function OrderProgress({ current }: { current: number }) {
   return (
     <ol className="stepper" aria-label="Tiến trình đơn hàng">
       {stepLabels.map((label, i) => {
-        const state = i < current ? "done" : i === current ? "current" : "todo";
+        const state = i < current ? "done" : i === current ? "current" : "todo"
         return (
           <li
             aria-current={state === "current" ? "step" : undefined}
@@ -752,15 +857,17 @@ function OrderProgress({ current }: { current: number }) {
             key={label}
           >
             <span className="step-dot">
-              {state === "done" && <Icon name="check" size={10} strokeWidth={3.4} />}
+              {state === "done" && (
+                <Icon name="check" size={10} strokeWidth={3.4} />
+              )}
               {state === "current" && <span className="step-core" />}
             </span>
             <span className="step-label">{label}</span>
           </li>
-        );
+        )
       })}
     </ol>
-  );
+  )
 }
 
 function TrackingSheet({
@@ -773,30 +880,37 @@ function TrackingSheet({
   onViewOrders,
   onMessage,
 }: {
-  phase: TrackPhase;
-  pickup: string;
-  destination: string;
-  vehicle: Vehicle;
-  onAdvance: () => void;
-  onHome: () => void;
-  onViewOrders: () => void;
-  onMessage: () => void;
+  phase: TrackPhase
+  pickup: string
+  destination: string
+  vehicle: Vehicle
+  onAdvance: () => void
+  onHome: () => void
+  onViewOrders: () => void
+  onMessage: () => void
 }) {
-  const info = trackInfo[phase];
-  const delivered = phase === "delivered";
-  const toPickup = phase === "arriving" || phase === "arrived";
-  const currentStep = delivered ? 5 : toPickup ? 2 : 3;
-  const [rating, setRating] = useState(0);
-  const [ratingOpen, setRatingOpen] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const info = trackInfo[phase]
+  const delivered = phase === "delivered"
+  const toPickup = phase === "arriving" || phase === "arrived"
+  const currentStep = delivered ? 5 : toPickup ? 2 : 3
+  const [rating, setRating] = useState(0)
+  const [ratingOpen, setRatingOpen] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   return (
-    <section className="booking-sheet phase-sheet tracking-sheet" aria-live="polite">
+    <section
+      className="booking-sheet phase-sheet tracking-sheet"
+      aria-live="polite"
+    >
       <SheetHandle onAdvance={onAdvance} />
 
       <div className={`status-head ${info.calm ? "calm" : ""}`} key={phase}>
         <span className="status-badge">
-          <Icon name={info.icon} size={22} strokeWidth={info.icon === "check" ? 2.6 : 1.8} />
+          <Icon
+            name={info.icon}
+            size={22}
+            strokeWidth={info.icon === "check" ? 2.6 : 1.8}
+          />
         </span>
         <div className="status-copy">
           <h1>{info.title}</h1>
@@ -828,17 +942,34 @@ function TrackingSheet({
                 4,9 <i>· 51D-482.15</i>
               </span>
             </span>
-            <button aria-label="Nhắn tin cho tài xế" className="round-action" onClick={onMessage} type="button">
+            <button
+              aria-label="Nhắn tin cho tài xế"
+              className="round-action"
+              onClick={onMessage}
+              type="button"
+            >
               <Icon name="message" size={19} />
             </button>
-            <button aria-label="Gọi tài xế" className="round-action call" type="button">
+            <button
+              aria-label="Gọi tài xế"
+              className="round-action call"
+              type="button"
+            >
               <Icon name="phone" size={19} />
             </button>
           </div>
 
           <div className="where-row" key={toPickup ? "pickup" : "dest"}>
-            <span className={`location-marker ${toPickup ? "pickup" : "destination"}`}>
-              {toPickup ? <span className="marker-dot" /> : <Icon name="arrow" size={15} strokeWidth={2.4} />}
+            <span
+              className={`location-marker ${
+                toPickup ? "pickup" : "destination"
+              }`}
+            >
+              {toPickup ? (
+                <span className="marker-dot" />
+              ) : (
+                <Icon name="arrow" size={15} strokeWidth={2.4} />
+              )}
             </span>
             <span className="where-copy">
               <small>{toPickup ? "Điểm lấy hàng" : "Điểm giao hàng"}</small>
@@ -893,7 +1024,11 @@ function TrackingSheet({
           {ratingOpen && !rating ? (
             <div className="rate-panel">
               <strong>Bạn thấy chuyến đi thế nào?</strong>
-              <div className="rate-stars" role="radiogroup" aria-label="Đánh giá tài xế">
+              <div
+                className="rate-stars"
+                role="radiogroup"
+                aria-label="Đánh giá tài xế"
+              >
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
                     aria-checked={rating === n}
@@ -910,7 +1045,11 @@ function TrackingSheet({
                   </button>
                 ))}
               </div>
-              <button className="secondary-button" onClick={onHome} type="button">
+              <button
+                className="secondary-button"
+                onClick={onHome}
+                type="button"
+              >
                 Về trang chủ
               </button>
             </div>
@@ -923,17 +1062,29 @@ function TrackingSheet({
               <button className="primary-button" onClick={onHome} type="button">
                 VỀ TRANG CHỦ
               </button>
-              <button className="secondary-button" onClick={onViewOrders} type="button">
+              <button
+                className="secondary-button"
+                onClick={onViewOrders}
+                type="button"
+              >
                 Xem chi tiết đơn
               </button>
             </div>
           ) : (
             <div className="delivered-actions">
-              <button className="primary-button" onClick={() => setRatingOpen(true)} type="button">
+              <button
+                className="primary-button"
+                onClick={() => setRatingOpen(true)}
+                type="button"
+              >
                 <Icon name="star" size={18} />
                 <span>Đánh giá tài xế</span>
               </button>
-              <button className="secondary-button" onClick={onHome} type="button">
+              <button
+                className="secondary-button"
+                onClick={onHome}
+                type="button"
+              >
                 Về trang chủ
               </button>
             </div>
@@ -955,17 +1106,23 @@ function TrackingSheet({
             </span>
             <div>
               <h2 id="delivery-confirm-title">Xác nhận đã giao hàng?</h2>
-              <p id="delivery-confirm-description">Đơn hàng sẽ được đánh dấu là hoàn thành.</p>
+              <p id="delivery-confirm-description">
+                Đơn hàng sẽ được đánh dấu là hoàn thành.
+              </p>
             </div>
             <div className="delivery-confirm-actions">
-              <button className="secondary-button compact" onClick={() => setConfirmOpen(false)} type="button">
+              <button
+                className="secondary-button compact"
+                onClick={() => setConfirmOpen(false)}
+                type="button"
+              >
                 Chưa
               </button>
               <button
                 className="primary-button compact"
                 onClick={() => {
-                  setConfirmOpen(false);
-                  onAdvance();
+                  setConfirmOpen(false)
+                  onAdvance()
                 }}
                 type="button"
               >
@@ -976,27 +1133,33 @@ function TrackingSheet({
         </div>
       )}
     </section>
-  );
+  )
 }
 
-const trackPhases: Phase[] = ["arriving", "arrived", "pickedup", "delivering", "delivered"];
+const trackPhases: Phase[] = [
+  "arriving",
+  "arrived",
+  "pickedup",
+  "delivering",
+  "delivered",
+]
 
-type OrderStatus = "active" | "completed" | "cancelled";
+type OrderStatus = "active" | "completed" | "cancelled"
 type Order = {
-  id: string;
-  status: OrderStatus;
-  created: string;
-  finished?: string;
-  pickup: string;
-  destination: string;
-  vehicleId: string;
-  transport: number;
-  service: number;
-  distance: string;
-  duration: string;
-  driver?: { name: string; initials: string; rating: string; plate: string };
-  rated?: number;
-};
+  id: string
+  status: OrderStatus
+  created: string
+  finished?: string
+  pickup: string
+  destination: string
+  vehicleId: string
+  transport: number
+  service: number
+  distance: string
+  duration: string
+  driver?: { name: string initials: string rating: string plate: string }
+  rated?: number
+}
 
 const orders: Order[] = [
   {
@@ -1010,7 +1173,12 @@ const orders: Order[] = [
     service: 15000,
     distance: "6,4 km",
     duration: "28 phút",
-    driver: { name: "Anh Minh", initials: "NM", rating: "4,9", plate: "51D-482.15" },
+    driver: {
+      name: "Anh Minh",
+      initials: "NM",
+      rating: "4,9",
+      plate: "51D-482.15",
+    },
   },
   {
     id: "#FD240917",
@@ -1024,7 +1192,12 @@ const orders: Order[] = [
     service: 21000,
     distance: "14,2 km",
     duration: "42 phút",
-    driver: { name: "Chú Hùng", initials: "TH", rating: "4,8", plate: "51C-905.37" },
+    driver: {
+      name: "Chú Hùng",
+      initials: "TH",
+      rating: "4,8",
+      plate: "51C-905.37",
+    },
   },
   {
     id: "#FD240915",
@@ -1038,7 +1211,12 @@ const orders: Order[] = [
     service: 13000,
     distance: "5,1 km",
     duration: "36 phút",
-    driver: { name: "Anh Tuấn", initials: "LT", rating: "4,9", plate: "59C-217.64" },
+    driver: {
+      name: "Anh Tuấn",
+      initials: "LT",
+      rating: "4,9",
+      plate: "59C-217.64",
+    },
     rated: 5,
   },
   {
@@ -1065,20 +1243,25 @@ const orders: Order[] = [
     service: 21000,
     distance: "9,7 km",
     duration: "47 phút",
-    driver: { name: "Anh Khoa", initials: "ĐK", rating: "4,7", plate: "51D-338.90" },
+    driver: {
+      name: "Anh Khoa",
+      initials: "ĐK",
+      rating: "4,7",
+      plate: "51D-338.90",
+    },
   },
-];
+]
 
-const statusMeta: Record<OrderStatus, { label: string; tone: string }> = {
+const statusMeta: Record<OrderStatus, { label: string tone: string }> = {
   active: { label: "Đang giao", tone: "active" },
   completed: { label: "Hoàn thành", tone: "completed" },
   cancelled: { label: "Đã hủy", tone: "cancelled" },
-};
+}
 
-const money = (n: number) => `${n.toLocaleString("vi-VN")}đ`;
-const orderVehicle = (o: Order) => vehicles.find((v) => v.id === o.vehicleId) ?? vehicles[1];
-const orderTotal = (o: Order) =>
-  money(o.transport + o.service);
+const money = (n: number) => `${n.toLocaleString("vi-VN")}đ`
+const orderVehicle = (o: Order) =>
+  vehicles.find((v) => v.id === o.vehicleId) ?? vehicles[1]
+const orderTotal = (o: Order) => money(o.transport + o.service)
 
 function OrderStatusBadge({ status }: { status: OrderStatus }) {
   return (
@@ -1086,31 +1269,33 @@ function OrderStatusBadge({ status }: { status: OrderStatus }) {
       <span />
       {statusMeta[status].label}
     </span>
-  );
+  )
 }
 
 function OrderRoute({ order }: { order: Order }) {
-  return <RouteSummary destination={order.destination} pickup={order.pickup} />;
+  return <RouteSummary destination={order.destination} pickup={order.pickup} />
 }
 
-const filters = ["Tất cả", "Đang giao", "Hoàn thành", "Đã hủy"] as const;
+const filters = ["Tất cả", "Đang giao", "Hoàn thành", "Đã hủy"] as const
 const filterStatus: Record<string, OrderStatus | undefined> = {
   "Đang giao": "active",
   "Hoàn thành": "completed",
   "Đã hủy": "cancelled",
-};
+}
 
 function OrderHistory({
   onOpen,
   onTrack,
   onReorder,
 }: {
-  onOpen: (o: Order) => void;
-  onTrack: (o: Order) => void;
-  onReorder: (o: Order) => void;
+  onOpen: (o: Order) => void
+  onTrack: (o: Order) => void
+  onReorder: (o: Order) => void
 }) {
-  const [filter, setFilter] = useState<string>("Tất cả");
-  const list = orders.filter((o) => !filterStatus[filter] || o.status === filterStatus[filter]);
+  const [filter, setFilter] = useState<string>("Tất cả")
+  const list = orders.filter(
+    (o) => !filterStatus[filter] || o.status === filterStatus[filter],
+  )
   return (
     <section className="orders-screen">
       <header className="orders-head">
@@ -1132,12 +1317,18 @@ function OrderHistory({
         ))}
       </div>
       <div className="order-list" key={filter}>
-        {list.length === 0 && <p className="orders-empty">Chưa có đơn hàng nào.</p>}
+        {list.length === 0 && (
+          <p className="orders-empty">Chưa có đơn hàng nào.</p>
+        )}
         {list.map((o) => {
-          const v = orderVehicle(o);
+          const v = orderVehicle(o)
           return (
             <article className="order-card" key={o.id}>
-              <button className="order-main" onClick={() => onOpen(o)} type="button">
+              <button
+                className="order-main"
+                onClick={() => onOpen(o)}
+                type="button"
+              >
                 <span className="order-top">
                   <OrderStatusBadge status={o.status} />
                   <small>{o.created}</small>
@@ -1152,22 +1343,30 @@ function OrderHistory({
                 </span>
               </button>
               {o.status === "active" && (
-                <button className="order-action primary" onClick={() => onTrack(o)} type="button">
+                <button
+                  className="order-action primary"
+                  onClick={() => onTrack(o)}
+                  type="button"
+                >
                   Xem hành trình
                   <Icon name="chevron" size={16} />
                 </button>
               )}
               {o.status === "completed" && (
-                <button className="order-action" onClick={() => onReorder(o)} type="button">
+                <button
+                  className="order-action"
+                  onClick={() => onReorder(o)}
+                  type="button"
+                >
                   Đặt lại
                 </button>
               )}
             </article>
-          );
+          )
         })}
       </div>
     </section>
-  );
+  )
 }
 
 function OrderDetail({
@@ -1179,22 +1378,27 @@ function OrderDetail({
   onRate,
   onSupport,
 }: {
-  order: Order;
-  rating?: number;
-  onBack: () => void;
-  onTrack: (o: Order) => void;
-  onReorder: (o: Order) => void;
-  onRate: (value: number) => void;
-  onSupport: (o: Order) => void;
+  order: Order
+  rating?: number
+  onBack: () => void
+  onTrack: (o: Order) => void
+  onReorder: (o: Order) => void
+  onRate: (value: number) => void
+  onSupport: (o: Order) => void
 }) {
-  const v = orderVehicle(order);
-  const [rateOpen, setRateOpen] = useState(false);
-  const [draft, setDraft] = useState(0);
-  const total = order.transport + order.service;
+  const v = orderVehicle(order)
+  const [rateOpen, setRateOpen] = useState(false)
+  const [draft, setDraft] = useState(0)
+  const total = order.transport + order.service
   return (
     <section className="orders-screen detail">
       <header className="orders-head">
-        <button aria-label="Quay lại" className="icon-button back-button" onClick={onBack} type="button">
+        <button
+          aria-label="Quay lại"
+          className="icon-button back-button"
+          onClick={onBack}
+          type="button"
+        >
           <span style={{ display: "grid", transform: "rotate(180deg)" }}>
             <Icon name="chevron" size={20} />
           </span>
@@ -1214,7 +1418,9 @@ function OrderDetail({
             <dd>{order.created}</dd>
           </div>
           <div>
-            <dt>{order.status === "cancelled" ? "Trạng thái" : "Hoàn thành"}</dt>
+            <dt>
+              {order.status === "cancelled" ? "Trạng thái" : "Hoàn thành"}
+            </dt>
             <dd>
               {order.status === "completed"
                 ? order.finished
@@ -1298,7 +1504,11 @@ function OrderDetail({
 
       <div className="detail-actions">
         {order.status === "active" && (
-          <button className="primary-button" onClick={() => onTrack(order)} type="button">
+          <button
+            className="primary-button"
+            onClick={() => onTrack(order)}
+            type="button"
+          >
             <span>Xem hành trình</span>
             <span className="button-icon">
               <Icon name="chevron" size={20} />
@@ -1310,9 +1520,15 @@ function OrderDetail({
             {rating ? (
               <div className="detail-card rated-card">
                 <span>Đánh giá của bạn</span>
-                <span className="rate-stars static" aria-label={`${rating} sao`}>
+                <span
+                  className="rate-stars static"
+                  aria-label={`${rating} sao`}
+                >
                   {[1, 2, 3, 4, 5].map((n) => (
-                    <span className={`star ${n <= rating ? "on" : "off"}`} key={n}>
+                    <span
+                      className={`star ${n <= rating ? "on" : "off"}`}
+                      key={n}
+                    >
                       <Icon name="star" size={18} strokeWidth={1.6} />
                     </span>
                   ))}
@@ -1328,8 +1544,8 @@ function OrderDetail({
                       className={n <= draft ? "on" : ""}
                       key={n}
                       onClick={() => {
-                        setDraft(n);
-                        onRate(n);
+                        setDraft(n)
+                        onRate(n)
                       }}
                       type="button"
                     >
@@ -1341,173 +1557,200 @@ function OrderDetail({
                 </span>
               </div>
             ) : null}
-            <button className="primary-button" onClick={() => onReorder(order)} type="button">
+            <button
+              className="primary-button"
+              onClick={() => onReorder(order)}
+              type="button"
+            >
               <span>Đặt lại chuyến này</span>
               <span className="button-icon">
                 <Icon name="chevron" size={20} />
               </span>
             </button>
             {!rating && !rateOpen && (
-              <button className="secondary-button" onClick={() => setRateOpen(true)} type="button">
+              <button
+                className="secondary-button"
+                onClick={() => setRateOpen(true)}
+                type="button"
+              >
                 Đánh giá tài xế
               </button>
             )}
           </>
         )}
         {order.status === "cancelled" && (
-          <button className="primary-button" onClick={() => onReorder(order)} type="button">
+          <button
+            className="primary-button"
+            onClick={() => onReorder(order)}
+            type="button"
+          >
             <span>Đặt lại chuyến này</span>
             <span className="button-icon">
               <Icon name="chevron" size={20} />
             </span>
           </button>
         )}
-        <button className="text-button support-link" onClick={() => onSupport(order)} type="button">
+        <button
+          className="text-button support-link"
+          onClick={() => onSupport(order)}
+          type="button"
+        >
           Cần hỗ trợ về đơn này?
         </button>
       </div>
     </section>
-  );
+  )
 }
 
 export default function App() {
-  const phoneRef = useRef<HTMLElement>(null);
-  const [pickup, setPickup] = useState("Vị trí hiện tại · 21 Nguyễn Đình Chiểu");
-  const [destination, setDestination] = useState("");
-  const [selected, setSelected] = useState("van");
-  const [price, setPrice] = useState("149.000đ");
-  const [phase, setPhase] = useState<Phase>("booking");
-  const [destinationError, setDestinationError] = useState(false);
-  const [tab, setTab] = useState("Trang chủ");
-  const [sheetExpanded, setSheetExpanded] = useState(false);
-  const [openOrder, setOpenOrder] = useState<Order | null>(null);
-  const [ratings, setRatings] = useState<Record<string, number>>({ "#FD240915": 5 });
+  const phoneRef = useRef<HTMLElement>(null)
+  const [pickup, setPickup] = useState("Vị trí hiện tại · 21 Nguyễn Đình Chiểu")
+  const [destination, setDestination] = useState("")
+  const [selected, setSelected] = useState("van")
+  const [price, setPrice] = useState("149.000đ")
+  const [phase, setPhase] = useState<Phase>("booking")
+  const [destinationError, setDestinationError] = useState(false)
+  const [tab, setTab] = useState("Trang chủ")
+  const [sheetExpanded, setSheetExpanded] = useState(false)
+  const [openOrder, setOpenOrder] = useState<Order | null>(null)
+  const [ratings, setRatings] = useState<Record<string, number>>({
+    "#FD240915": 5,
+  })
 
-  const [chatId, setChatId] = useState<string | null>(null);
+  const [chatId, setChatId] = useState<string | null>(null)
 
-  const [supportOrder, setSupportOrder] = useState<string | null>(null);
-  const [navHidden, setNavHidden] = useState(false);
-  const savedAddresses = useAddresses();
+  const [supportOrder, setSupportOrder] = useState<string | null>(null)
+  const [navHidden, setNavHidden] = useState(false)
+  const savedAddresses = useAddresses()
 
   const openSupport = (o: Order) => {
-    setOpenOrder(null);
-    setSupportOrder(o.id);
-    setTab("Tài khoản");
-  };
+    setOpenOrder(null)
+    setSupportOrder(o.id)
+    setTab("Tài khoản")
+  }
   const backToOrder = () => {
-    const o = orders.find((x) => x.id === supportOrder) ?? null;
-    setSupportOrder(null);
-    setTab("Đơn hàng");
-    setOpenOrder(o);
-  };
+    const o = orders.find((x) => x.id === supportOrder) ?? null
+    setSupportOrder(null)
+    setTab("Đơn hàng")
+    setOpenOrder(o)
+  }
   const useAddress = (address: string) => {
-    setDestination(address);
-    setDestinationError(false);
-    setSheetExpanded(true);
-    changeTab("Trang chủ");
-  };
+    setDestination(address)
+    setDestinationError(false)
+    setSheetExpanded(true)
+    changeTab("Trang chủ")
+  }
 
   const changeTab = (label: string) => {
-    setTab(label);
-    setSupportOrder(null);
-    setOpenOrder(null);
-  };
+    setTab(label)
+    setSupportOrder(null)
+    setOpenOrder(null)
+  }
   const navigateTab = (label: string) => {
-    const currentIndex = navItems.findIndex((item) => item.label === tab);
-    const nextIndex = navItems.findIndex((item) => item.label === label);
+    const currentIndex = navItems.findIndex((item) => item.label === tab)
+    const nextIndex = navItems.findIndex((item) => item.label === label)
     const update = () => {
-      setTab(label);
-      setSupportOrder(null);
-      setOpenOrder(null);
-    };
-    if (currentIndex < 0 || nextIndex < 0 || currentIndex === nextIndex) {
-      update();
-      return;
+      setTab(label)
+      setSupportOrder(null)
+      setOpenOrder(null)
     }
-    runTabTransition(phoneRef.current, nextIndex > currentIndex ? "right" : "left", update);
-  };
+    if (currentIndex < 0 || nextIndex < 0 || currentIndex === nextIndex) {
+      update()
+      return
+    }
+    runTabTransition(
+      phoneRef.current,
+      nextIndex > currentIndex ? "right" : "left",
+      update,
+    )
+  }
   const trackActive = (o: Order) => {
-    setPickup(o.pickup);
-    setDestination(o.destination);
-    setSelected(o.vehicleId);
-    setPhase("delivering");
-    changeTab("Trang chủ");
-  };
+    setPickup(o.pickup)
+    setDestination(o.destination)
+    setSelected(o.vehicleId)
+    setPhase("delivering")
+    changeTab("Trang chủ")
+  }
   const reorder = (o: Order) => {
-    setPickup(o.pickup);
-    setDestination(o.destination);
-    setSelected(o.vehicleId);
-    setPrice(orderVehicle(o).price);
-    setDestinationError(false);
-    setPhase("booking");
-    setSheetExpanded(true);
-    changeTab("Trang chủ");
-  };
+    setPickup(o.pickup)
+    setDestination(o.destination)
+    setSelected(o.vehicleId)
+    setPrice(orderVehicle(o).price)
+    setDestinationError(false)
+    setPhase("booking")
+    setSheetExpanded(true)
+    changeTab("Trang chủ")
+  }
 
   const viewTrip = () => {
-    setChatId(null);
+    setChatId(null)
     if (!trackPhases.includes(phase)) {
-      setPickup("21 Nguyễn Đình Chiểu, Q.1");
-      setDestination("128 Hoàng Diệu, Q.4");
-      setSelected("van");
-      setPhase("delivering");
+      setPickup("21 Nguyễn Đình Chiểu, Q.1")
+      setDestination("128 Hoàng Diệu, Q.4")
+      setSelected("van")
+      setPhase("delivering")
     }
-    changeTab("Trang chủ");
-  };
+    changeTab("Trang chủ")
+  }
 
   useEffect(() => {
-    startAmbient();
-  }, []);
+    startAmbient()
+  }, [])
 
   useEffect(() => {
-    if (phase === "delivered") setOrderStatus(CURRENT_CONV, "completed");
-  }, [phase]);
+    if (phase === "delivered") setOrderStatus(CURRENT_CONV, "completed")
+  }, [phase])
 
   const advance = () =>
-    setPhase((current) => PHASE_ORDER[(PHASE_ORDER.indexOf(current) + 1) % PHASE_ORDER.length]);
+    setPhase(
+      (current) =>
+        PHASE_ORDER[(PHASE_ORDER.indexOf(current) + 1) % PHASE_ORDER.length],
+    )
 
   useEffect(() => {
-    const delay = PHASE_DELAY[phase];
-    if (!delay) return;
-    const timer = window.setTimeout(advance, delay);
-    return () => window.clearTimeout(timer);
-  }, [phase]);
+    const delay = PHASE_DELAY[phase]
+    if (!delay) return
+    const timer = window.setTimeout(advance, delay)
+    return () => window.clearTimeout(timer)
+  }, [phase])
 
-  const vehicle = vehicles.find((v) => v.id === selected) ?? vehicles[1];
+  const vehicle = vehicles.find((v) => v.id === selected) ?? vehicles[1]
 
   const handleVehicleSelect = (v: Vehicle) => {
-    setSelected(v.id);
-    setPrice(v.price);
-  };
+    setSelected(v.id)
+    setPrice(v.price)
+  }
 
   const handleBook = () => {
     if (!destination.trim()) {
-      setDestinationError(true);
-      document.querySelector<HTMLInputElement>('[aria-label="Điểm giao hàng"]')?.focus();
-      return;
+      setDestinationError(true)
+      document
+        .querySelector<HTMLInputElement>('[aria-label="Điểm giao hàng"]')
+        ?.focus()
+      return
     }
-    setPhase("searching");
-  };
+    setPhase("searching")
+  }
 
   const handleCancel = () => {
-    setPhase("booking");
-    setSheetExpanded(false);
-  };
+    setPhase("booking")
+    setSheetExpanded(false)
+  }
   const returnHome = () => {
-    setPhase("booking");
-    setSheetExpanded(false);
-    changeTab("Trang chủ");
-  };
+    setPhase("booking")
+    setSheetExpanded(false)
+    changeTab("Trang chủ")
+  }
   const viewCompletedOrder = () => {
-    changeTab("Đơn hàng");
+    changeTab("Đơn hàng")
     setOpenOrder({
       ...orders[0],
       status: "completed",
       finished: "Hôm nay, 10:46",
-    });
-  };
+    })
+  }
 
-  const pillCopy: { text: string; badge: string } = {
+  const pillCopy: { text: string badge: string } = {
     booking: { text: "Tài xế đang hoạt động gần bạn", badge: "18" },
     searching: { text: "Đang tìm quanh bạn", badge: "18 xe" },
     found: { text: "Anh Minh đang di chuyển", badge: "4 phút" },
@@ -1516,233 +1759,265 @@ export default function App() {
     pickedup: { text: "Đã nhận hàng", badge: "15 phút" },
     delivering: { text: "Đang giao hàng", badge: "8 phút" },
     delivered: { text: "Giao hàng thành công", badge: "10:46" },
-  }[phase];
+  }[phase]
 
-  const summaryDestination = destination.trim();
+  const summaryDestination = destination.trim()
 
   return (
     <main className="app-shell">
       <section className="phone-frame" ref={phoneRef}>
         <div className="tab-content-surface">
-        {tab === "Trang chủ" && (
-          <div className="tab-screen home-screen" key="home">
-            <div className="map-area">
-              <InteractiveMap
-                destAddr={destination}
-                mode="customer"
-                onPickupChange={(addr) => setPickup(addr)}
-                phase={phase}
-                pickupAddr={pickup}
-              />
-              <header className="top-bar">
-                <div
-                  className="greeting"
-                  onClick={() => navigateTab("Tài khoản")}
-                  style={{ cursor: "pointer" }}
-                  title="Xem tài khoản & Đăng nhập OTP"
-                >
-                  <span className="avatar" aria-hidden="true">MA</span>
-                  <span>
-                    <span className="eyebrow">Chào buổi sáng,</span>
-                    <strong>Minh Anh</strong>
-                  </span>
-                </div>
-                <IconButton badge icon="bell" label="Thông báo" />
-              </header>
-
-              <div className="location-pill glass" key={phase}>
-                <span className="active-pulse" />
-                <span>{pillCopy.text}</span>
-                <strong>{pillCopy.badge}</strong>
-              </div>
-            </div>
-
-            {phase === "booking" && (
-              !sheetExpanded ? (
-                <div
-                  className="booking-peek-card glass-liquid"
-                  onClick={() => setSheetExpanded(true)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Kéo lên để đặt xe"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setSheetExpanded(true);
-                    }
-                  }}
-                >
-                  <div className="sheet-handle" />
-                  <div className="peek-content">
-                    <div className="peek-icon-wrap">
-                      <Icon name="truck" size={22} />
-                    </div>
-                    <div className="peek-text">
-                      <strong>{destination.trim() ? destination : "Bạn muốn giao hàng đi đâu?"}</strong>
-                      <small>Chạm hoặc kéo lên để chọn loại xe & đặt chuyến</small>
-                    </div>
-                    <button className="peek-expand-btn glass" type="button" aria-label="Mở bảng đặt xe">
-                      <Icon name="chevron-up" size={18} strokeWidth={2.4} />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <section className="booking-sheet phase-sheet glass-liquid expanded" key="booking">
+          {tab === "Trang chủ" && (
+            <div className="tab-screen home-screen" key="home">
+              <div className="map-area">
+                <InteractiveMap
+                  destAddr={destination}
+                  mode="customer"
+                  onPickupChange={(addr) => setPickup(addr)}
+                  phase={phase}
+                  pickupAddr={pickup}
+                />
+                <header className="top-bar">
                   <div
-                    className="sheet-handle"
-                    onClick={() => setSheetExpanded(false)}
+                    className="greeting"
+                    onClick={() => navigateTab("Tài khoản")}
+                    style={{ cursor: "pointer" }}
+                    title="Xem tài khoản & Đăng nhập OTP"
+                  >
+                    <span className="avatar" aria-hidden="true">
+                      MA
+                    </span>
+                    <span>
+                      <span className="eyebrow">Chào buổi sáng,</span>
+                      <strong>Minh Anh</strong>
+                    </span>
+                  </div>
+                  <IconButton badge icon="bell" label="Thông báo" />
+                </header>
+
+                <div className="location-pill glass" key={phase}>
+                  <span className="active-pulse" />
+                  <span>{pillCopy.text}</span>
+                  <strong>{pillCopy.badge}</strong>
+                </div>
+              </div>
+
+              {phase === "booking" &&
+                (!sheetExpanded ? (
+                  <div
+                    className="booking-peek-card glass-liquid"
+                    onClick={() => setSheetExpanded(true)}
                     role="button"
                     tabIndex={0}
-                    aria-label="Thu gọn bảng đặt xe"
-                  />
-                  <div className="booking-heading">
-                    <div>
-                      <span className="status-chip">
-                        <span />
-                        Giao nhanh trong ngày
-                      </span>
-                      <h1>Bạn muốn giao hàng đi đâu?</h1>
+                    aria-label="Kéo lên để đặt xe"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        setSheetExpanded(true)
+                      }
+                    }}
+                  >
+                    <div className="sheet-handle" />
+                    <div className="peek-content">
+                      <div className="peek-icon-wrap">
+                        <Icon name="truck" size={22} />
+                      </div>
+                      <div className="peek-text">
+                        <strong>
+                          {destination.trim()
+                            ? destination
+                            : "Bạn muốn giao hàng đi đâu?"}
+                        </strong>
+                        <small>
+                          Chạm hoặc kéo lên để chọn loại xe & đặt chuyến
+                        </small>
+                      </div>
+                      <button
+                        className="peek-expand-btn glass"
+                        type="button"
+                        aria-label="Mở bảng đặt xe"
+                      >
+                        <Icon name="chevron-up" size={18} strokeWidth={2.4} />
+                      </button>
                     </div>
-                    <button
-                      className="sheet-collapse-btn glass"
+                  </div>
+                ) : (
+                  <section
+                    className="booking-sheet phase-sheet glass-liquid expanded"
+                    key="booking"
+                  >
+                    <div
+                      className="sheet-handle"
                       onClick={() => setSheetExpanded(false)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Thu gọn bảng đặt xe"
+                    />
+                    <div className="booking-heading">
+                      <div>
+                        <span className="status-chip">
+                          <span />
+                          Giao nhanh trong ngày
+                        </span>
+                        <h1>Bạn muốn giao hàng đi đâu?</h1>
+                      </div>
+                      <button
+                        className="sheet-collapse-btn glass"
+                        onClick={() => setSheetExpanded(false)}
+                        type="button"
+                        aria-label="Thu gọn bản đồ"
+                      >
+                        <Icon name="chevron-down" size={18} strokeWidth={2.4} />
+                      </button>
+                    </div>
+
+                    <div className="location-card">
+                      <span className="route-line" />
+                      <LocationInput
+                        kind="pickup"
+                        onChange={setPickup}
+                        placeholder="Chọn điểm lấy hàng"
+                        value={pickup}
+                      />
+                      <div className="field-divider" />
+                      <LocationInput
+                        error={destinationError}
+                        kind="destination"
+                        onChange={(value) => {
+                          setDestination(value)
+                          if (value.trim()) setDestinationError(false)
+                        }}
+                        placeholder="Nhập địa chỉ giao hàng"
+                        value={destination}
+                      />
+                    </div>
+                    {destinationError && (
+                      <p
+                        className="field-error"
+                        id="destination-error"
+                        role="alert"
+                      >
+                        Vui lòng nhập điểm giao hàng
+                      </p>
+                    )}
+
+                    <div className="section-title-row">
+                      <h2>Chọn loại xe</h2>
+                      <button className="text-button" type="button">
+                        Xem chi tiết
+                      </button>
+                    </div>
+                    <VehicleSelector
+                      onSelect={handleVehicleSelect}
+                      selected={selected}
+                    />
+
+                    <div className="price-row">
+                      <span>
+                        <small>Giá ước tính</small>
+                        <strong key={price}>{price}</strong>
+                      </span>
+                      <span className="price-note">Đã gồm phí dịch vụ</span>
+                    </div>
+
+                    <button
+                      className="primary-button"
+                      onClick={handleBook}
                       type="button"
-                      aria-label="Thu gọn bản đồ"
                     >
-                      <Icon name="chevron-down" size={18} strokeWidth={2.4} />
+                      <span>Tìm tài xế</span>
+                      <span className="button-icon">
+                        <Icon name="chevron" size={20} />
+                      </span>
                     </button>
-                  </div>
+                  </section>
+                ))}
 
-                  <div className="location-card">
-                    <span className="route-line" />
-                    <LocationInput
-                      kind="pickup"
-                      onChange={setPickup}
-                      placeholder="Chọn điểm lấy hàng"
-                      value={pickup}
-                    />
-                    <div className="field-divider" />
-                    <LocationInput
-                      error={destinationError}
-                      kind="destination"
-                      onChange={(value) => {
-                        setDestination(value);
-                        if (value.trim()) setDestinationError(false);
-                      }}
-                      placeholder="Nhập địa chỉ giao hàng"
-                      value={destination}
-                    />
-                  </div>
-                  {destinationError && (
-                    <p className="field-error" id="destination-error" role="alert">
-                      Vui lòng nhập điểm giao hàng
-                    </p>
-                  )}
+              {phase === "searching" && (
+                <SearchingSheet
+                  destination={summaryDestination}
+                  key="searching"
+                  onCancel={handleCancel}
+                  pickup={pickup}
+                  vehicle={vehicle}
+                />
+              )}
 
-                  <div className="section-title-row">
-                    <h2>Chọn loại xe</h2>
-                    <button className="text-button" type="button">
-                      Xem chi tiết
-                    </button>
-                  </div>
-                  <VehicleSelector onSelect={handleVehicleSelect} selected={selected} />
+              {phase === "found" && (
+                <FoundSheet
+                  destination={summaryDestination}
+                  key="found"
+                  onAdvance={advance}
+                  onCancel={handleCancel}
+                  onMessage={() => setChatId(CURRENT_CONV)}
+                  pickup={pickup}
+                  vehicle={vehicle}
+                />
+              )}
 
-                  <div className="price-row">
-                    <span>
-                      <small>Giá ước tính</small>
-                      <strong key={price}>{price}</strong>
-                    </span>
-                    <span className="price-note">Đã gồm phí dịch vụ</span>
-                  </div>
+              {trackPhases.includes(phase) && (
+                <TrackingSheet
+                  destination={summaryDestination}
+                  key="tracking"
+                  onAdvance={advance}
+                  onHome={returnHome}
+                  onMessage={() => setChatId(CURRENT_CONV)}
+                  onViewOrders={viewCompletedOrder}
+                  phase={phase as TrackPhase}
+                  pickup={pickup}
+                  vehicle={vehicle}
+                />
+              )}
+            </div>
+          )}
 
-                  <button className="primary-button" onClick={handleBook} type="button">
-                    <span>Tìm tài xế</span>
-                    <span className="button-icon"><Icon name="chevron" size={20} /></span>
-                  </button>
-                </section>
-              )
-            )}
+          {tab === "Đơn hàng" && (
+            <div className="tab-screen" key="orders">
+              {openOrder ? (
+                <OrderDetail
+                  key={openOrder.id}
+                  onBack={() => setOpenOrder(null)}
+                  onRate={(n) =>
+                    setRatings((r) => ({ ...r, [openOrder.id]: n }))
+                  }
+                  onSupport={openSupport}
+                  onReorder={reorder}
+                  onTrack={trackActive}
+                  order={openOrder}
+                  rating={ratings[openOrder.id]}
+                />
+              ) : (
+                <OrderHistory
+                  onOpen={setOpenOrder}
+                  onReorder={reorder}
+                  onTrack={trackActive}
+                />
+              )}
+            </div>
+          )}
 
-            {phase === "searching" && (
-              <SearchingSheet
-                destination={summaryDestination}
-                key="searching"
-                onCancel={handleCancel}
-                pickup={pickup}
-                vehicle={vehicle}
+          {tab === "Tin nhắn" && (
+            <div className="tab-screen" key="messages">
+              <MessagesScreen onOpen={setChatId} />
+            </div>
+          )}
+
+          {tab === "Tài khoản" && (
+            <div className="tab-screen" key="account">
+              <AccountScreen
+                canUseAddress={phase === "booking"}
+                key={supportOrder ?? "account"}
+                onBackToOrder={backToOrder}
+                onNavHidden={setNavHidden}
+                onUseAddress={useAddress}
+                orderOptions={orders.map((o) => ({
+                  id: o.id,
+                  label: `${o.id} · ${o.created}`,
+                }))}
+                supportOrder={supportOrder}
               />
-            )}
-
-            {phase === "found" && (
-              <FoundSheet
-                destination={summaryDestination}
-                key="found"
-                onAdvance={advance}
-                onCancel={handleCancel}
-                onMessage={() => setChatId(CURRENT_CONV)}
-                pickup={pickup}
-                vehicle={vehicle}
-              />
-            )}
-
-            {trackPhases.includes(phase) && (
-              <TrackingSheet
-                destination={summaryDestination}
-                key="tracking"
-                onAdvance={advance}
-                onHome={returnHome}
-                onMessage={() => setChatId(CURRENT_CONV)}
-                onViewOrders={viewCompletedOrder}
-                phase={phase as TrackPhase}
-                pickup={pickup}
-                vehicle={vehicle}
-              />
-            )}
-          </div>
-        )}
-
-        {tab === "Đơn hàng" && (
-          <div className="tab-screen" key="orders">
-            {openOrder ? (
-              <OrderDetail
-                key={openOrder.id}
-                onBack={() => setOpenOrder(null)}
-                onRate={(n) => setRatings((r) => ({ ...r, [openOrder.id]: n }))}
-                onSupport={openSupport}
-                onReorder={reorder}
-                onTrack={trackActive}
-                order={openOrder}
-                rating={ratings[openOrder.id]}
-              />
-            ) : (
-              <OrderHistory
-                onOpen={setOpenOrder}
-                onReorder={reorder}
-                onTrack={trackActive}
-              />
-            )}
-          </div>
-        )}
-
-        {tab === "Tin nhắn" && (
-          <div className="tab-screen" key="messages">
-            <MessagesScreen onOpen={setChatId} />
-          </div>
-        )}
-
-        {tab === "Tài khoản" && (
-          <div className="tab-screen" key="account">
-            <AccountScreen
-              canUseAddress={phase === "booking"}
-              key={supportOrder ?? "account"}
-              onBackToOrder={backToOrder}
-              onNavHidden={setNavHidden}
-              onUseAddress={useAddress}
-              orderOptions={orders.map((o) => ({ id: o.id, label: `${o.id} · ${o.created}` }))}
-              supportOrder={supportOrder}
-            />
-          </div>
-        )}
+            </div>
+          )}
         </div>
 
         <datalist id="saved-addresses">
@@ -1751,7 +2026,9 @@ export default function App() {
           ))}
         </datalist>
 
-        {!(tab === "Tài khoản" && navHidden) && <BottomNavigation active={tab} onChange={navigateTab} />}
+        {!(tab === "Tài khoản" && navHidden) && (
+          <BottomNavigation active={tab} onChange={navigateTab} />
+        )}
 
         {chatId && (
           <ChatScreen
@@ -1765,5 +2042,5 @@ export default function App() {
         )}
       </section>
     </main>
-  );
+  )
 }

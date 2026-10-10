@@ -2,13 +2,13 @@
  * Custom Error Class cho API responses
  */
 export class ApiError extends Error {
-  statusCode: number;
-  code?: string;
+  statusCode: number
+  code?: string
 
   constructor(statusCode: number, message: string, code?: string) {
-    super(message);
-    this.name = 'ApiError';
-    this.statusCode = statusCode;
-    this.code = code;
+    super(message)
+    this.name = "ApiError"
+    this.statusCode = statusCode
+    this.code = code
   }
 }
