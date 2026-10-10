@@ -6,6 +6,10 @@ import driverRoutes from "./routes/driver"
 import adminRoutes from "./routes/admin"
 import pricingRoutes from "./routes/pricing"
 import bookingRoutes from "./routes/booking"
+import paymentRoutes from "./routes/payment"
+import chatRoutes from "./routes/chat"
+import callRoutes from "./routes/calls"
+import accountingRoutes from "./routes/accounting"
 import { errorHandler } from "./middleware"
 
 const app = express()
@@ -37,6 +41,10 @@ const mountRoutes = (prefix: string) => {
   app.use(`${prefix}/admin`, adminRoutes)
   app.use(`${prefix}/pricing`, pricingRoutes)
   app.use(`${prefix}/bookings`, bookingRoutes)
+  app.use(`${prefix}/payments`, paymentRoutes)
+  app.use(`${prefix}/chat`, chatRoutes)
+  app.use(`${prefix}/calls`, callRoutes)
+  app.use(`${prefix}/accounting`, accountingRoutes)
 }
 
 mountRoutes("/api/v1")

@@ -50,7 +50,7 @@ router.post("/", async (req: AuthRequest, res, next) => {
  */
 router.get("/:id", async (req: AuthRequest, res, next) => {
   try {
-    const booking = await getBookingById(req.params.id)
+    const booking = await getBookingById(req.params.id as string)
     res.json({
       success: true,
       data: booking,
@@ -66,7 +66,7 @@ router.get("/:id", async (req: AuthRequest, res, next) => {
  */
 router.get("/:id/track", async (req: AuthRequest, res, next) => {
   try {
-    const booking = await getBookingById(req.params.id)
+    const booking = await getBookingById(req.params.id as string)
     res.json({
       success: true,
       data: {
@@ -118,7 +118,11 @@ router.get("/", async (req: AuthRequest, res, next) => {
 router.post("/:id/cancel", async (req: AuthRequest, res, next) => {
   try {
     const { reason } = req.body
-    const result = await cancelBooking(req.user!.userId, req.params.id, reason)
+    const result = await cancelBooking(
+      req.user!.userId,
+      req.params.id as string,
+      reason,
+    )
     res.json({
       success: true,
       message: result.message,

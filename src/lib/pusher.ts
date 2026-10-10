@@ -252,3 +252,63 @@ export async function triggerDriverLocationUpdate(
 
   return await triggerEvent(channel, event, payload)
 }
+
+/**
+ * 7. CORE TASK 4.3: Bắn sự kiện "Tin nhắn chat mới" qua Pusher
+ * Kênh: chat-{bookingId} và trip-{bookingId}
+ * Sự kiện: chat:new-message
+ */
+export async function triggerNewChatMessage(
+  bookingId: string,
+  message: {
+    messageId: string
+    bookingId: string
+    senderId: string
+    senderRole: "CUSTOMER" | "DRIVER" | "ADMIN"
+    senderName: string
+    senderAvatar?: string | null
+    messageType: "TEXT" | "IMAGE" | "LOCATION"
+    content: string
+    mediaUrl?: string | null
+    createdAt: string | Date
+  },
+) {
+  const payload = {
+    messageId: message.messageId,
+    bookingId: message.bookingId,
+    senderId: message.senderId,
+    senderRole: message.senderRole,
+    senderName: message.senderName,
+    senderAvatar: message.senderAvatar || null,
+    messageType: message.messageType,
+    content: message.content,
+    mediaUrl: message.mediaUrl || null,
+    createdAt:
+      message.createdAt instanceof Date
+        ? message.createdAt.toISOString()
+        : message.createdAt,
+    timestamp: Date.now(),
+  }
+
+  // Bắn đồng thời trên kênh chat riêng và kênh chuyến đi
+  await triggerEvent(`chat-${bookingId}`, "chat:new-message", payload)
+  await triggerEvent(`trip-${bookingId}`, "chat:new-message", payload)
+  return true
+}
+
+/**
+ * 8. CORE TASK 4.3: Bắn sự kiện "Đã xem tin nhắn" qua Pusher
+ * Kênh: chat-{bookingId}
+ * Sự kiện: chat:messages-read
+ */
+export async function triggerMessagesRead(
+  bookingId: string,
+  readByUserId: string,
+) {
+  const payload = {
+    bookingId,
+    readByUserId,
+    timestamp: Date.now(),
+  }
+  return await triggerEvent(`chat-${bookingId}`, "chat:messages-read", payload)
+}

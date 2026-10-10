@@ -7,6 +7,10 @@ import {
   users,
 } from "../db/schema"
 import { ApiError } from "./errors"
+import {
+  getWalletDetails,
+  checkDriverDepositEligibility,
+} from "./walletService"
 
 export type DriverDocType = "CCCD_FRONT" | "CCCD_BACK" | "DRIVER_LICENSE" | "VEHICLE_REGISTRATION" | "PORTRAIT"
 
@@ -318,8 +322,12 @@ export async function getDriverKycStatus(userId: string) {
     (reqDoc) => !submittedDocTypes.includes(reqDoc),
   )
 
+  const wallet = await getWalletDetails(userId)
+
   const canGoOnline =
-    profile.kycStatus === "APPROVED" && profile.isActive === true
+    profile.kycStatus === "APPROVED" &&
+    profile.isActive === true &&
+    wallet.isDepositQualified
 
   return {
     hasProfile: true,
@@ -334,15 +342,23 @@ export async function getDriverKycStatus(userId: string) {
     vehicleType: profile.vehicleType,
     documentsCount: profile.documents.length,
     missingDocuments,
+    wallet: {
+      balance: wallet.balance,
+      availableBalance: wallet.availableBalance,
+      minDepositLimit: wallet.minDepositLimit,
+      isDepositQualified: wallet.isDepositQualified,
+      shortfall: wallet.shortfall,
+    },
   }
 }
 
 /**
  * 6. Bật/Tắt trạng thái Trực tuyến (Online / Offline Toggle)
  *
- * RÀNG BUỘC NGHIÊM NGẶT:
+ * RÀNG BUỘC NGHIÊM NGẶT (Task 4.1):
  * - Nếu isOnline = true, bắt buộc kycStatus === 'APPROVED' và isActive === true.
- * - Nếu không thỏa mãn, chặn ngay với mã lỗi 403 Forbidden (KYC_NOT_APPROVED).
+ * - Bắt buộc số dư khả dụng trong Ví Ký Quỹ >= Hạn mức tối thiểu (mặc định 200.000 VNĐ).
+ * - Nếu không thỏa mãn, chặn ngay với mã lỗi 403 Forbidden.
  */
 export async function setDriverOnlineStatus(userId: string, isOnline: boolean) {
   if (!userId) {
@@ -392,6 +408,16 @@ export async function setDriverOnlineStatus(userId: string, isOnline: boolean) {
         403,
         "FORBIDDEN: Tài khoản tài xế của bạn đang bị tạm ngưng hoặc vô hiệu hóa. Vui lòng liên hệ tổng đài hỗ trợ.",
         "DRIVER_INACTIVE",
+      )
+    }
+
+    // 3. Kiểm tra số dư Ví Ký Quỹ (Task 4.1)
+    const depositEligibility = await checkDriverDepositEligibility(userId)
+    if (!depositEligibility.eligible) {
+      throw new ApiError(
+        403,
+        `FORBIDDEN: ${depositEligibility.message}`,
+        "INSUFFICIENT_WALLET_DEPOSIT",
       )
     }
   }

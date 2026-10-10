@@ -18,6 +18,11 @@ import {
   cancelBooking,
   getDriverActiveBooking,
 } from "../../lib/bookingService"
+import {
+  getWalletDetails,
+  getWalletTransactions,
+  topUpWallet,
+} from "../../lib/walletService"
 import { requireAuth, requireRoles, type AuthRequest } from "../middleware"
 
 const router = Router()
@@ -171,7 +176,10 @@ router.post(
   "/bookings/:bookingId/accept",
   async (req: AuthRequest, res, next) => {
     try {
-      const result = await acceptBooking(req.user!.userId, req.params.bookingId)
+      const result = await acceptBooking(
+        req.user!.userId,
+        req.params.bookingId as string,
+      )
       res.json({
         success: true,
         message: result.message,
@@ -211,7 +219,7 @@ router.patch(
       const { status, note } = req.body
       const result = await updateBookingStatus(
         req.user!.userId,
-        req.params.bookingId,
+        req.params.bookingId as string,
         status,
         note,
       )
@@ -237,7 +245,7 @@ router.post(
       const { reason } = req.body
       const result = await cancelBooking(
         req.user!.userId,
-        req.params.bookingId,
+        req.params.bookingId as string,
         reason,
       )
       res.json({
@@ -250,5 +258,71 @@ router.post(
     }
   },
 )
+
+/**
+ * GET /driver/wallet
+ * Lấy thông tin chi tiết ví ký quỹ của tài xế (Số dư, Khả dụng, Hạn mức ký quỹ)
+ */
+router.get("/wallet", async (req: AuthRequest, res, next) => {
+  try {
+    const wallet = await getWalletDetails(req.user!.userId)
+    res.json({
+      success: true,
+      data: wallet,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * GET /driver/wallet/transactions
+ * Lấy lịch sử biến động số dư ví tài xế (phân trang, lọc theo type)
+ */
+router.get("/wallet/transactions", async (req: AuthRequest, res, next) => {
+  try {
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : 1
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20
+    const type = req.query.type ? String(req.query.type) : undefined
+
+    const result = await getWalletTransactions(req.user!.userId, {
+      page,
+      limit,
+      type,
+    })
+
+    res.json({
+      success: true,
+      ...result,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /driver/wallet/topup
+ * Nạp tiền vào ví ký quỹ tài xế
+ */
+router.post("/wallet/topup", async (req: AuthRequest, res, next) => {
+  try {
+    const { amount, description, referenceCode } = req.body
+    const result = await topUpWallet({
+      userId: req.user!.userId,
+      amount: Number(amount),
+      description,
+      referenceCode,
+      performedByUserId: req.user!.userId,
+    })
+
+    res.json({
+      success: true,
+      message: result.message,
+      data: result,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
 
 export default router

@@ -38,7 +38,7 @@ router.patch("/addresses/:id/default", async (req: AuthRequest, res, next) => {
   try {
     const updated = await setDefaultCustomerAddress(
       req.user!.userId,
-      req.params.id,
+      req.params.id as string,
     )
     res.json({
       success: true,
@@ -54,7 +54,7 @@ router.put("/addresses/:id", async (req: AuthRequest, res, next) => {
   try {
     const updated = await updateCustomerAddress(
       req.user!.userId,
-      req.params.id,
+      req.params.id as string,
       req.body,
     )
     res.json({
@@ -69,7 +69,10 @@ router.put("/addresses/:id", async (req: AuthRequest, res, next) => {
 
 router.delete("/addresses/:id", async (req: AuthRequest, res, next) => {
   try {
-    const result = await deleteCustomerAddress(req.user!.userId, req.params.id)
+    const result = await deleteCustomerAddress(
+      req.user!.userId,
+      req.params.id as string,
+    )
     res.json(result)
   } catch (err) {
     next(err)

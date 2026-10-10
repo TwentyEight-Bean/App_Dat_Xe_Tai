@@ -60,9 +60,10 @@ async function runPricingEngineTests() {
       `Thời gian dự kiến hợp lý: ${route.durationMinutes} phút`,
     )
     assert(
-      route.routingSource === "OSRM_OPENSOURCE" ||
-        route.routingSource === "HAVERSINE_LOCAL",
-      `Nguồn định tuyến Open-Source: [${route.routingSource}]`,
+      route.routingSource as string === "OSRM_OPENSOURCE" ||
+        route.routingSource === "HAVERSINE_LOCAL" ||
+        route.routingSource === "GOONG_API",
+      `Nguồn định tuyến: [${route.routingSource}]`,
     )
     assert(durationMs < 2000, `Tốc độ phản hồi cực nhanh: ${durationMs}ms`)
 

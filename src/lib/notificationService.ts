@@ -25,10 +25,10 @@ export interface SendPushResult {
 // ============================================================================
 // KHỞI TẠO FIREBASE ADMIN SDK VỚI CƠ CHẾ GRACEFUL DEV MOCK
 // ============================================================================
-let firebaseApp: admin.app.App | null = null
+let firebaseApp: any = null
 let isFirebaseConfigured = false
 
-function initFirebaseAdmin(): admin.app.App | null {
+function initFirebaseAdmin(): any {
   if (firebaseApp) return firebaseApp
 
   const projectId = process.env.FIREBASE_PROJECT_ID
@@ -39,8 +39,8 @@ function initFirebaseAdmin(): admin.app.App | null {
 
   if (projectId && clientEmail && privateKey) {
     try {
-      firebaseApp = admin.initializeApp({
-        credential: admin.credential.cert({
+      firebaseApp = (admin as any).initializeApp({
+        credential: (admin as any).credential.cert({
           projectId,
           clientEmail,
           privateKey,
@@ -208,7 +208,7 @@ export async function sendPushNotificationToTokens(
   // 2. Chế độ Production: Gửi thật qua Firebase Cloud Messaging (FCM Multicast)
   try {
     const messaging = firebaseApp.messaging()
-    const message: admin.messaging.MulticastMessage = {
+    const message: any = {
       tokens: uniqueTokens,
       notification: {
         title: payload.title,
@@ -243,7 +243,7 @@ export async function sendPushNotificationToTokens(
 
     // Tự động thu dọn các token đã hết hạn hoặc không còn đăng ký trên thiết bị
     const staleTokens: string[] = []
-    response.responses.forEach((resp, idx) => {
+    response.responses.forEach((resp: any, idx: number) => {
       if (!resp.success && resp.error) {
         const errCode = resp.error.code
         if (
@@ -266,8 +266,8 @@ export async function sendPushNotificationToTokens(
     }
 
     const messageIds = response.responses
-      .filter((r) => r.success && r.messageId)
-      .map((r) => r.messageId!)
+      .filter((r: any) => r.success && r.messageId)
+      .map((r: any) => r.messageId!)
 
     return {
       success: response.successCount > 0,
@@ -318,6 +318,7 @@ export interface NewBookingOfferNotificationData {
   distanceKm: number
   totalPrice: number
   originAddress: string
+  destinationAddress?: string
   vehicleTypeName?: string
 }
 
@@ -371,12 +372,29 @@ export async function notifyCustomerBookingAccepted(
   })
 }
 
+export interface DriverArrivedInfo {
+  bookingId: string
+  bookingCode: string
+  driverName: string
+}
+
+export interface BookingInTransitInfo {
+  bookingId: string
+  bookingCode: string
+}
+
+export interface BookingCompletedInfo {
+  bookingId: string
+  bookingCode: string
+  totalPrice?: number
+}
+
 /**
  * Kịch bản 3: Thông báo cho khách hàng khi tài xế đã đến điểm lấy hàng
  */
 export async function notifyCustomerDriverArrived(
   customerUserId: string,
-  info: { bookingId: string bookingCode: string driverName: string },
+  info: DriverArrivedInfo,
 ) {
   return await sendPushNotificationToUser(customerUserId, {
     title: "📍 Xe đã tới điểm lấy hàng!",
@@ -394,7 +412,7 @@ export async function notifyCustomerDriverArrived(
  */
 export async function notifyCustomerBookingInTransit(
   customerUserId: string,
-  info: { bookingId: string bookingCode: string },
+  info: BookingInTransitInfo,
 ) {
   return await sendPushNotificationToUser(customerUserId, {
     title: "🚚 Hàng hóa đang trên đường vận chuyển!",
@@ -412,7 +430,7 @@ export async function notifyCustomerBookingInTransit(
  */
 export async function notifyCustomerBookingCompleted(
   customerUserId: string,
-  info: { bookingId: string bookingCode: string totalPrice?: number },
+  info: BookingCompletedInfo,
 ) {
   return await sendPushNotificationToUser(customerUserId, {
     title: "🎉 Giao hàng hoàn tất!",

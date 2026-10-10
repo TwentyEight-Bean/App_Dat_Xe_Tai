@@ -9,6 +9,17 @@ import {
   getAllUsers,
 } from "../../lib/adminService"
 import { requireAuth, requireRoles, type AuthRequest } from "../middleware"
+import {
+  getAllDriverWallets,
+  getWalletDetails,
+  getWalletTransactions,
+  adminAdjustWallet,
+} from "../../lib/walletService"
+import {
+  getCronSystemStatus,
+  autoBlockLowRatingDrivers,
+  autoBackupDatabase,
+} from "../../lib/cronJobs"
 import pricingRouter from "./pricing_admin"
 import b2bRouter from "./b2b"
 
@@ -109,6 +120,150 @@ router.get("/drivers", async (req, res, next) => {
         limit: result.limit,
         total: result.total,
       },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * GET /admin/wallets
+ * Admin xem danh sách ví của tất cả tài xế kèm số dư và trạng thái ký quỹ
+ */
+router.get("/wallets", async (req, res, next) => {
+  try {
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : 1
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20
+    const search = req.query.search ? String(req.query.search) : undefined
+
+    const result = await getAllDriverWallets({ page, limit, search })
+    res.json({
+      success: true,
+      ...result,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * GET /admin/wallets/:userId
+ * Admin xem chi tiết ví người dùng
+ */
+router.get("/wallets/:userId", async (req, res, next) => {
+  try {
+    const details = await getWalletDetails(req.params.userId)
+    res.json({
+      success: true,
+      data: details,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * GET /admin/wallets/:userId/transactions
+ * Admin xem lịch sử giao dịch ví người dùng
+ */
+router.get("/wallets/:userId/transactions", async (req, res, next) => {
+  try {
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : 1
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20
+    const type = req.query.type ? String(req.query.type) : undefined
+
+    const result = await getWalletTransactions(req.params.userId, {
+      page,
+      limit,
+      type,
+    })
+    res.json({
+      success: true,
+      ...result,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /admin/wallets/:userId/adjust
+ * Admin điều chỉnh số dư ví (Nạp, Thưởng, Phạt, Hoàn tiền)
+ */
+router.post("/wallets/:userId/adjust", async (req: AuthRequest, res, next) => {
+  try {
+    const { amount, type, description, referenceCode } = req.body
+    const result = await adminAdjustWallet({
+      targetUserId: req.params.userId as string,
+      amount: Number(amount),
+      type: type || "ADMIN_ADJUSTMENT",
+      description,
+      referenceCode,
+      adminUserId: req.user!.userId,
+    })
+
+    res.json({
+      success: true,
+      message: result.message,
+      data: result,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * GET /admin/cron/status
+ * Xem trạng thái các tác vụ định kỳ và danh sách file sao lưu Database
+ */
+router.get("/cron/status", async (req: AuthRequest, res, next) => {
+  try {
+    const status = getCronSystemStatus()
+    res.json({
+      success: true,
+      data: status,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /admin/cron/trigger-block-drivers
+ * Kích hoạt ngay lập tức tác vụ quét và tự động khóa tài xế điểm thấp
+ */
+router.post(
+  "/admin/cron/trigger-block-drivers",
+  async (req: AuthRequest, res, next) => {
+    try {
+      const minTrips = req.body.minTrips ? Number(req.body.minTrips) : 5
+      const ratingThreshold = req.body.ratingThreshold
+        ? Number(req.body.ratingThreshold)
+        : 4.0
+      const result = await autoBlockLowRatingDrivers(minTrips, ratingThreshold)
+      res.json({
+        success: true,
+        message: `Đã quét và khóa ${result.processedCount} tài xế vi phạm điểm số.`,
+        data: result,
+      })
+    } catch (err) {
+      next(err)
+    }
+  },
+)
+
+/**
+ * POST /admin/cron/trigger-backup
+ * Kích hoạt ngay lập tức tác vụ sao lưu Database Neon
+ */
+router.post("/cron/trigger-backup", async (req: AuthRequest, res, next) => {
+  try {
+    const keepDays = req.body.keepDays ? Number(req.body.keepDays) : 7
+    const result = await autoBackupDatabase(undefined, keepDays)
+    res.json({
+      success: true,
+      message: "Sao lưu Database thành công.",
+      data: result,
     })
   } catch (err) {
     next(err)
