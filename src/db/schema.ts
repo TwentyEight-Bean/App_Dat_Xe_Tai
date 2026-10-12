@@ -323,6 +323,10 @@ export const wallets = pgTable("wallets", {
   lockedBalance: decimal("locked_balance", { precision: 15, scale: 2 }).default(
     "0",
   ),
+  minDepositLimit: decimal("min_deposit_limit", {
+    precision: 15,
+    scale: 2,
+  }).default("200000"),
   currency: varchar("currency", { length: 10 }).default("VND"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 })
@@ -334,8 +338,11 @@ export const walletTransactions = pgTable("wallet_transactions", {
     .references(() => wallets.id),
   bookingId: uuid("booking_id").references(() => bookings.id),
   amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  balanceBefore: decimal("balance_before", { precision: 15, scale: 2 }),
+  balanceAfter: decimal("balance_after", { precision: 15, scale: 2 }),
   type: varchar("type", { length: 50 }).notNull(),
   description: text("description"),
+  referenceCode: varchar("reference_code", { length: 100 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 })
 
@@ -357,6 +364,99 @@ export const userDevices = pgTable(
     return {
       userIdIdx: index("idx_user_devices_user_id").on(table.userId),
       fcmTokenIdx: index("idx_user_devices_fcm_token").on(table.fcmToken),
+    }
+  },
+)
+
+// 4.5 PAYMENT_TRANSACTIONS (Lịch sử thanh toán cổng VNPay, MoMo)
+export const paymentTransactions = pgTable(
+  "payment_transactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bookingId: uuid("booking_id").references(() => bookings.id),
+    walletId: uuid("wallet_id").references(() => wallets.id),
+    amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+    gateway: varchar("gateway", { length: 20 }).notNull(), // 'VNPAY', 'MOMO'
+    transactionCode: varchar("transaction_code", { length: 100 })
+      .notNull()
+      .unique(),
+    gatewayRefId: varchar("gateway_ref_id", { length: 100 }),
+    status: varchar("status", { length: 20 }).default("PENDING"), // 'PENDING', 'SUCCESS', 'FAILED'
+    paymentUrl: text("payment_url"),
+    description: text("description"),
+    rawResponse: jsonb("raw_response"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => {
+    return {
+      txCodeIdx: index("idx_payment_transactions_code").on(
+        table.transactionCode,
+      ),
+      userIdIdx: index("idx_payment_transactions_user_id").on(table.userId),
+      bookingIdIdx: index("idx_payment_transactions_booking_id").on(
+        table.bookingId,
+      ),
+    }
+  },
+)
+
+// 4.6 BOOKING_MESSAGES (Lưu trữ tin nhắn chat thời gian thực Khách - Tài xế)
+export const bookingMessages = pgTable(
+  "booking_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    senderId: uuid("sender_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    messageType: varchar("message_type", { length: 20 }).default("TEXT"), // 'TEXT', 'IMAGE', 'LOCATION'
+    content: text("content"),
+    mediaUrl: text("media_url"),
+    isRead: boolean("is_read").default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => {
+    return {
+      bookingIdx: index("idx_booking_messages_booking_id").on(table.bookingId),
+      senderIdx: index("idx_booking_messages_sender_id").on(table.senderId),
+    }
+  },
+)
+
+// 4.7 CALL_LOGS (Lịch sử cuộc gọi tổng đài ảo Stringee giấu số)
+export const callLogs = pgTable(
+  "call_logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    callerId: uuid("caller_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    receiverId: uuid("receiver_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    stringeeCallId: varchar("stringee_call_id", { length: 100 }),
+    callStatus: varchar("call_status", { length: 30 }).default("STARTED"), // 'STARTED', 'RINGING', 'ANSWERED', 'ENDED', 'BUSY', 'MISSED', 'FAILED'
+    durationSeconds: integer("duration_seconds").default(0),
+    recordUrl: text("record_url"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => {
+    return {
+      bookingIdx: index("idx_call_logs_booking_id").on(table.bookingId),
+      callerIdx: index("idx_call_logs_caller_id").on(table.callerId),
+      receiverIdx: index("idx_call_logs_receiver_id").on(table.receiverId),
+      callIdIdx: index("idx_call_logs_stringee_call_id").on(
+        table.stringeeCallId,
+      ),
     }
   },
 )

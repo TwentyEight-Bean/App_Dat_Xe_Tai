@@ -1,6 +1,7 @@
 import { createServer } from "node:http"
 import * as dotenv from "dotenv"
 import { handleApiRequest } from "./api/router"
+import { initCronJobs } from "./lib/cronJobs"
 
 // Load biến môi trường từ .env
 dotenv.config()
@@ -17,6 +18,9 @@ const server = createServer(async (req, res) => {
 })
 
 server.listen(PORT, () => {
+  // Khởi động các tác vụ định kỳ
+  initCronJobs()
+
   console.log(
     `\n🚀 Truck Booking API Server running at http://localhost:${PORT}`,
   )

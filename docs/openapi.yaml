@@ -1418,24 +1418,588 @@ paths:
           description: Cập nhật thành công
 
   # ==========================================
-  # WALLET MODULE
+  # WALLET MODULE (CUSTOMER & DRIVER)
   # ==========================================
-  /wallets/me:
+  /driver/wallet:
     get:
       tags:
-        - Wallets
-      summary: Xem thông tin số dư ví cá nhân (Tài xế/Khách hàng)
+        - Driver Wallet
+      summary: Lấy thông tin ví ký quỹ tài xế (Số dư, Khả dụng, Hạn mức ký quỹ)
+      security:
+        - bearerAuth: []
       responses:
         '200':
-          description: Thành công
+          description: Chi tiết ví ký quỹ
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  balance:
-                    type: number
-                    example: 1500000
-                  lockedBalance:
-                    type: number
-                    example: 0
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/WalletDetail'
+
+  /driver/wallet/transactions:
+    get:
+      tags:
+        - Driver Wallet
+      summary: Lịch sử biến động số dư ví tài xế
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [TOPUP, COMMISSION_DEDUCTION, TRIP_INCOME, BONUS, PENALTY]
+      responses:
+        '200':
+          description: Danh sách giao dịch ví
+
+  /driver/wallet/topup:
+    post:
+      tags:
+        - Driver Wallet
+      summary: Nạp tiền trực tiếp vào ví ký quỹ tài xế
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  example: 500000
+                description:
+                  type: string
+                  example: "Nạp tiền ví ký quỹ"
+                referenceCode:
+                  type: string
+      responses:
+        '200':
+          description: Nạp tiền thành công
+
+  /customer/wallet:
+    get:
+      tags:
+        - Customer Wallet
+      summary: Lấy thông tin số dư ví của khách hàng
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Chi tiết ví khách hàng
+
+  /customer/wallet/transactions:
+    get:
+      tags:
+        - Customer Wallet
+      summary: Lịch sử biến động số dư ví khách hàng
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách giao dịch
+
+  # ==========================================
+  # PAYMENT GATEWAY MODULE (VNPAY & MOMO)
+  # ==========================================
+  /payments/create-url:
+    post:
+      tags:
+        - Payment Gateways
+      summary: Tạo link thanh toán trực tuyến qua cổng VNPay hoặc MoMo
+      description: Dùng để Nạp ví Ký quỹ (TOPUP_WALLET) hoặc Trả cước cuốc xe (PAY_BOOKING)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, gateway]
+              properties:
+                amount:
+                  type: number
+                  example: 250000
+                gateway:
+                  type: string
+                  enum: [VNPAY, MOMO]
+                  example: "VNPAY"
+                purpose:
+                  type: string
+                  enum: [TOPUP_WALLET, PAY_BOOKING]
+                  default: "TOPUP_WALLET"
+                bookingId:
+                  type: string
+                  format: uuid
+                bankCode:
+                  type: string
+                  example: "NCB"
+                redirectUrl:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Tạo URL thanh toán thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      paymentUrl:
+                        type: string
+                      transactionCode:
+                        type: string
+                      qrCodeUrl:
+                        type: string
+
+  /payments/status/{transactionCode}:
+    get:
+      tags:
+        - Payment Gateways
+      summary: Tra cứu trạng thái giao dịch thanh toán
+      parameters:
+        - name: transactionCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Trạng thái giao dịch
+
+  /payments/history:
+    get:
+      tags:
+        - Payment Gateways
+      summary: Lấy lịch sử giao dịch thanh toán cổng của người dùng
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách lịch sử giao dịch
+
+  /payments/vnpay-ipn:
+    get:
+      tags:
+        - Payment Webhooks
+      summary: Webhook Server-to-Server nhận kết quả giao dịch tự động từ VNPay
+      responses:
+        '200':
+          description: Phản hồi chuẩn cho VNPay (RspCode 00, 02, 97...)
+
+  /payments/momo-ipn:
+    post:
+      tags:
+        - Payment Webhooks
+      summary: Webhook Server-to-Server nhận kết quả giao dịch tự động từ MoMo
+      responses:
+        '200':
+          description: Phản hồi chuẩn cho MoMo
+
+  # ==========================================
+  # IN-APP REALTIME CHAT MODULE
+  # ==========================================
+  /chat/send:
+    post:
+      tags:
+        - Chat In-App
+      summary: Gửi tin nhắn mới trong chuyến xe (Lưu DB + Bắn Pusher + Bắn Push FCM)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bookingId, content]
+              properties:
+                bookingId:
+                  type: string
+                  format: uuid
+                content:
+                  type: string
+                  example: "Hàng của em đã sẵn sàng ở sảnh rồi ạ!"
+                messageType:
+                  type: string
+                  enum: [TEXT, IMAGE, LOCATION]
+                  default: "TEXT"
+                mediaUrl:
+                  type: string
+      responses:
+        '200':
+          description: Gửi tin nhắn thành công
+
+  /chat/conversations:
+    get:
+      tags:
+        - Chat In-App
+      summary: Lấy danh sách các cuộc trò chuyện gần đây của người dùng
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Danh sách cuộc trò chuyện
+
+  /chat/{bookingId}/messages:
+    get:
+      tags:
+        - Chat In-App
+      summary: Lấy lịch sử tin nhắn của một chuyến xe (Phân trang)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Danh sách tin nhắn
+
+  /chat/{bookingId}/read:
+    patch:
+      tags:
+        - Chat In-App
+      summary: Đánh dấu đã đọc tất cả tin nhắn trong chuyến xe
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Đã đánh dấu xem
+
+  # ==========================================
+  # STRINGEE VIRTUAL CALL CENTER (NUMBER MASKING)
+  # ==========================================
+  /calls/token:
+    get:
+      tags:
+        - Stringee Calls
+      summary: Cấp Client Access Token kết nối Stringee SDK
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Token JWT hợp lệ
+
+  /calls/authorize:
+    post:
+      tags:
+        - Stringee Calls
+      summary: Cấp phép cuộc gọi giấu số Hotline 1900-8888 giữa Khách và Tài xế
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bookingId]
+              properties:
+                bookingId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Cấp phép thành công, số điện thoại thật đã được ẩn
+
+  /calls/trip/{bookingId}:
+    get:
+      tags:
+        - Stringee Calls
+      summary: Xem lịch sử cuộc gọi trong một chuyến xe
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Danh sách cuộc gọi
+
+  /calls/history:
+    get:
+      tags:
+        - Stringee Calls
+      summary: Lấy lịch sử cuộc gọi tổng quan của người dùng
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lịch sử cuộc gọi
+
+  # ==========================================
+  # ACCOUNTING & EXCEL EXPORT MODULE
+  # ==========================================
+  /accounting/dashboard:
+    get:
+      tags:
+        - Accounting & Finance
+      summary: Thống kê KPIs tài chính, doanh thu, hoa hồng sàn 20%, thu nhập tài xế 80%
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: paymentMethod
+          in: query
+          schema:
+            type: string
+        - name: vehicleTypeId
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Thống kê kế toán tổng thể
+
+  /accounting/export-excel:
+    get:
+      tags:
+        - Accounting & Finance
+      summary: Xuất file Excel báo cáo kế toán chi tiết 3 sheets (.xlsx)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File Excel nhị phân
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+
+  # ==========================================
+  # ADMIN WALLETS & CRONJOB MODULE
+  # ==========================================
+  /admin/wallets:
+    get:
+      tags:
+        - Admin Wallets
+      summary: Danh sách ví ký quỹ của toàn bộ tài xế kèm số dư và trạng thái
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Danh sách ví tài xế
+
+  /admin/wallets/{userId}:
+    get:
+      tags:
+        - Admin Wallets
+      summary: Chi tiết ví của một người dùng
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Chi tiết ví
+
+  /admin/wallets/{userId}/adjust:
+    post:
+      tags:
+        - Admin Wallets
+      summary: Admin điều chỉnh số dư ví (Nạp, Thưởng, Phạt, Hoàn tiền)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, description]
+              properties:
+                amount:
+                  type: number
+                  example: 100000
+                type:
+                  type: string
+                  enum: [ADMIN_ADJUSTMENT, BONUS, PENALTY, REFUND]
+                  default: "ADMIN_ADJUSTMENT"
+                description:
+                  type: string
+                  example: "Thưởng tài xế xuất sắc"
+      responses:
+        '200':
+          description: Điều chỉnh số dư thành công
+
+  /admin/cron/status:
+    get:
+      tags:
+        - Admin Cron & Backup
+      summary: Xem trạng thái hệ thống CronJob và lịch sử sao lưu
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Trạng thái CronJob
+
+  /admin/cron/trigger-block-drivers:
+    post:
+      tags:
+        - Admin Cron & Backup
+      summary: Kích hoạt ngay lập tức tác vụ quét và tự động khóa tài xế điểm thấp (< 4.0 sao)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                minTrips:
+                  type: integer
+                  default: 5
+                ratingThreshold:
+                  type: number
+                  default: 4.0
+      responses:
+        '200':
+          description: Quét và khóa thành công
+
+  /admin/cron/trigger-backup:
+    post:
+      tags:
+        - Admin Cron & Backup
+      summary: Kích hoạt ngay lập tức tác vụ sao lưu Database Neon
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keepDays:
+                  type: integer
+                  default: 7
+      responses:
+        '200':
+          description: Sao lưu database thành công
+
+components:
+  schemas:
+    WalletDetail:
+      type: object
+      properties:
+        walletId:
+          type: string
+          format: uuid
+        balance:
+          type: number
+        availableBalance:
+          type: number
+        minDepositLimit:
+          type: number
+        isDepositQualified:
+          type: boolean
+        currency:
+          type: string
+          example: "VND"

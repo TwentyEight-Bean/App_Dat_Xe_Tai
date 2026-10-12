@@ -17,6 +17,10 @@ import {
   notifyCustomerBookingCompleted,
   notifyTripCancelled,
 } from "./notificationService"
+import {
+  checkDriverDepositEligibility,
+  deductTripCommission,
+} from "./walletService"
 
 export interface CreateBookingDto {
   vehicleTypeId: string
@@ -294,6 +298,16 @@ export async function acceptBooking(driverUserId: string, bookingId: string) {
     throw new ApiError(
       400,
       "Vui lòng bật trạng thái Trực tuyến (Online) trước khi nhận cuốc",
+    )
+  }
+
+  // 1.1 Kiểm tra số dư ví ký quỹ của tài xế (Task 4.1)
+  const depositEligibility = await checkDriverDepositEligibility(driverUserId)
+  if (!depositEligibility.eligible) {
+    throw new ApiError(
+      403,
+      `FORBIDDEN: ${depositEligibility.message}`,
+      "INSUFFICIENT_WALLET_DEPOSIT",
     )
   }
 
@@ -780,11 +794,25 @@ export async function updateBookingStatus(
     }).catch((err) => console.warn("FCM completed error:", err.message))
   }
 
+  // 7. TASK 4.1: Tự động khấu trừ % hoa hồng (cuốc tiền mặt) hoặc cộng doanh thu (cuốc ví/online)
+  let commissionInfo = null
+  if (cleanStatus === "COMPLETED") {
+    try {
+      commissionInfo = await deductTripCommission(bookingId)
+    } catch (commErr: any) {
+      console.error(
+        `[Wallet Commission Error] Lỗi khấu trừ hoa hồng cuốc ${booking.booking_code}:`,
+        commErr.message,
+      )
+    }
+  }
+
   return {
     bookingId: updatedBooking.id,
     bookingCode: updatedBooking.booking_code,
     status: updatedBooking.status,
     paymentStatus: updatedBooking.payment_status,
+    commission: commissionInfo,
     message: statusMsg,
     updatedAt: updatedBooking.updated_at,
   }

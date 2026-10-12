@@ -1750,7 +1750,7 @@ export default function App() {
     })
   }
 
-  const pillCopy: { text: string badge: string } = {
+  const pillMap: Record<string, { text: string badge: string }> = {
     booking: { text: "Tài xế đang hoạt động gần bạn", badge: "18" },
     searching: { text: "Đang tìm quanh bạn", badge: "18 xe" },
     found: { text: "Anh Minh đang di chuyển", badge: "4 phút" },
@@ -1759,7 +1759,11 @@ export default function App() {
     pickedup: { text: "Đã nhận hàng", badge: "15 phút" },
     delivering: { text: "Đang giao hàng", badge: "8 phút" },
     delivered: { text: "Giao hàng thành công", badge: "10:46" },
-  }[phase]
+  }
+  const pillCopy = pillMap[phase] || {
+    text: "Đang xử lý chuyến xe",
+    badge: "Sẵn sàng",
+  }
 
   const summaryDestination = destination.trim()
 

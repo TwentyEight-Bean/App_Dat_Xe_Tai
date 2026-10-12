@@ -221,7 +221,7 @@ export default function Drivers({
   tab: "review" | "all"
   setTab: (t: "review" | "all") => void
 }) {
-  const [dbPending, setDbPending] = useState<Pending[]>([])
+  const [dbPending, setDbPending] = useState<any[]>([])
   const [dbActive, setDbActive] = useState<any[]>([])
 
   useEffect(() => {
