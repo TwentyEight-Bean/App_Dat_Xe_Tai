@@ -6,11 +6,56 @@ import {
   deleteCustomerAddress,
   setDefaultCustomerAddress,
 } from "../../lib/addressService"
+import {
+  getWalletDetails,
+  getWalletTransactions,
+} from "../../lib/walletService"
 import { requireAuth, requireRoles, type AuthRequest } from "../middleware"
 
 const router = Router()
 
 router.use(requireAuth, requireRoles(["CUSTOMER", "ADMIN"]))
+
+/**
+ * GET /customer/wallet
+ * Lấy thông tin chi tiết ví của khách hàng (Số dư khả dụng, hạn mức)
+ */
+router.get("/wallet", async (req: AuthRequest, res, next) => {
+  try {
+    const wallet = await getWalletDetails(req.user!.userId)
+    res.json({
+      success: true,
+      data: wallet,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * GET /customer/wallet/transactions
+ * Lấy lịch sử biến động số dư ví khách hàng (Nạp tiền MoMo/VNPay, trả cước)
+ */
+router.get("/wallet/transactions", async (req: AuthRequest, res, next) => {
+  try {
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : 1
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20
+    const type = req.query.type ? String(req.query.type) : undefined
+
+    const result = await getWalletTransactions(req.user!.userId, {
+      page,
+      limit,
+      type,
+    })
+
+    res.json({
+      success: true,
+      ...result,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
 
 router.get("/addresses", async (req: AuthRequest, res, next) => {
   try {

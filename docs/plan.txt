@@ -1,0 +1,176 @@
+BẢNG PHÂN CÔNG VÀ
+TIẾN ĐỘ CÔNG VIỆC TEAM BACKEND
+(Áp dụng cho mô hình team: 1 Tech
+Lead/Senior + 2 Backend Developer)
+Để đảm bảo dự án chạy trơn tru và không bị chồng
+chéo, công việc được chia thành
+4 Giai đoạn (Sprints)
+. Nguyên
+tắc: Làm từ móng (Database & API Specs) -> Lõi (Đặt xe/Tính tiền) ->
+Realtime -> Quản trị.
+👥
+THÀNH PHẦN NHÂN SỰ GIẢ ĐỊNH
+1.
+BE-Lead (Tech Lead / Senior):
+Chịu trách
+nhiệm kiến trúc, Database, cấu hình Server và giải quyết các luồng nghiệp vụ
+khó (Realtime, Thanh toán).
+2.
+BE-01 (Backend Dev 1):
+Phụ trách
+API liên quan đến Khách hàng, Tài xế, Upload File, Thông báo.
+3.
+BE-02 (Backend Dev 2):
+Phụ trách
+API liên quan đến Admin Panel, Báo cáo, Đơn hàng cơ bản.
+📍
+SPRINT 1: XÂY MÓNG & ĐẶC
+TẢ API (Tuần 1)
+Mục tiêu: Đặt nền móng Database, có file API
+Mock cho Frontend làm việc ngay lập tức.
+STT
+Tên công việc (Task)
+Phân công
+Trạng thái
+1.1
+Thiết kế sơ đồ Cơ sở dữ liệu (ERD)
+  và tạo Database trên Neon (Bật extension PostGIS).
+BE-Lead
+Cần làm ngay
+1.2
+Khởi tạo Project Next.js, cấu hình
+  Prisma/Drizzle ORM, setup ESLint/Prettier.
+BE-Lead
+Cần làm ngay
+1.3
+Viết tài liệu OpenAPI
+  (Swagger):
+Định nghĩa toàn bộ Endpoint, Request/Response body. Bàn
+  giao cho Frontend.
+Cả Team
+Cần làm ngay
+1.4
+Cấu hình xác thực (Authentication):
+  JWT token, mã hóa mật khẩu, phân quyền Role-based.
+BE-01
+Tiếp theo
+1.5
+Cấu hình lưu trữ file (Upload ảnh
+  avatar, bằng lái) lên Cloud (AWS S3 hoặc Vercel Blob).
+BE-02
+Tiếp theo
+📍
+SPRINT 2: NGƯỜI DÙNG &
+TÍNH GIÁ CƯỚC (Tuần 2)
+Mục tiêu: Đăng nhập được vào app, tính được
+tiền cho một cuốc xe giả định.
+STT
+Tên công việc (Task)
+Phân công
+Trạng thái
+2.1
+API Khách hàng: Đăng ký/Đăng nhập
+  bằng OTP (Tích hợp VietGuys/ESMS). Quản lý sổ địa chỉ.
+BE-01
+Ưu tiên
+2.2
+API Tài xế: Quy trình KYC (Nộp
+  giấy tờ, duyệt hồ sơ), Cập nhật trạng thái Trực tuyến/Ngoại tuyến.
+BE-02
+Ưu tiên
+2.3
+Engine Tính giá:
+Viết hàm
+  tính khoảng cách bằng tọa độ (gọi API Goong.io) -> Nhân với bảng giá gốc
+  -> Cộng phụ phí.
+BE-Lead
+Ưu tiên cao
+2.4
+API Admin (Cơ bản): Quản lý bảng
+  giá, Duyệt hồ sơ tài xế, Quản lý danh sách khách hàng B2B.
+BE-02
+Tiếp theo
+📍
+SPRINT 3: REAL-TIME &
+ĐIỀU PHỐI CUỐC XE (Tuần 3 - Cốt lõi)
+Mục tiêu: Khách đặt được xe, hệ thống tự động
+tìm và "nổ cuốc" trên điện thoại tài xế gần nhất.
+STT
+Tên công việc (Task)
+Phân công
+Trạng thái
+3.1
+Logic PostGIS:
+Viết
+  query tìm danh sách tài xế đang online trong bán kính 3-5km từ điểm lấy hàng.
+BE-Lead
+Ưu tiên cao
+3.2
+Tích hợp Pusher (Realtime):
+Bắn sự
+  kiện "Có cuốc mới" đến các tài xế quét được. Lắng nghe event
+  "Tài xế A nhận cuốc".
+BE-Lead
+Ưu tiên cao
+3.3
+API Trạng thái chuyến đi: Đã nhận
+  -> Tới lấy -> Đang giao -> Hoàn thành.
+BE-01
+Song song
+3.4
+Cập nhật vị trí GPS: API/Socket
+  nhận tọa độ liên tục từ điện thoại tài xế và đẩy lên Pusher cho khách xem.
+BE-02
+Song song
+3.5
+Push Notification: Tích hợp
+  Firebase (FCM) báo Notification (Xe đã tới, Đơn bị hủy).
+BE-01
+Tiếp theo
+📍
+SPRINT 4: THANH TOÁN, CHAT
+& VẬN HÀNH (Tuần 4)
+Mục tiêu: Thu được tiền, chat/gọi điện, và
+các tính năng phục vụ Admin/Kế toán.
+STT
+Tên công việc (Task)
+Phân công
+Trạng thái
+4.1
+Ví Ký Quỹ & Hoa hồng:
+Logic nạp
+  tiền vào ví tài xế, tự động trừ % hoa hồng khi hoàn thành cuốc tiền mặt.
+BE-Lead
+Ưu tiên cao
+4.2
+Tích hợp cổng thanh toán (VNPay /
+  MoMo) cho khách hàng nạp ví hoặc trả tiền cuốc xe.
+BE-Lead
+Tiếp theo
+4.3
+API Chat trong app (Lưu trữ tin
+  nhắn vào DB, gửi qua Pusher).
+BE-01
+Song song
+4.4
+Tích hợp Stringee (Tổng đài ảo):
+  API cấp phép cuộc gọi giữa Khách và Tài xế (Giấu số).
+BE-02
+Song song
+4.5
+API Dashboard Kế toán: Thống kê
+  doanh thu, số chuyến, API xuất file Excel.
+BE-02
+Tiếp theo
+4.6
+Setup Cronjob: Tự động khóa tài xế
+  điểm thấp, Tự backup Database hàng ngày.
+BE-Lead
+Cuối cùng
+Tóm lược luồng công
+việc (Dành cho PM/Scrum Master):
+👉
+Bắt buộc hoàn thành xong
+Sprint 1 (Thiết kế Swagger)
+trong 3-5 ngày đầu tiên để Frontend không ngồi chơi. Các Sprint sau Backend và
+Frontend có thể chạy song song độc lập.

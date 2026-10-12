@@ -233,7 +233,7 @@ router.get("/cron/status", async (req: AuthRequest, res, next) => {
  * Kích hoạt ngay lập tức tác vụ quét và tự động khóa tài xế điểm thấp
  */
 router.post(
-  "/admin/cron/trigger-block-drivers",
+  "/cron/trigger-block-drivers",
   async (req: AuthRequest, res, next) => {
     try {
       const minTrips = req.body.minTrips ? Number(req.body.minTrips) : 5

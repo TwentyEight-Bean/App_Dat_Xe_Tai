@@ -124,8 +124,8 @@ export async function getAccountingDashboard(
       COUNT(CASE WHEN status IN ('ACCEPTED', 'ARRIVED_AT_PICKUP', 'IN_TRANSIT') THEN 1 END)::int AS active_trips,
       COUNT(CASE WHEN status IN ('PENDING', 'SEARCHING') THEN 1 END)::int AS pending_trips,
       COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_price ELSE 0 END), 0)::float AS gross_revenue,
-      COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN (total_price - driver_commission) ELSE 0 END), 0)::float AS commission_calc,
-      COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN driver_commission ELSE 0 END), 0)::float AS driver_earnings,
+      COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN driver_commission ELSE 0 END), 0)::float AS commission_calc,
+      COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN (total_price - driver_commission) ELSE 0 END), 0)::float AS driver_earnings,
       COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN distance_km END), 0)::float AS avg_distance
     FROM bookings
     WHERE created_at >= ${startStr}::timestamptz 
@@ -180,7 +180,7 @@ export async function getAccountingDashboard(
       payment_method,
       COUNT(*)::int AS trips,
       COALESCE(SUM(total_price), 0)::float AS revenue,
-      COALESCE(SUM(total_price - driver_commission), 0)::float AS commission
+      COALESCE(SUM(driver_commission), 0)::float AS commission
     FROM bookings
     WHERE status = 'COMPLETED'
       AND created_at >= ${startStr}::timestamptz 
@@ -258,7 +258,7 @@ export async function getAccountingDashboard(
       COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END)::int AS completed_trips,
       COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END)::int AS cancelled_trips,
       COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_price ELSE 0 END), 0)::float AS revenue,
-      COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN (total_price - driver_commission) ELSE 0 END), 0)::float AS commission
+      COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN driver_commission ELSE 0 END), 0)::float AS commission
     FROM bookings
     WHERE created_at >= ${startStr}::timestamptz 
       AND created_at <= ${endStr}::timestamptz
@@ -294,8 +294,8 @@ export async function getAccountingDashboard(
       dp.rating_avg,
       COUNT(b.id)::int AS completed_trips,
       COALESCE(SUM(b.total_price), 0)::float AS gross_revenue,
-      COALESCE(SUM(b.driver_commission), 0)::float AS driver_earnings,
-      COALESCE(SUM(b.total_price - b.driver_commission), 0)::float AS commission_paid
+      COALESCE(SUM(b.total_price - b.driver_commission), 0)::float AS driver_earnings,
+      COALESCE(SUM(b.driver_commission), 0)::float AS commission_paid
     FROM driver_profiles dp
     JOIN users u ON dp.user_id = u.id
     LEFT JOIN bookings b ON b.driver_id = dp.id 
@@ -399,8 +399,8 @@ export async function exportAccountingExcel(
       b.base_price::float,
       b.surcharge_price::float,
       b.total_price::float,
-      b.driver_commission::float,
-      (b.total_price - b.driver_commission)::float AS platform_commission,
+      b.driver_commission::float AS platform_commission,
+      (b.total_price - b.driver_commission)::float AS driver_earnings,
       b.origin_address,
       b.destination_address,
       cu.full_name AS customer_name,
@@ -839,7 +839,7 @@ export async function exportAccountingExcel(
 
     const gross = Number(t.total_price) || 0
     const comm = Number(t.platform_commission) || 0
-    const driverEarn = Number(t.driver_commission) || 0
+    const driverEarn = Number(t.driver_earnings) || 0
 
     if (t.status === "COMPLETED") {
       totalGrossSum += gross

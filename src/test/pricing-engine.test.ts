@@ -158,14 +158,14 @@ async function runPricingEngineTests() {
       surchargeEstimate.breakdown.surcharges.length === 2,
       "Áp dụng đúng 2 phụ phí đã chọn",
     )
-    // LOADING_FLOOR (50.000) + EXTRA_STOP (35.000) = 85.000
+    // LOADING_FLOOR (50.000) + EXTRA_STOP (40.000) = 90.000
     assert(
-      surchargeEstimate.breakdown.surchargeTotal === 85000,
+      surchargeEstimate.breakdown.surchargeTotal === 90000,
       `Tổng phụ phí chính xác: ${surchargeEstimate.breakdown.surchargeTotal.toLocaleString()} VNĐ`,
     )
     assert(
       surchargeEstimate.breakdown.totalPrice ===
-        surchargeEstimate.breakdown.transportPrice + 85000,
+        surchargeEstimate.breakdown.transportPrice + 90000,
       `Tổng cước thanh toán chính xác: ${surchargeEstimate.breakdown.totalPrice.toLocaleString()} VNĐ`,
     )
 
