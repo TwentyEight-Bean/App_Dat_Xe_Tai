@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react"
+
 import { Icon, Status, Avatar } from "./ui"
+
 import {
   pending as mockPending,
   activeDrivers as mockActive,
@@ -10,15 +12,21 @@ import {
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...opts,
+
     headers: {
       "Content-Type": "application/json",
-      Authorization: "Bearer DEV_ADMIN_TOKEN",
+
+      Authorization: `Bearer ${localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"}`,
+
       ...(opts?.headers ?? {}),
     },
   })
+
   const json = await res.json()
+
   if (!res.ok || json.success === false)
     throw new Error(json.message || "Lỗi API")
+
   return json.data as T
 }
 
@@ -26,26 +34,67 @@ export type Decision = { res: "approved" | "rejected" reason?: string }
 
 const docMeta = [
   { label: "CCCD", hint: "Căn cước công dân", icon: "user" as const },
+
   { label: "GPLX", hint: "Giấy phép lái xe", icon: "file" as const },
+
   { label: "Đăng ký xe", hint: "Cà vẹt phương tiện", icon: "truck" as const },
+
   {
     label: "Ảnh xác thực",
+
     hint: "Ảnh chụp khuôn mặt",
+
     icon: "shield" as const,
   },
 ]
+
 const stateLabel: Record<DocState, string> = {
   none: "Chưa kiểm tra",
+
   ok: "Hợp lệ",
+
   review: "Cần xem lại",
 }
+
 const stateTone: Record<DocState, "gray" | "green" | "amber"> = {
   none: "gray",
+
   ok: "green",
+
   review: "amber",
 }
 
-export function DocPreview({ idx, d }: { idx: number d: Pending }) {
+export function DocPreview({ idx, d }: { idx: number; d: Pending }) {
+  const customUrl = (d as any).docUrls?.[idx]
+  if (customUrl) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "230px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#0f172a",
+          borderRadius: "10px",
+          overflow: "hidden",
+          padding: "8px",
+        }}
+      >
+        <img
+          src={customUrl}
+          alt={docMeta[idx]?.label || "Ảnh tài liệu"}
+          style={{
+            maxWidth: "100%",
+            maxHeight: "100%",
+            objectFit: "contain",
+            borderRadius: "6px",
+          }}
+        />
+      </div>
+    )
+  }
+
   if (idx === 3)
     return (
       <svg
@@ -86,11 +135,15 @@ export function DocPreview({ idx, d }: { idx: number d: Pending }) {
         </text>
       </svg>
     )
+
   const theme = [
     ["#dcebf3", "#1478d4", "CĂN CƯỚC CÔNG DÂN"],
+
     ["#f3ead6", "#b57a0b", "GIẤY PHÉP LÁI XE"],
+
     ["#e4e8df", "#4a7a5c", "GIẤY ĐĂNG KÝ XE"],
   ][idx]
+
   return (
     <svg
       viewBox="0 0 360 230"
@@ -208,123 +261,239 @@ export function DocPreview({ idx, d }: { idx: number d: Pending }) {
 
 export default function Drivers({
   decided,
+
   setDecided,
+
   focus,
+
   tab,
+
   setTab,
 }: {
   decided: Record<string, Decision>
+
   setDecided: (
     f: (p: Record<string, Decision>) => Record<string, Decision>,
   ) => void
+
   focus?: string
+
   tab: "review" | "all"
+
   setTab: (t: "review" | "all") => void
 }) {
   const [dbPending, setDbPending] = useState<any[]>([])
+
   const [dbActive, setDbActive] = useState<any[]>([])
 
   useEffect(() => {
     // Fetch pending
-    apiFetch<any[]>("/api/admin/drivers?kycStatus=PENDING")
-      .then((data) => {
-        const mapped = data.map((d) => {
+    apiFetch<any>("/api/v1/admin/drivers/kyc-pending?page=1&limit=50")
+      .then((res) => {
+        const data = Array.isArray(res) ? res : (res?.data || res?.drivers || [])
+        const mapped = data.map((d: any) => {
           const nameParts = (d.driverName || "Tài xế").split(" ")
+
           const initials =
             nameParts.length > 1
               ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`
               : nameParts[0].substring(0, 2)
+
           return {
             id: d.id.split("-")[0].toUpperCase(),
+
             rawId: d.id,
+
             name: d.driverName,
+
             initials: initials.toUpperCase(),
+
             phone: d.phone,
+
             vehicle: d.vehicleType?.name || "Chưa chọn xe",
+
             plate: d.licensePlate || "Chưa có",
+
             submitted: new Date(d.submittedAt).toLocaleDateString("vi-VN"),
+
             area: "Chưa xác định",
+
             dob: "Chưa cập nhật",
+
             docs0: ["none", "none", "none", "none"] as DocState[],
+
             docNums: ["---", "---", "---", "---"],
+
             brand: "N/A",
           }
         })
+
         setDbPending(mapped)
       })
+
       .catch((e) => {
         console.error(e)
+
         setDbPending([])
       })
 
     // Fetch active
+
     apiFetch<any[]>("/api/admin/drivers?kycStatus=APPROVED")
+
       .then((data) => {
         const mapped = data.map((d) => {
           const nameParts = (d.driverName || "Tài xế").split(" ")
+
           const initials =
             nameParts.length > 1
               ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`
               : nameParts[0].substring(0, 2)
+
           return {
             id: d.id.split("-")[0].toUpperCase(),
+
+            rawId: d.id,
+
             name: d.driverName,
+
             initials: initials.toUpperCase(),
+
             phone: d.phone,
+
             vehicle: d.vehicleType?.name || "Chưa chọn xe",
+
             rating: d.ratingAvg || "5.0",
+
             trips: Math.floor(Math.random() * 500),
-            status: d.isOnline ? "Đang trực tuyến" : "Ngoại tuyến",
-            tone: d.isOnline ? "green" : "gray",
+
+            isActive: d.isActive !== false,
+
+            status:
+              d.isActive === false
+                ? "Đã khóa"
+                : d.isOnline
+                  ? "Đang trực tuyến"
+                  : "Ngoại tuyến",
+
+            tone:
+              d.isActive === false
+                ? "amber"
+                : d.isOnline
+                  ? "green"
+                  : "gray",
+
             date: new Date(d.submittedAt).toLocaleDateString("vi-VN"),
           }
         })
+
         setDbActive(mapped)
       })
+
       .catch((e) => {
         console.error(e)
+
         setDbActive([])
       })
   }, [])
 
   const pendingList = dbPending
+
   const activeList = dbActive
 
   const [sel, setSel] = useState(focus ?? pendingList[0]?.id)
+
   const [docs, setDocs] = useState<Record<string, DocState[]>>(() =>
     Object.fromEntries(pendingList.map((p) => [p.id, p.docs0])),
   )
+
   const [doc, setDoc] = useState(0)
+
   const [reject, setReject] = useState(false)
+
   const [reason, setReason] = useState("")
+
   const d = pendingList.find((p) => p.id === sel) ?? pendingList[0]
+
+  useEffect(() => {
+    if (!d?.rawId) return
+    apiFetch<any>(`/api/admin/drivers/${d.rawId}`)
+      .then((detail) => {
+        if (detail && Array.isArray(detail.documents)) {
+          const docMap: Record<string, string> = {}
+          const docNumMap: Record<string, string> = {}
+          detail.documents.forEach((docItem: any) => {
+            docMap[docItem.docType] = docItem.fileUrl
+            docNumMap[docItem.docType] = docItem.docNumber
+          })
+          const docUrls = [
+            docMap["CCCD_FRONT"] || "",
+            docMap["CCCD_BACK"] || "",
+            docMap["DRIVER_LICENSE"] || "",
+            docMap["PORTRAIT"] || docMap["VEHICLE_REGISTRATION"] || "",
+          ]
+          const docNums = [
+            docNumMap["CCCD_FRONT"] || docNumMap["CCCD_BACK"] || "---",
+            docNumMap["CCCD_BACK"] || "---",
+            docNumMap["DRIVER_LICENSE"] || detail.driverLicenseNo || "---",
+            docNumMap["VEHICLE_REGISTRATION"] || detail.licensePlate || "---",
+          ]
+          setDbPending((prev) =>
+            prev.map((item) =>
+              item.rawId === d.rawId
+                ? {
+                    ...item,
+                    docUrls,
+                    docNums,
+                    plate: detail.licensePlate || item.plate,
+                    vehicle: detail.vehicleType?.name || item.vehicle,
+                  }
+                : item,
+            ),
+          )
+        }
+      })
+      .catch((err) =>
+        console.warn("Could not load driver KYC detail:", err),
+      )
+  }, [sel, d?.rawId])
+
   const ds = docs[d?.id] || ["none", "none", "none", "none"]
+
   const dec = decided[d?.id]
+
   const checked = ds.filter((s) => s !== "none").length
+
   const waiting = pendingList.filter((p) => !decided[p.id])
+
   const next = waiting.find((p) => p.id !== d?.id)
 
   const setDocState = (s: DocState) => {
     if (!d) return
+
     setDocs((p) => ({
       ...p,
+
       [d.id]: p[d.id]?.map((x, i) => (i === doc ? s : x)) || [],
     }))
+
     if (s === "ok" && doc < 3) setDoc(doc + 1)
   }
+
   const pick = (id: string) => {
     setSel(id)
+
     setDoc(0)
   }
 
   const handleApprove = async () => {
     try {
       if ((d as any).rawId) {
-        await apiFetch(`/api/admin/drivers/${(d as any).rawId}/kyc`, {
-          method: "PATCH",
-          body: JSON.stringify({ action: "approve" }),
+        await apiFetch(`/api/v1/admin/drivers/${(d as any).rawId}/kyc/approve`, {
+          method: "POST",
         })
       }
+
       setDecided((p) => ({ ...p, [d.id]: { res: "approved" } }))
     } catch (e: any) {
       alert("Lỗi phê duyệt: " + e.message)
@@ -334,13 +503,16 @@ export default function Drivers({
   const handleReject = async () => {
     try {
       if ((d as any).rawId) {
-        await apiFetch(`/api/admin/drivers/${(d as any).rawId}/kyc`, {
-          method: "PATCH",
-          body: JSON.stringify({ action: "reject", reason }),
+        await apiFetch(`/api/v1/admin/drivers/${(d as any).rawId}/kyc/reject`, {
+          method: "POST",
+          body: JSON.stringify({ reason }),
         })
       }
+
       setDecided((p) => ({ ...p, [d.id]: { res: "rejected", reason } }))
+
       setReject(false)
+
       setReason("")
     } catch (e: any) {
       alert("Lỗi từ chối: " + e.message)
@@ -385,7 +557,9 @@ export default function Drivers({
             <ul>
               {pendingList.map((p) => {
                 const n = docs[p.id]?.filter((s) => s !== "none").length || 0
+
                 const pd = decided[p.id]
+
                 return (
                   <li key={p.id}>
                     <button
@@ -427,8 +601,11 @@ export default function Drivers({
               className="rv panel empty-state"
               style={{
                 display: "flex",
+
                 alignItems: "center",
+
                 justifyContent: "center",
+
                 color: "#666",
               }}
             >
@@ -608,18 +785,22 @@ export default function Drivers({
                   <th className="num">Số cuốc</th>
                   <th>Trạng thái</th>
                   <th>Tham gia</th>
+                  <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {pendingList
+
                   .filter(
                     (p) => !decided[p.id] || decided[p.id].res === "approved",
                   )
+
                   .map((p) => (
                     <tr
                       key={p.id}
                       onClick={() => {
                         pick(p.id)
+
                         setTab("review")
                       }}
                     >
@@ -644,6 +825,20 @@ export default function Drivers({
                         </Status>
                       </td>
                       <td className="muted">Hôm nay</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{ fontSize: "12px", padding: "3px 8px" }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            pick(p.id)
+                            setTab("review")
+                          }}
+                        >
+                          Duyệt hồ sơ
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 {activeList.map((a) => (
@@ -675,6 +870,59 @@ export default function Drivers({
                       <Status tone={a.tone}>{a.status}</Status>
                     </td>
                     <td className="muted">{a.date}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${
+                          a.isActive === false ? "btn-primary" : "btn-danger-o"
+                        }`}
+                        style={{
+                          fontSize: "12px",
+                          padding: "3px 8px",
+                          color: a.isActive === false ? undefined : "#ef4444",
+                          borderColor:
+                            a.isActive === false ? undefined : "#fca5a5",
+                        }}
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          const targetActive = a.isActive === false
+                          const msg = targetActive
+                            ? `Kích hoạt lại tài xế ${a.name}?`
+                            : `Khóa tài khoản tài xế ${a.name}? Tài xế sẽ không thể nhận cuốc xe mới.`
+                          if (!window.confirm(msg)) return
+                          try {
+                            const rawId = (a as any).rawId || a.id
+                            await apiFetch(
+                              `/api/admin/drivers/${rawId}/status`,
+                              {
+                                method: "PATCH",
+                                body: JSON.stringify({
+                                  isActive: targetActive,
+                                }),
+                              },
+                            )
+                            setDbActive((prev) =>
+                              prev.map((item) =>
+                                item.id === a.id
+                                  ? {
+                                      ...item,
+                                      isActive: targetActive,
+                                      status: targetActive
+                                        ? "Đang trực tuyến"
+                                        : "Đã khóa",
+                                      tone: targetActive ? "green" : "amber",
+                                    }
+                                  : item,
+                              ),
+                            )
+                          } catch (err: any) {
+                            alert("Lỗi cập nhật trạng thái: " + err.message)
+                          }
+                        }}
+                      >
+                        {a.isActive === false ? "Mở khóa" : "Khóa"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -1,51 +1,68 @@
 import { client } from "../db"
+
 import { ApiError } from "./errors"
+
 import { triggerNewChatMessage, triggerMessagesRead } from "./pusher"
+
 import { sendPushNotificationToUser } from "./notificationService"
 
 export type ChatMessageType = "TEXT" | "IMAGE" | "LOCATION"
 
 export interface SendMessageDto {
   bookingId: string
+
   senderUserId: string
+
   content?: string
+
   messageType?: ChatMessageType
+
   mediaUrl?: string
 }
 
 export interface GetMessagesOptions {
   page?: number
+
   limit?: number
 }
 
 /**
  * 1. CORE API: Gửi tin nhắn chat trong chuyến xe (Lưu vào DB + Bắn Pusher)
  */
+
 export async function sendChatMessage(dto: SendMessageDto) {
   const {
     bookingId,
+
     senderUserId,
+
     content,
+
     messageType = "TEXT",
+
     mediaUrl,
   } = dto
 
   if (!senderUserId) {
     throw new ApiError(401, "Yêu cầu đăng nhập để gửi tin nhắn")
   }
+
   if (!bookingId) {
     throw new ApiError(400, "Thiếu thông tin bookingId")
   }
 
   const cleanContent = content ? String(content).trim() : ""
+
   if (!cleanContent && !mediaUrl) {
     throw new ApiError(
       400,
+
       "Nội dung tin nhắn hoặc tệp đính kèm không được để trống",
     )
   }
 
   // 1. Kiểm tra chuyến xe và xác minh phân quyền người gửi
+
   const bookingRows = await client.unsafe(
     `
     SELECT 
@@ -64,6 +81,7 @@ export async function sendChatMessage(dto: SendMessageDto) {
     WHERE b.id = $1::uuid
     LIMIT 1
     `,
+
     [bookingId],
   )
 
@@ -74,41 +92,55 @@ export async function sendChatMessage(dto: SendMessageDto) {
   const booking = bookingRows[0]
 
   // Xác định vai trò của người gửi
+
   let senderRole: "CUSTOMER" | "DRIVER" | "ADMIN"
+
   let receiverUserId: string | null = null
 
   if (senderUserId === booking.customer_id) {
     senderRole = "CUSTOMER"
+
     receiverUserId = booking.driver_user_id || null
   } else if (senderUserId === booking.driver_user_id) {
     senderRole = "DRIVER"
+
     receiverUserId = booking.customer_id
   } else {
     // Kiểm tra xem có phải ADMIN không
+
     const adminCheck = await client.unsafe(
       `SELECT role FROM users WHERE id = $1::uuid LIMIT 1`,
+
       [senderUserId],
     )
+
     if (adminCheck[0]?.role === "ADMIN") {
       senderRole = "ADMIN"
+
       receiverUserId = booking.customer_id
     } else {
       throw new ApiError(
         403,
+
         "Bạn không có quyền tham gia cuộc trò chuyện trong chuyến xe này",
       )
     }
   }
 
   // 2. Lấy thông tin chi tiết người gửi (Tên, Avatar)
+
   const senderUser = await client.unsafe(
     `SELECT id, full_name, avatar_url FROM users WHERE id = $1::uuid LIMIT 1`,
+
     [senderUserId],
   )
+
   const senderName = senderUser[0]?.full_name || "Người dùng"
+
   const senderAvatar = senderUser[0]?.avatar_url || null
 
   // 3. Lưu tin nhắn vào PostgreSQL booking_messages
+
   const inserted = await client.unsafe(
     `
     INSERT INTO booking_messages (
@@ -130,11 +162,16 @@ export async function sendChatMessage(dto: SendMessageDto) {
     )
     RETURNING id, booking_id, sender_id, message_type, content, media_url, is_read, created_at
     `,
+
     [
       bookingId,
+
       senderUserId,
+
       messageType,
+
       cleanContent || null,
+
       mediaUrl || null,
     ],
   )
@@ -142,20 +179,31 @@ export async function sendChatMessage(dto: SendMessageDto) {
   const msg = inserted[0]
 
   // 4. Bắn sự kiện thời gian thực qua Pusher (Tuân thủ payload tối giản theo docs/note.txt)
+
   await triggerNewChatMessage(bookingId, {
     messageId: msg.id,
+
     bookingId: msg.booking_id,
+
     senderId: msg.sender_id,
+
     senderRole,
+
     senderName,
+
     senderAvatar,
+
     messageType: msg.message_type,
+
     content: msg.content || "",
+
     mediaUrl: msg.media_url,
+
     createdAt: msg.created_at,
   })
 
   // 5. Gửi Push Notification (FCM) ngầm đến người nhận
+
   if (receiverUserId) {
     const notifyBody =
       messageType === "IMAGE"
@@ -168,11 +216,16 @@ export async function sendChatMessage(dto: SendMessageDto) {
 
     sendPushNotificationToUser(receiverUserId, {
       title: `💬 ${senderName} đã nhắn cho bạn`,
+
       body: notifyBody,
+
       data: {
         type: "NEW_CHAT_MESSAGE",
+
         bookingId,
+
         bookingCode: booking.booking_code,
+
         messageId: msg.id,
       },
     }).catch((err) => console.warn("FCM chat message error:", err.message))
@@ -180,16 +233,27 @@ export async function sendChatMessage(dto: SendMessageDto) {
 
   return {
     id: msg.id,
+
     bookingId: msg.booking_id,
+
     bookingCode: booking.booking_code,
+
     senderId: msg.sender_id,
+
     senderRole,
+
     senderName,
+
     senderAvatar,
+
     messageType: msg.message_type,
+
     content: msg.content,
+
     mediaUrl: msg.media_url,
+
     isRead: msg.is_read,
+
     createdAt: msg.created_at,
   }
 }
@@ -197,19 +261,24 @@ export async function sendChatMessage(dto: SendMessageDto) {
 /**
  * 2. Lấy toàn bộ lịch sử tin nhắn của chuyến xe (Phân trang & Tự động đánh dấu đã đọc)
  */
+
 export async function getBookingChatMessages(
   bookingId: string,
+
   currentUserId: string,
+
   options?: GetMessagesOptions,
 ) {
   if (!currentUserId) {
     throw new ApiError(401, "Yêu cầu đăng nhập")
   }
+
   if (!bookingId) {
     throw new ApiError(400, "Thiếu thông tin bookingId")
   }
 
   // 1. Kiểm tra quyền truy cập chuyến xe
+
   const bookingRows = await client.unsafe(
     `
     SELECT 
@@ -230,6 +299,7 @@ export async function getBookingChatMessages(
     WHERE b.id = $1::uuid
     LIMIT 1
     `,
+
     [bookingId],
   )
 
@@ -240,6 +310,7 @@ export async function getBookingChatMessages(
   const booking = bookingRows[0]
 
   // Xác minh quyền truy cập
+
   const isParticipant =
     currentUserId === booking.customer_id ||
     currentUserId === booking.driver_user_id
@@ -247,21 +318,27 @@ export async function getBookingChatMessages(
   if (!isParticipant) {
     const adminCheck = await client.unsafe(
       `SELECT role FROM users WHERE id = $1::uuid LIMIT 1`,
+
       [currentUserId],
     )
+
     if (adminCheck[0]?.role !== "ADMIN") {
       throw new ApiError(
         403,
+
         "Bạn không có quyền xem cuộc trò chuyện của chuyến xe này",
       )
     }
   }
 
   const page = Math.max(1, Number(options?.page || 1))
+
   const limit = Math.min(100, Math.max(1, Number(options?.limit || 50)))
+
   const offset = (page - 1) * limit
 
   // 2. Tự động đánh dấu đã đọc các tin nhắn gửi đến currentUserId
+
   const updatedRead = await client.unsafe(
     `
     UPDATE booking_messages
@@ -271,6 +348,7 @@ export async function getBookingChatMessages(
       AND is_read = false
     RETURNING id
     `,
+
     [bookingId, currentUserId],
   )
 
@@ -281,13 +359,17 @@ export async function getBookingChatMessages(
   }
 
   // 3. Đếm tổng số tin nhắn
+
   const countRes = await client.unsafe(
     `SELECT count(*) as total FROM booking_messages WHERE booking_id = $1::uuid`,
+
     [bookingId],
   )
+
   const total = parseInt(countRes[0]?.total || "0", 10)
 
   // 4. Lấy danh sách tin nhắn (Đã được cập nhật is_read)
+
   const rows = await client.unsafe(
     `
     SELECT 
@@ -312,11 +394,16 @@ export async function getBookingChatMessages(
     ORDER BY bm.created_at ASC
     LIMIT $4 OFFSET $5
     `,
+
     [
       bookingId,
+
       booking.customer_id,
+
       booking.driver_user_id || "00000000-0000-0000-0000-000000000000",
+
       limit,
+
       offset,
     ],
   )
@@ -324,39 +411,63 @@ export async function getBookingChatMessages(
   return {
     booking: {
       id: booking.id,
+
       bookingCode: booking.booking_code,
+
       status: booking.status,
+
       customer: {
         id: booking.customer_id,
+
         name: booking.customer_name,
+
         avatarUrl: booking.customer_avatar,
       },
+
       driver: booking.driver_user_id
         ? {
             id: booking.driver_user_id,
+
             name: booking.driver_name,
+
             avatarUrl: booking.driver_avatar,
           }
         : null,
     },
+
     pagination: {
       page,
+
       limit,
+
       total,
+
       totalPages: Math.ceil(total / limit),
     },
+
     messages: rows.map((r: any) => ({
       id: r.id,
+
       bookingId: r.booking_id,
+
       senderId: r.sender_id,
+
       senderRole: r.sender_role,
+
       senderName: r.sender_name,
+
       senderAvatar: r.sender_avatar,
+
       messageType: r.message_type,
+
       content: r.content,
+
       mediaUrl: r.media_url,
+
       isRead: r.is_read,
+
       isMe: r.sender_id === currentUserId,
+
       createdAt: r.created_at,
     })),
   }
@@ -365,8 +476,10 @@ export async function getBookingChatMessages(
 /**
  * 3. Đánh dấu tất cả tin nhắn trong chuyến xe là đã đọc
  */
+
 export async function markBookingChatRead(
   bookingId: string,
+
   currentUserId: string,
 ) {
   if (!currentUserId || !bookingId) {
@@ -380,6 +493,7 @@ export async function markBookingChatRead(
     WHERE booking_id = $1::uuid AND sender_id != $2::uuid AND is_read = false
     RETURNING id
     `,
+
     [bookingId, currentUserId],
   )
 
@@ -389,7 +503,9 @@ export async function markBookingChatRead(
 
   return {
     success: true,
+
     updatedCount: updated.length,
+
     message: "Đã đánh dấu đọc tin nhắn thành công",
   }
 }
@@ -397,12 +513,14 @@ export async function markBookingChatRead(
 /**
  * 4. Lấy danh sách các cuộc trò chuyện gần đây của người dùng
  */
+
 export async function getUserChatConversations(userId: string) {
   if (!userId) {
     throw new ApiError(401, "Yêu cầu đăng nhập")
   }
 
   // Tìm các chuyến xe mà user là khách hoặc tài xế
+
   const rows = await client.unsafe(
     `
     SELECT 
@@ -443,38 +561,54 @@ export async function getUserChatConversations(userId: string) {
     ORDER BY COALESCE(last_msg.created_at, b.created_at) DESC
     LIMIT 30
     `,
+
     [userId],
   )
 
   return rows.map((r: any) => {
     const isCustomer = r.customer_id === userId
+
     const partner = isCustomer
       ? {
           name: r.driver_name || "Tài xế đang nhận chuyến",
+
           avatarUrl: r.driver_avatar,
+
           role: "DRIVER",
+
           licensePlate: r.license_plate,
         }
       : {
           name: r.customer_name,
+
           avatarUrl: r.customer_avatar,
+
           role: "CUSTOMER",
+
           licensePlate: null,
         }
 
     return {
       bookingId: r.booking_id,
+
       bookingCode: r.booking_code,
+
       bookingStatus: r.booking_status,
+
       partner,
+
       vehicleTypeName: r.vehicle_type_name,
+
       lastMessage: r.last_message_content
         ? {
             content: r.last_message_content,
+
             type: r.last_message_type,
+
             time: r.last_message_time,
           }
         : null,
+
       unreadCount: Number(r.unread_count || 0),
     }
   })

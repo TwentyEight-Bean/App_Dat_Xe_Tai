@@ -1,30 +1,43 @@
 import { useState, useEffect } from "react"
+
 import { Icon, Status, Avatar } from "./ui"
+
 import { Drawer } from "./Orders"
+
 import { users as mockUsers, vnd, type UserRow, type Tone } from "./data"
 
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...opts,
+
     headers: {
       "Content-Type": "application/json",
-      Authorization: "Bearer DEV_ADMIN_TOKEN",
+
+      Authorization: `Bearer ${localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"}`,
+
       ...(opts?.headers ?? {}),
     },
   })
+
   const json = await res.json()
+
   if (!res.ok || json.success === false)
     throw new Error(json.message || "Lỗi API")
+
   return json.data as T
 }
 
 function UserDrawer({
   u,
+
   onClose,
+
   openOrder,
 }: {
   u: UserRow
+
   onClose: () => void
+
   openOrder: (id: string) => void
 }) {
   return (
@@ -146,16 +159,22 @@ export default function Users({
   openOrder: (id: string) => void
 }) {
   const [q, setQ] = useState("")
+
   const [sel, setSel] = useState<string | null>(null)
+
   const [dbUsers, setDbUsers] = useState<UserRow[]>([])
+
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     apiFetch<any[]>("/api/admin/users")
+
       .then((data) => {
         const mapped: UserRow[] = data.map((u, i) => {
           // Fallback or generate initials
+
           const nameParts = (u.fullName || "Khách").split(" ")
+
           const initials =
             nameParts.length > 1
               ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`
@@ -163,37 +182,59 @@ export default function Users({
 
           return {
             id: u.id.split("-")[0].toUpperCase(),
+
             name: u.fullName || "Khách",
+
             initials: initials.toUpperCase(),
+
             phone: u.phone,
+
             email: u.email || "",
+
             orders: Math.floor(Math.random() * 50),
+
             spent: Math.floor(Math.random() * 5000000),
+
             last: "Hôm nay",
+
             lastId: "DH1000",
+
             status: u.status === "ACTIVE" ? "Hoạt động" : "Tạm khóa",
+
             tone: u.status === "ACTIVE" ? "green" : "red",
+
             joined: new Date(u.createdAt).toLocaleDateString("vi-VN"),
+
             recent: [],
+
             support: [],
           }
         })
+
         setDbUsers(mapped)
+
         setLoading(false)
       })
+
       .catch((e) => {
         console.error(e)
+
         setDbUsers(mockUsers) // fallback to mock
+
         setLoading(false)
       })
   }, [])
 
   const rows = dbUsers.filter((u) =>
     `${u.name} ${u.phone} ${u.email} ${u.id}`
+
       .toLowerCase()
+
       .includes(q.toLowerCase()),
   )
+
   const active = dbUsers.find((u) => u.id === sel)
+
   return (
     <div className={`page split ${active ? "drawer-open" : ""}`}>
       <div className="page-head">

@@ -5,71 +5,187 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react"
+import { uploadImageWithFallback } from "./lib/cloudinaryClient"
+import {
+  registerDeviceTokenToServer,
+  removeDeviceTokenFromServer,
+} from "./lib/deviceTokenClient"
+import TopUpModal from "./TopUpModal"
 
 /* ---------- tiny shared store ---------- */
 
 function makeStore<T>(initial: T) {
   let value = initial
+
   const listeners = new Set<() => void>()
+
   return {
     use: () =>
       useSyncExternalStore(
         (l) => {
           listeners.add(l)
+
           return () => listeners.delete(l)
         },
+
         () => value,
       ),
+
     set: (next: T) => {
       value = next
+
       listeners.forEach((l) => l())
     },
+
     get: () => value,
   }
 }
 
 export type SavedAddress = {
   id: number
+
   realId?: string
+
   type: "home" | "work" | "other"
+
   name: string
+
   address: string
+
+  isDefault?: boolean
 }
 
 const typeName = { home: "Nhà", work: "Công ty", other: "Khác" } as const
+
 const labelOf = (a: SavedAddress) =>
   a.type === "other" && a.name.trim() ? a.name.trim() : typeName[a.type]
 
 const addressStore = makeStore<SavedAddress[]>([
   {
     id: 1,
+
     type: "home",
+
     name: "",
+
     address: "Chung cư Sunrise City, 27 Nguyễn Hữu Thọ, Q.7",
   },
+
   {
     id: 2,
+
     type: "work",
+
     name: "",
+
     address: "Tòa nhà Bitexco, 2 Hải Triều, Q.1",
   },
+
   {
     id: 3,
+
     type: "other",
+
     name: "Kho hàng",
+
     address: "55 Kinh Dương Vương, Bình Tân",
   },
 ])
+
 export const useAddresses = addressStore.use
 
-const profileStore = makeStore({
+export const profileStore = makeStore({
   name: "Minh Anh",
+
   phone: "0912 345 678",
+
   email: "minhanh@example.com",
+
   photo: "",
 })
-const payStore = makeStore<"cash" | "wallet">("cash")
+
+export const useProfile = profileStore.use
+
+// Đồng bộ thông tin người dùng từ Backend qua API GET /api/v1/auth/me (Sprint 1: Task 1.4)
+export const syncUserProfileFromApi = async () => {
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
+  if (!token) return null
+
+  try {
+    const res = await fetch("/api/v1/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    const data = await res.json()
+
+    if (res.ok && data.success && data.user) {
+      const currentProfile = profileStore.get()
+      profileStore.set({
+        ...currentProfile,
+        phone: data.user.phone || currentProfile.phone,
+        name:
+          data.user.fullName ||
+          (data.user.phone
+            ? `Khách hàng (${data.user.phone.slice(-4)})`
+            : currentProfile.name),
+        photo: data.user.avatarUrl || currentProfile.photo,
+      })
+      return data.user
+    } else if (res.status === 401) {
+      // Token không hợp lệ hoặc đã hết hạn
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("auth_token")
+        localStorage.removeItem("user_phone")
+      }
+      return null
+    }
+  } catch (err) {
+    console.warn("Could not sync user profile:", err)
+  }
+  return null
+}
+
+// Đồng bộ danh bạ sổ địa chỉ từ Backend qua API GET /api/v1/customer/addresses
+export const syncAddressesFromApi = async () => {
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
+  if (!token) return
+
+  try {
+    const res = await fetch("/api/v1/customer/addresses", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    const data = await res.json()
+
+    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+      addressStore.set(
+        data.data.map((item: any, idx: number) => ({
+          id: idx + 1,
+          realId: item.id,
+          type: item.title?.toLowerCase().includes("nhà")
+            ? "home"
+            : item.title?.toLowerCase().includes("công ty")
+              ? "work"
+              : "other",
+          name: item.title || "",
+          address: item.addressText,
+          isDefault: Boolean(item.isDefault),
+        })),
+      )
+    }
+  } catch (err) {
+    console.warn("Could not sync addresses:", err)
+  }
+}
+
+const payStore = makeStore<"cash" | "wallet" | "vnpay" | "momo">("cash")
+
 const notifStore = makeStore({ orders: true, messages: true, promos: false })
+
 const privacyStore = makeStore({ location: true, lock: false })
 
 /* ---------- icons ---------- */
@@ -78,97 +194,120 @@ type AI = "back" | "chevron" | "user" | "pin" | "card" | "tag" | "help" | "phone
 
 function AIcon({
   name,
+
   size = 20,
+
   strokeWidth = 1.8,
 }: {
   name: AI
+
   size?: number
+
   strokeWidth?: number
 }) {
   const paths: Record<AI, ReactNode> = {
     back: <path d="m15 18-6-6 6-6" />,
+
     chevron: <path d="m9 18 6-6-6-6" />,
+
     user: (
       <>
         <circle cx="12" cy="8" r="4" />
         <path d="M4.8 21a7.2 7.2 0 0 1 14.4 0" />
       </>
     ),
+
     pin: (
       <>
         <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
         <circle cx="12" cy="10" r="2.5" />
       </>
     ),
+
     card: (
       <>
         <rect height="14" rx="2.5" width="19" x="2.5" y="5" />
         <path d="M2.5 10h19M6.5 15h4" />
       </>
     ),
+
     tag: (
       <>
         <path d="M3 12V4h8l10 10-8 8L3 12Z" />
         <circle cx="7.5" cy="8.5" r="1.2" />
       </>
     ),
+
     help: (
       <>
         <circle cx="12" cy="12" r="9" />
         <path d="M9.5 9.500a2.500 2.500 0 1 1 3.500 2.300c-.7.400-1 .9-1 1.700M12 17h.01" />
       </>
     ),
+
     phone: (
       <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z" />
     ),
+
     bell: (
       <>
         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
         <path d="M10 21h4" />
       </>
     ),
+
     shield: (
       <path d="M12 3 5 6v6c0 4.500 3 7.500 7 9 4-1.500 7-4.500 7-9V6l-7-3Z" />
     ),
+
     logout: (
       <>
         <path d="M10 4H5v16h5" />
         <path d="M16 8l4 4-4 4M20 12H9" />
       </>
     ),
+
     pencil: <path d="M4 20h4L19 9l-4-4L4 16v4Zm9.500-13.500 4 4" />,
+
     home: (
       <>
         <path d="m3 10 9-7 9 7" />
         <path d="M5 9v11h14V9M9 20v-6h6v6" />
       </>
     ),
+
     building: (
       <>
         <path d="M5 21V4h9v17M14 10h5v11M3 21h18" />
         <path d="M8.500 8h2M8.500 12h2M8.500 16h2" />
       </>
     ),
+
     plus: <path d="M12 5v14M5 12h14" />,
+
     check: <path d="m5 12 4 4L19 6" />,
+
     camera: (
       <>
         <path d="M4 8h3l1.500-2h7L17 8h3v11H4z" />
         <circle cx="12" cy="13" r="3.500" />
       </>
     ),
+
     mail: (
       <>
         <rect height="15" rx="2.500" width="19" x="2.500" y="4.500" />
         <path d="m3 7 9 6 9-6" />
       </>
     ),
+
     cash: (
       <>
         <rect height="12" rx="2" width="19" x="2.500" y="6" />
         <circle cx="12" cy="12" r="2.500" />
       </>
     ),
+
     wallet: (
       <>
         <path d="M4 7a2 2 0 0 1 2-2h12v4" />
@@ -176,16 +315,19 @@ function AIcon({
         <circle cx="16.500" cy="14.500" r="1.200" />
       </>
     ),
+
     box: (
       <>
         <path d="m12 3 8 4.500v9L12 21l-8-4.500v-9L12 3Z" />
         <path d="m4 7.500 8 4.500 8-4.500M12 12v9" />
       </>
     ),
+
     chat: (
       <path d="M21 12a8 8 0 0 1-9 8 9 9 0 0 1-4-.9L3 21l1.8-4A8 8 0 1 1 21 12Z" />
     ),
   }
+
   return (
     <svg
       aria-hidden="true"
@@ -226,13 +368,19 @@ function SubHead({ title, onBack }: { title: string onBack: () => void }) {
 
 function Row({
   icon,
+
   label,
+
   value,
+
   onClick,
 }: {
   icon: AI
+
   label: string
+
   value?: string
+
   onClick: () => void
 }) {
   return (
@@ -251,13 +399,19 @@ function Row({
 
 function Switch({
   on,
+
   onChange,
+
   label,
+
   hint,
 }: {
   on: boolean
+
   onChange: (v: boolean) => void
+
   label: string
+
   hint: string
 }) {
   return (
@@ -296,89 +450,115 @@ export type OrderOption = { id: string label: string }
 
 export default function AccountScreen({
   supportOrder,
+
   orderOptions,
+
   canUseAddress,
+
   onUseAddress,
+
   onBackToOrder,
+
   onNavHidden,
 }: {
   supportOrder: string | null
+
   orderOptions: OrderOption[]
+
   canUseAddress: boolean
+
   onUseAddress: (address: string) => void
+
   onBackToOrder: () => void
+
   onNavHidden: (hidden: boolean) => void
 }) {
   const [page, setPage] = useState<Page>(supportOrder ? "help" : "home")
+
   const [editId, setEditId] = useState<number | null>(null)
+
   const [toast, setToast] = useState("")
+
   const [confirmOut, setConfirmOut] = useState(false)
+
+  const [deviceNotifEnabled, setDeviceNotifEnabled] = useState(() =>
+    Boolean(
+      typeof window !== "undefined" &&
+        localStorage.getItem("device_notif_enabled") === "true",
+    ),
+  )
+  const [isUpdatingDeviceToken, setIsUpdatingDeviceToken] = useState(false)
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setDeviceNotifEnabled(
+        localStorage.getItem("device_notif_enabled") === "true",
+      )
+    }
+    window.addEventListener("device-token-updated", handleUpdate)
+    return () => window.removeEventListener("device-token-updated", handleUpdate)
+  }, [])
+
   const [focusContact, setFocusContact] = useState(false)
+
   const [isLoggedIn, setIsLoggedIn] = useState(
     Boolean(
       typeof window !== "undefined" && localStorage.getItem("auth_token"),
     ),
   )
 
-  const syncAddressesFromApi = async () => {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
-    if (!token) return
-    try {
-      const res = await fetch("/api/v1/customer/addresses", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
-      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-        addressStore.set(
-          data.data.map((item: any, idx: number) => ({
-            id: idx + 1,
-            realId: item.id,
-            type: item.title?.toLowerCase().includes("nhà")
-              ? "home"
-              : item.title?.toLowerCase().includes("công ty")
-                ? "work"
-                : "other",
-            name: item.title || "",
-            address: item.addressText,
-          })),
-        )
-      }
-    } catch (err) {
-      console.warn("Could not sync addresses:", err)
-    }
-  }
-
   useEffect(() => {
-    syncAddressesFromApi()
+    if (isLoggedIn) {
+      syncAddressesFromApi()
+      syncUserProfileFromApi().then((user) => {
+        if (!user && !localStorage.getItem("auth_token")) {
+          setIsLoggedIn(false)
+        }
+      })
+    }
   }, [isLoggedIn])
 
+
   const profile = profileStore.use()
+
   const addresses = addressStore.use()
+
   const pay = payStore.use()
+
   const notif = notifStore.use()
+
   const privacy = privacyStore.use()
 
   useEffect(() => {
     onNavHidden(
       page === "profile" || page === "addressEdit" || page === "loginOtp",
     )
+
     return () => onNavHidden(false)
   }, [page])
 
   useEffect(() => {
     if (!toast) return
+
     const t = window.setTimeout(() => setToast(""), 2200)
+
     return () => window.clearTimeout(t)
   }, [toast])
 
   const go = (p: Page) => setPage(p)
+
   const initials = profile.name
+
     .trim()
+
     .split(/\s+/)
+
     .map((w) => w[0])
+
     .join("")
+
     .slice(0, 2)
+
     .toUpperCase()
 
   const Avatar = ({ big }: { big?: boolean }) => (
@@ -388,6 +568,7 @@ export default function AccountScreen({
   )
 
   /* ----- home ----- */
+
   if (page === "home") {
     return (
       <section className="orders-screen account-screen">
@@ -427,7 +608,15 @@ export default function AccountScreen({
             icon="card"
             label="Phương thức thanh toán"
             onClick={() => go("payment")}
-            value={pay === "cash" ? "Tiền mặt" : "Ví điện tử"}
+            value={
+              pay === "cash"
+                ? "Tiền mặt"
+                : pay === "vnpay"
+                  ? "VNPay"
+                  : pay === "momo"
+                    ? "MoMo"
+                    : "Ví điện tử"
+            }
           />
         </ul>
 
@@ -453,6 +642,7 @@ export default function AccountScreen({
             label="Liên hệ hỗ trợ"
             onClick={() => {
               setFocusContact(true)
+
               go("help")
             }}
           />
@@ -469,6 +659,13 @@ export default function AccountScreen({
             icon="shield"
             label="Quyền riêng tư & bảo mật"
             onClick={() => go("privacy")}
+          />
+          <Row
+            icon="building"
+            label="Cổng Quản trị viên (FastDrop Control Center)"
+            onClick={() => {
+              window.location.hash = "admin"
+            }}
           />
         </ul>
 
@@ -503,12 +700,19 @@ export default function AccountScreen({
                 </button>
                 <button
                   className="secondary-button"
-                  onClick={() => {
+                  onClick={async () => {
                     setConfirmOut(false)
+
+                    // Gọi API DELETE /api/v1/auth/device-token để thu hồi token thiết bị (Sprint 1: Task 1.4)
+                    await removeDeviceTokenFromServer()
+
                     if (typeof window !== "undefined") {
                       localStorage.removeItem("auth_token")
+                      localStorage.removeItem("user_phone")
                     }
+
                     setIsLoggedIn(false)
+
                     go("signedout")
                   }}
                   type="button"
@@ -551,6 +755,7 @@ export default function AccountScreen({
         onBack={() => go("home")}
         onSaved={() => {
           setToast("Đã lưu thay đổi")
+
           go("home")
         }}
         toast={toast}
@@ -578,23 +783,92 @@ export default function AccountScreen({
                 />
               </span>
               <span className="addr-copy">
-                <strong>{labelOf(a)}</strong>
+                <strong style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  {labelOf(a)}
+                  {a.isDefault && (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        background: "#dcfce7",
+                        color: "#166534",
+                        padding: "1px 6px",
+                        borderRadius: "4px",
+                        fontWeight: "600",
+                      }}
+                    >
+                      Mặc định
+                    </span>
+                  )}
+                </strong>
                 <small>{a.address}</small>
-                {canUseAddress && (
-                  <button
-                    className="text-button"
-                    onClick={() => onUseAddress(a.address)}
-                    type="button"
-                  >
-                    Giao đến đây
-                  </button>
-                )}
+                <div style={{ display: "flex", gap: "10px", marginTop: "2px", alignItems: "center" }}>
+                  {canUseAddress && (
+                    <button
+                      className="text-button"
+                      onClick={() => onUseAddress(a.address)}
+                      type="button"
+                    >
+                      Giao đến đây
+                    </button>
+                  )}
+                  {!a.isDefault && (
+                    <button
+                      className="text-button"
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--brand-600, #2563eb)",
+                        padding: 0,
+                      }}
+                      onClick={async () => {
+                        const token =
+                          typeof window !== "undefined"
+                            ? localStorage.getItem("auth_token")
+                            : null
+                        if (token && a.realId) {
+                          try {
+                            const res = await fetch(
+                              `/api/v1/customer/addresses/${a.realId}/default`,
+                              {
+                                method: "PATCH",
+                                headers: { Authorization: `Bearer ${token}` },
+                              },
+                            )
+                            const data = await res.json()
+                            if (data.success) {
+                              addressStore.set(
+                                addresses.map((item) => ({
+                                  ...item,
+                                  isDefault: item.id === a.id,
+                                })),
+                              )
+                              setToast("Đã đặt làm địa chỉ mặc định")
+                              return
+                            }
+                          } catch (err) {
+                            console.warn("Could not set default address:", err)
+                          }
+                        }
+                        addressStore.set(
+                          addresses.map((item) => ({
+                            ...item,
+                            isDefault: item.id === a.id,
+                          })),
+                        )
+                        setToast("Đã đặt làm địa chỉ mặc định")
+                      }}
+                      type="button"
+                    >
+                      Đặt làm mặc định
+                    </button>
+                  )}
+                </div>
               </span>
               <button
                 aria-label={`Sửa địa chỉ ${labelOf(a)}`}
                 className="acc-edit"
                 onClick={() => {
                   setEditId(a.id)
+
                   go("addressEdit")
                 }}
                 type="button"
@@ -608,6 +882,7 @@ export default function AccountScreen({
           className="secondary-button acc-add"
           onClick={() => {
             setEditId(null)
+
             go("addressEdit")
           }}
           type="button"
@@ -627,6 +902,7 @@ export default function AccountScreen({
         onBack={() => go("addresses")}
         onDone={(msg) => {
           setToast(msg)
+
           go("addresses")
         }}
       />
@@ -634,57 +910,16 @@ export default function AccountScreen({
   }
 
   if (page === "payment") {
-    const methods = [
-      {
-        id: "cash" as const,
-        icon: "cash" as AI,
-        name: "Tiền mặt",
-        hint: "Trả cho tài xế khi nhận hàng",
-      },
-      {
-        id: "wallet" as const,
-        icon: "wallet" as AI,
-        name: "Ví điện tử",
-        hint: "Đã liên kết · ••• 678",
-      },
-    ]
     return (
-      <section className="orders-screen account-screen">
-        <SubHead onBack={() => go("home")} title="Phương thức thanh toán" />
-        <ul className="acc-list">
-          {methods.map((m) => (
-            <li key={m.id}>
-              <button
-                aria-pressed={pay === m.id}
-                className="acc-row"
-                onClick={() => {
-                  payStore.set(m.id)
-                  setToast("Đã đổi phương thức mặc định")
-                }}
-                type="button"
-              >
-                <span className="acc-row-icon">
-                  <AIcon name={m.icon} size={19} />
-                </span>
-                <span className="acc-row-text">
-                  <strong>
-                    {m.name}
-                    {pay === m.id && <em className="acc-default">Mặc định</em>}
-                  </strong>
-                  <small>{m.hint}</small>
-                </span>
-                <span className={`acc-radio ${pay === m.id ? "on" : ""}`}>
-                  <i />
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className="acc-note">
-          Phương thức mặc định sẽ được chọn sẵn cho các đơn mới.
-        </p>
-        {toast && <Toast text={toast} />}
-      </section>
+      <PaymentPageWithHistory
+        onBack={() => go("home")}
+        onSelect={(selectedMethod) => {
+          payStore.set(selectedMethod)
+          setToast("Đã đổi phương thức thanh toán mặc định")
+        }}
+        pay={pay}
+        toast={toast}
+      />
     )
   }
 
@@ -693,6 +928,49 @@ export default function AccountScreen({
       <section className="orders-screen account-screen">
         <SubHead onBack={() => go("home")} title="Thông báo" />
         <ul className="acc-list">
+          <li style={{ padding: "12px 14px", background: "var(--brand-50, #eaf5ff)", borderRadius: "14px", marginBottom: "12px", border: "1px solid var(--brand-200, #a9d2f7)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+              <div style={{ flex: 1 }}>
+                <strong style={{ fontSize: "13px", color: "var(--ink-900, #17212b)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>🔔</span> Thông báo đẩy thiết bị (FCM)
+                </strong>
+                <small style={{ color: "var(--ink-500, #697580)", display: "block", marginTop: "2px", fontSize: "11px", lineHeight: 1.35 }}>
+                  {deviceNotifEnabled
+                    ? "Đã bật: Nhận thông báo nổi màn hình khi tài xế tới"
+                    : "Chưa bật: Cho phép gửi thông báo khi tài xế nhận chuyến"}
+                </small>
+              </div>
+              <button
+                type="button"
+                disabled={isUpdatingDeviceToken}
+                className={deviceNotifEnabled ? "secondary-button compact" : "primary-button compact"}
+                style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "10px", whiteSpace: "nowrap" }}
+                onClick={async () => {
+                  setIsUpdatingDeviceToken(true)
+                  if (!deviceNotifEnabled) {
+                    const res = await registerDeviceTokenToServer()
+                    if (res.success) {
+                      setDeviceNotifEnabled(true)
+                      setToast("Đã kích hoạt thông báo đẩy trên thiết bị!")
+                    } else {
+                      setToast(res.message)
+                    }
+                  } else {
+                    const res = await removeDeviceTokenFromServer()
+                    setDeviceNotifEnabled(false)
+                    setToast(res.message)
+                  }
+                  setIsUpdatingDeviceToken(false)
+                }}
+              >
+                {isUpdatingDeviceToken
+                  ? "Đang lưu..."
+                  : deviceNotifEnabled
+                    ? "Tắt"
+                    : "Bật ngay"}
+              </button>
+            </div>
+          </li>
           <Switch
             hint="Tài xế nhận đơn, đã lấy hàng, đã giao"
             label="Trạng thái đơn hàng"
@@ -712,9 +990,11 @@ export default function AccountScreen({
             onChange={(v) => notifStore.set({ ...notif, promos: v })}
           />
         </ul>
+        {toast && <Toast text={toast} />}
       </section>
     )
   }
+
 
   if (page === "privacy") {
     return (
@@ -746,12 +1026,17 @@ export default function AccountScreen({
           {[
             {
               code: "GIAO30",
+
               text: "Giảm 30.000đ cho đơn từ 150.000đ",
+
               exp: "Hết hạn 30/10",
             },
+
             {
               code: "VANMOI",
+
               text: "Giảm 15% cuốc Xe van đầu tháng",
+
               exp: "Hết hạn 05/11",
             },
           ].map((o) => (
@@ -777,15 +1062,20 @@ export default function AccountScreen({
         onBack={() => go("home")}
         onSuccess={(phone, token) => {
           setIsLoggedIn(true)
+
           profileStore.set({
             ...profile,
+
             phone: phone,
+
             name:
               profile.name && profile.name !== "Minh Anh"
                 ? profile.name
                 : `Khách hàng (${phone.slice(-4)})`,
           })
+
           setToast("Đăng nhập OTP thành công!")
+
           go("home")
         }}
       />
@@ -806,42 +1096,61 @@ export default function AccountScreen({
 
 function LoginOtpPage({
   onBack,
+
   onSuccess,
 }: {
   onBack: () => void
+
   onSuccess: (phone: string, token: string) => void
 }) {
   const [step, setStep] = useState<"phone" | "otp">("phone")
+
   const [phone, setPhone] = useState("0988888888")
+
   const [otp, setOtp] = useState("123456")
+
   const [loading, setLoading] = useState(false)
+
   const [error, setError] = useState("")
+
   const [countdown, setCountdown] = useState(60)
+
   const [infoMsg, setInfoMsg] = useState("")
 
   useEffect(() => {
     let timer: any
+
     if (step === "otp" && countdown > 0) {
       timer = setInterval(() => setCountdown((c) => c - 1), 1000)
     }
+
     return () => clearInterval(timer)
   }, [step, countdown])
 
   const handleRequestOtp = async () => {
     setError("")
+
     setLoading(true)
+
     try {
       const res = await fetch("/api/v1/auth/request-otp", {
         method: "POST",
+
         headers: { "Content-Type": "application/json" },
+
         body: JSON.stringify({ phone }),
       })
+
       const data = await res.json()
+
       if (!data.success) {
         throw new Error(data.message || "Gửi mã OTP thất bại")
       }
+
       setStep("otp")
+
       setCountdown(60)
+
       setInfoMsg("Mã OTP đã gửi! Mã thử nghiệm miễn phí: 123456")
     } catch (err: any) {
       setError(err.message || "Không thể gửi OTP")
@@ -852,21 +1161,30 @@ function LoginOtpPage({
 
   const handleVerifyOtp = async () => {
     setError("")
+
     setLoading(true)
+
     try {
       const res = await fetch("/api/v1/auth/verify-otp", {
         method: "POST",
+
         headers: { "Content-Type": "application/json" },
+
         body: JSON.stringify({ phone, otp }),
       })
+
       const data = await res.json()
+
       if (!data.success) {
         throw new Error(data.message || "Xác thực OTP thất bại")
       }
+
       if (typeof window !== "undefined") {
         localStorage.setItem("auth_token", data.token)
+
         localStorage.setItem("user_phone", data.user.phone)
       }
+
       onSuccess(data.user.phone, data.token)
     } catch (err: any) {
       setError(err.message || "Xác thực OTP không thành công")
@@ -883,13 +1201,21 @@ function LoginOtpPage({
           <div
             style={{
               width: "56px",
+
               height: "56px",
+
               borderRadius: "28px",
+
               background: "#eff6ff",
+
               color: "#2563eb",
+
               display: "inline-flex",
+
               alignItems: "center",
+
               justifyContent: "center",
+
               marginBottom: "12px",
             }}
           >
@@ -911,11 +1237,17 @@ function LoginOtpPage({
           <div
             style={{
               background: "#fef2f2",
+
               color: "#b91c1c",
+
               border: "1px solid #fecaca",
+
               padding: "10px 14px",
+
               borderRadius: "10px",
+
               fontSize: "13px",
+
               marginBottom: "16px",
             }}
           >
@@ -927,11 +1259,17 @@ function LoginOtpPage({
           <div
             style={{
               background: "#f0fdf4",
+
               color: "#15803d",
+
               border: "1px solid #bbf7d0",
+
               padding: "10px 14px",
+
               borderRadius: "10px",
+
               fontSize: "13px",
+
               marginBottom: "16px",
             }}
           >
@@ -974,8 +1312,11 @@ function LoginOtpPage({
                 autoFocus
                 style={{
                   fontSize: "20px",
+
                   letterSpacing: "4px",
+
                   textAlign: "center",
+
                   fontWeight: "bold",
                 }}
               />
@@ -996,8 +1337,11 @@ function LoginOtpPage({
             <div
               style={{
                 display: "flex",
+
                 justifyContent: "space-between",
+
                 alignItems: "center",
+
                 marginTop: "14px",
               }}
             >
@@ -1035,23 +1379,106 @@ function LoginOtpPage({
 
 function ProfileForm({
   Avatar,
+
   onBack,
+
   onSaved,
+
   toast,
 }: {
   Avatar: (p: { big?: boolean }) => ReactNode
+
   onBack: () => void
+
   onSaved: () => void
+
   toast: string
 }) {
   const p = profileStore.get()
+
   const [name, setName] = useState(p.name)
+
   const [email, setEmail] = useState(p.email)
+
   const [photo, setPhoto] = useState(p.photo)
+
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const [uploadError, setUploadError] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState("")
+
   const fileRef = useRef<HTMLInputElement>(null)
+
   const emailOk = /^\S+@\S+\.\S+$/.test(email.trim())
   const dirty = name !== p.name || email !== p.email || photo !== p.photo
   const valid = name.trim().length > 1 && emailOk
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+
+    // 1. Xem trước ảnh ngay lập tức
+    const previewUrl = URL.createObjectURL(f)
+    setPhoto(previewUrl)
+    setIsUploadingPhoto(true)
+    setUploadError("")
+
+    try {
+      // 2. Upload với cơ chế tự động: Thử Direct Upload (signature), nếu lỗi mạng/CORS thì tự động chuyển sang Server Upload (POST /api/v1/upload/server)
+      const cloudUrl = await uploadImageWithFallback(f, "avatars")
+      setPhoto(cloudUrl)
+    } catch (err: any) {
+      console.error("Lỗi tải ảnh đại diện:", err)
+      setUploadError(err.message || "Tải ảnh lên máy chủ thất bại")
+    } finally {
+      setIsUploadingPhoto(false)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!dirty || !valid || isUploadingPhoto || isSaving) return
+    setIsSaving(true)
+    setSaveError("")
+
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
+    try {
+      if (token) {
+        const res = await fetch("/api/v1/auth/me", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            fullName: name.trim(),
+            email: email.trim(),
+            avatarUrl: photo,
+          }),
+        })
+
+        const data = await res.json()
+        if (!res.ok || !data.success) {
+          throw new Error(data.message || "Không thể cập nhật hồ sơ trên máy chủ")
+        }
+      }
+
+      profileStore.set({
+        ...p,
+        name: name.trim(),
+        email: email.trim(),
+        photo,
+      })
+
+      onSaved()
+    } catch (err: any) {
+      console.error("Lỗi cập nhật hồ sơ:", err)
+      setSaveError(err.message || "Lỗi lưu thông tin hồ sơ")
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   return (
     <section className="orders-screen account-screen form">
@@ -1074,19 +1501,22 @@ function ProfileForm({
           <strong>Ảnh đại diện</strong>
           <button
             className="text-button"
+            disabled={isUploadingPhoto || isSaving}
             onClick={() => fileRef.current?.click()}
             type="button"
           >
-            Đổi ảnh
+            {isUploadingPhoto ? "Đang tải ảnh lên Cloud..." : "Đổi ảnh"}
           </button>
+          {uploadError && (
+            <small style={{ color: "#ef4444", display: "block", fontSize: "11px", marginTop: "2px" }}>
+              {uploadError}
+            </small>
+          )}
         </span>
         <input
           accept="image/*"
           hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) setPhoto(URL.createObjectURL(f))
-          }}
+          onChange={handleAvatarChange}
           ref={fileRef}
           type="file"
         />
@@ -1116,21 +1546,25 @@ function ProfileForm({
         {email && !emailOk && <small className="err">Email chưa hợp lệ</small>}
       </label>
 
+      {saveError && (
+        <div style={{ color: "#ef4444", fontSize: "12px", textAlign: "center", marginBottom: "8px" }}>
+          {saveError}
+        </div>
+      )}
+
       <button
         className="primary-button acc-save"
-        disabled={!dirty || !valid}
-        onClick={() => {
-          profileStore.set({
-            ...p,
-            name: name.trim(),
-            email: email.trim(),
-            photo,
-          })
-          onSaved()
-        }}
+        disabled={!dirty || !valid || isUploadingPhoto || isSaving}
+        onClick={handleSave}
         type="button"
       >
-        <span>Lưu thay đổi</span>
+        <span>
+          {isSaving
+            ? "Đang lưu vào máy chủ..."
+            : isUploadingPhoto
+            ? "Đang tải ảnh..."
+            : "Lưu thay đổi"}
+        </span>
       </button>
       {toast && <Toast text={toast} />}
     </section>
@@ -1141,72 +1575,101 @@ function ProfileForm({
 
 function AddressForm({
   existing,
+
   onBack,
+
   onDone,
 }: {
   existing: SavedAddress | null
+
   onBack: () => void
+
   onDone: (msg: string) => void
 }) {
   const [type, setType] = useState<SavedAddress["type"]>(
     existing?.type ?? "home",
   )
+
   const [name, setName] = useState(existing?.name ?? "")
+
   const [address, setAddress] = useState(existing?.address ?? "")
+
   const list = addressStore.get()
 
   const save = async () => {
     if (!address.trim()) return
+
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
     let serverId = existing?.realId
+
     if (token) {
       try {
         if (existing?.realId) {
           await fetch(`/api/v1/customer/addresses/${existing.realId}`, {
             method: "PUT",
+
             headers: {
               "Content-Type": "application/json",
+
               Authorization: `Bearer ${token}`,
             },
+
             body: JSON.stringify({
               title: type === "other" ? name.trim() || "Khác" : typeName[type],
+
               addressText: address.trim(),
             }),
           })
         } else {
           const res = await fetch("/api/v1/customer/addresses", {
             method: "POST",
+
             headers: {
               "Content-Type": "application/json",
+
               Authorization: `Bearer ${token}`,
             },
+
             body: JSON.stringify({
               title: type === "other" ? name.trim() || "Khác" : typeName[type],
+
               addressText: address.trim(),
+
               latitude: 10.7769,
+
               longitude: 106.7009,
             }),
           })
+
           const data = await res.json()
+
           if (data.data?.id) serverId = data.data.id
         }
       } catch (err) {
         console.warn("Could not save address to API:", err)
       }
     }
+
     const next: SavedAddress = {
       id: existing?.id ?? Date.now(),
+
       realId: serverId,
+
       type,
+
       name: type === "other" ? name : "",
+
       address: address.trim(),
     }
+
     addressStore.set(
       existing
         ? list.map((a) => (a.id === existing.id ? next : a))
         : [...list, next],
     )
+
     onDone(existing ? "Đã cập nhật địa chỉ" : "Đã thêm địa chỉ")
   }
 
@@ -1267,17 +1730,21 @@ function AddressForm({
               typeof window !== "undefined"
                 ? localStorage.getItem("auth_token")
                 : null
+
             if (token && existing.realId) {
               try {
                 await fetch(`/api/v1/customer/addresses/${existing.realId}`, {
                   method: "DELETE",
+
                   headers: { Authorization: `Bearer ${token}` },
                 })
               } catch (err) {
                 console.warn("Could not delete address from API:", err)
               }
             }
+
             addressStore.set(list.filter((a) => a.id !== existing.id))
+
             onDone("Đã xóa địa chỉ")
           }}
           type="button"
@@ -1294,43 +1761,64 @@ function AddressForm({
 const faqs = [
   {
     q: "Cách tính giá cước như thế nào?",
+
     a: "Giá dựa trên quãng đường, loại xe và phí dịch vụ. Bạn luôn thấy giá ước tính trước khi đặt.",
   },
+
   {
     q: "Tôi có thể hủy đơn không?",
+
     a: "Bạn có thể hủy miễn phí trước khi tài xế đến điểm lấy hàng.",
   },
+
   {
     q: "Hàng hóa nào không được vận chuyển?",
+
     a: "Hàng cấm, chất dễ cháy nổ và động vật sống không được nhận vận chuyển.",
   },
+
   {
     q: "Khi nào tôi thanh toán?",
+
     a: "Với tiền mặt, bạn trả cho tài xế sau khi hàng được giao thành công.",
   },
 ]
+
 const issues = [
   "Tài xế đến trễ",
+
   "Hàng bị hư hỏng hoặc thất lạc",
+
   "Tính sai cước phí",
+
   "Vấn đề khác",
 ]
 
 function HelpPage({
   supportOrder,
+
   orderOptions,
+
   focusContact,
+
   onBack,
 }: {
   supportOrder: string | null
+
   orderOptions: OrderOption[]
+
   focusContact: boolean
+
   onBack: () => void
 }) {
   const [open, setOpen] = useState<number | null>(null)
+
   const [issue, setIssue] = useState<string | null>(null)
+
   const [orderId, setOrderId] = useState(supportOrder ?? "")
+
   const [sent, setSent] = useState("")
+
   const contactRef = useRef<HTMLHeadingElement>(null)
 
   useEffect(() => {
@@ -1382,6 +1870,7 @@ function HelpPage({
             className="text-button"
             onClick={() => {
               setSent("")
+
               setIssue(null)
             }}
             type="button"
@@ -1467,3 +1956,475 @@ function HelpPage({
     </section>
   )
 }
+
+/* ---------- payment methods & gateway history ---------- */
+
+function PaymentPageWithHistory({
+  pay,
+  onSelect,
+  onBack,
+  toast,
+}: {
+  pay: "cash" | "wallet" | "vnpay" | "momo"
+  onSelect: (m: "cash" | "wallet" | "vnpay" | "momo") => void
+  onBack: () => void
+  toast: string
+}) {
+  const [history, setHistory] = useState<any[]>([])
+  const [walletData, setWalletData] = useState<any>(null)
+  const [walletTxs, setWalletTxs] = useState<any[]>([])
+  const [calls, setCalls] = useState<any[]>([])
+  const [walletFilter, setWalletFilter] = useState("ALL")
+  const [activeTab, setActiveTab] = useState<"wallet" | "online" | "calls">("wallet")
+  const [showTopUp, setShowTopUp] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const loadCustomerTxs = (type?: string) => {
+    const token = localStorage.getItem("auth_token")
+    if (!token) return
+    const url =
+      type && type !== "ALL"
+        ? `/api/v1/customer/wallet/transactions?limit=20&type=${encodeURIComponent(type)}`
+        : `/api/v1/customer/wallet/transactions?limit=20`
+    fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.transactions)) setWalletTxs(res.transactions)
+      })
+      .catch(() => {})
+  }
+
+  const loadAll = () => {
+    const token = localStorage.getItem("auth_token")
+    if (!token) return
+    setLoading(true)
+
+    // 1. Tải số dư ví khách hàng
+    fetch("/api/v1/customer/wallet", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) setWalletData(res.data)
+      })
+      .catch(() => {})
+
+    // 2. Tải biến động số dư ví khách hàng (áp dụng bộ lọc hiện tại)
+    loadCustomerTxs(walletFilter)
+
+    // 3. Tải lịch sử nạp/thanh toán qua cổng VNPay/MoMo
+    fetch("/api/v1/payments/history?limit=20", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) setHistory(res.data)
+      })
+      .catch(() => {})
+
+    // 4. Tải lịch sử cuộc gọi tổng quan
+    fetch("/api/v1/calls/history", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) setCalls(res.data)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadAll()
+  }, [])
+
+  const methods = [
+    {
+      id: "cash" as const,
+      icon: "cash" as AI,
+      name: "Tiền mặt (CASH)",
+      hint: "Thanh toán trực tiếp cho tài xế",
+    },
+    {
+      id: "vnpay" as const,
+      icon: "card" as AI,
+      name: "Cổng VNPay (VNPAY-QR)",
+      hint: "Quét mã VNPAY-QR, Thẻ ATM & Mobile Banking",
+    },
+    {
+      id: "momo" as const,
+      icon: "card" as AI,
+      name: "Ví điện tử MoMo",
+      hint: "Thanh toán qua ứng dụng MoMo",
+    },
+    {
+      id: "wallet" as const,
+      icon: "wallet" as AI,
+      name: "Ví tài khoản FastDrop",
+      hint: "Khấu trừ từ số dư tài khoản",
+    },
+  ]
+
+  return (
+    <section className="orders-screen account-screen">
+      <SubHead onBack={onBack} title="Thanh toán & Ví FastDrop" />
+
+      {/* Thẻ Ví Khách Hàng FastDrop */}
+      <div
+        style={{
+          margin: "12px 16px 20px",
+          padding: "20px",
+          borderRadius: "16px",
+          background: "linear-gradient(135deg, #0f172a, #1e293b)",
+          color: "#fff",
+          boxShadow: "0 8px 24px rgba(15, 23, 42, 0.25)",
+          border: "1px solid rgba(255, 255, 255, 0.1)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontSize: "11px", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 600 }}>
+              Ví điện tử FastDrop
+            </div>
+            <div style={{ fontSize: "26px", fontWeight: 800, margin: "6px 0 2px", color: "#f8fafc" }}>
+              {walletData ? Number(walletData.balance || 0).toLocaleString("vi-VN") : "0"} đ
+            </div>
+            <div style={{ fontSize: "12px", color: "#38bdf8", fontWeight: 500 }}>
+              ✓ Sẵn sàng thanh toán mọi chuyến xe
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowTopUp(true)}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "10px",
+              border: "none",
+              background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: "13px",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
+            }}
+          >
+            + Nạp ví
+          </button>
+        </div>
+      </div>
+
+      <h2 className="conv-section">Chọn phương thức mặc định</h2>
+      <ul className="acc-list">
+        {methods.map((m) => (
+          <li key={m.id}>
+            <button
+              aria-pressed={pay === m.id}
+              className="acc-row"
+              onClick={() => onSelect(m.id)}
+              type="button"
+            >
+              <span className="acc-row-icon">
+                <AIcon name={m.icon} size={19} />
+              </span>
+              <span className="acc-row-text">
+                <strong>
+                  {m.name}
+                  {pay === m.id && <em className="acc-default">Mặc định</em>}
+                </strong>
+                <small>{m.hint}</small>
+              </span>
+              <span className={`acc-radio ${pay === m.id ? "on" : ""}`}>
+                <i />
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {/* Tabs Lịch Sử */}
+      <div style={{ margin: "24px 16px 12px", display: "flex", gap: "8px", borderBottom: "1px solid #e2e8f0", paddingBottom: "8px" }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab("wallet")}
+          style={{
+            padding: "6px 12px",
+            fontSize: "12px",
+            fontWeight: 700,
+            borderRadius: "6px",
+            border: "none",
+            backgroundColor: activeTab === "wallet" ? "#2563eb" : "transparent",
+            color: activeTab === "wallet" ? "#fff" : "#64748b",
+            cursor: "pointer",
+          }}
+        >
+          Biến động ví ({walletTxs.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("online")}
+          style={{
+            padding: "6px 12px",
+            fontSize: "12px",
+            fontWeight: 700,
+            borderRadius: "6px",
+            border: "none",
+            backgroundColor: activeTab === "online" ? "#2563eb" : "transparent",
+            color: activeTab === "online" ? "#fff" : "#64748b",
+            cursor: "pointer",
+          }}
+        >
+          Cổng Online ({history.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("calls")}
+          style={{
+            padding: "6px 12px",
+            fontSize: "12px",
+            fontWeight: 700,
+            borderRadius: "6px",
+            border: "none",
+            backgroundColor: activeTab === "calls" ? "#2563eb" : "transparent",
+            color: activeTab === "calls" ? "#fff" : "#64748b",
+            cursor: "pointer",
+          }}
+        >
+          Cuộc gọi ({calls.length})
+        </button>
+      </div>
+
+      {/* Nội dung Tab 1: Biến Động Ví FastDrop */}
+      {activeTab === "wallet" && (
+        <>
+          <div style={{ display: "flex", gap: "6px", overflowX: "auto", padding: "0 16px 8px", marginBottom: "4px" }}>
+            {[
+              { id: "ALL", label: "Tất cả" },
+              { id: "TOPUP", label: "Nạp tiền ví" },
+              { id: "BOOKING_HOLD", label: "Tạm giữ cước" },
+              { id: "BOOKING_PAYMENT", label: "Trừ cước xe" },
+              { id: "REFUND", label: "Hoàn tiền" },
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => {
+                  setWalletFilter(f.id)
+                  loadCustomerTxs(f.id)
+                }}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "9999px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  border: walletFilter === f.id ? "1px solid #2563eb" : "1px solid #e2e8f0",
+                  backgroundColor: walletFilter === f.id ? "#eff6ff" : "#fff",
+                  color: walletFilter === f.id ? "#1d4ed8" : "#64748b",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {loading ? (
+            <div style={{ padding: "16px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>
+              Đang tải lịch sử ví...
+            </div>
+          ) : walletTxs.length === 0 ? (
+            <div style={{ padding: "20px 16px", textAlign: "center", color: "#9ca3af", fontSize: "13px" }}>
+              Chưa có giao dịch biến động ví FastDrop nào
+            </div>
+          ) : (
+            <ul className="acc-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {walletTxs.map((tx: any) => {
+                const isPlus = tx.amount > 0
+                return (
+                  <li
+                    key={tx.id}
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: "12px",
+                      backgroundColor: "#fff",
+                      border: "1px solid #e5e7eb",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: 700, color: "#111827" }}>
+                        {tx.description || (isPlus ? "Nạp tiền ví" : "Thanh toán cuốc xe")}
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px" }}>
+                        {new Date(tx.createdAt).toLocaleString("vi-VN")}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "14px", fontWeight: 800, color: isPlus ? "#059669" : "#dc2626" }}>
+                        {isPlus ? "+" : ""}{Number(tx.amount).toLocaleString("vi-VN")} đ
+                      </div>
+                      {tx.balanceAfter !== null && (
+                        <div style={{ fontSize: "11px", color: "#9ca3af" }}>
+                          Dư: {Number(tx.balanceAfter).toLocaleString("vi-VN")} đ
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </>
+      )}
+
+      {/* Nội dung Tab 2: Lịch Sử Cổng Thanh Toán */}
+      {activeTab === "online" && (
+        <>
+          {loading ? (
+            <div style={{ padding: "16px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>
+              Đang tải lịch sử thanh toán...
+            </div>
+          ) : history.length === 0 ? (
+            <div style={{ padding: "20px 16px", textAlign: "center", color: "#9ca3af", fontSize: "13px" }}>
+              Chưa có giao dịch thanh toán trực tuyến nào
+            </div>
+          ) : (
+            <ul className="acc-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {history.map((tx: any) => {
+                const isSuccess = tx.status === "SUCCESS"
+                const isPending = tx.status === "PENDING"
+                return (
+                  <li
+                    key={tx.id || tx.transactionCode}
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: "12px",
+                      backgroundColor: "#fff",
+                      border: "1px solid #e5e7eb",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "3px" }}>
+                        <span
+                          style={{
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            backgroundColor: tx.gateway === "VNPAY" ? "#eff6ff" : "#fdf2f8",
+                            color: tx.gateway === "VNPAY" ? "#2563eb" : "#d946ef",
+                          }}
+                        >
+                          {tx.gateway}
+                        </span>
+                        <strong style={{ fontSize: "13px", color: "#111827" }}>
+                          {tx.purpose === "TOPUP_WALLET" ? "Nạp ví" : "Thanh toán cuốc xe"}
+                        </strong>
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#6b7280" }}>
+                        #{tx.transactionCode} · {new Date(tx.createdAt).toLocaleDateString("vi-VN")}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "13px", fontWeight: 700, color: "#111827" }}>
+                        {Number(tx.amount).toLocaleString("vi-VN")} đ
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: isSuccess ? "#059669" : isPending ? "#d97706" : "#dc2626",
+                        }}
+                      >
+                        {isSuccess ? "✓ Thành công" : isPending ? "Đang chờ" : "Thất bại"}
+                      </span>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </>
+      )}
+
+      {/* Nội dung Tab 3: Nhật Ký Cuộc Gọi Giấu Số */}
+      {activeTab === "calls" && (
+        <>
+          {loading ? (
+            <div style={{ padding: "16px", textAlign: "center", color: "#6b7280", fontSize: "13px" }}>
+              Đang tải nhật ký cuộc gọi...
+            </div>
+          ) : calls.length === 0 ? (
+            <div style={{ padding: "20px 16px", textAlign: "center", color: "#9ca3af", fontSize: "13px" }}>
+              Chưa có cuộc gọi nào phát sinh qua Hotline 1900-8888
+            </div>
+          ) : (
+            <ul className="acc-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {calls.map((c: any) => {
+                const durationM = Math.floor((c.durationSeconds || 0) / 60)
+                const durationS = (c.durationSeconds || 0) % 60
+                const durationStr = `${String(durationM).padStart(2, "0")}:${String(durationS).padStart(2, "0")}`
+                return (
+                  <li
+                    key={c.id}
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: "12px",
+                      backgroundColor: "#fff",
+                      border: "1px solid #e5e7eb",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
+                        <span style={{ fontSize: "14px" }}>📞</span>
+                        <strong style={{ fontSize: "13px", color: "#111827" }}>
+                          {c.isCaller ? "Gọi cho đối tác" : "Đối tác gọi tới"}
+                        </strong>
+                        <span style={{ fontSize: "11px", color: "#2563eb", fontWeight: 600 }}>
+                          (Hotline 1900-8888)
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#6b7280" }}>
+                        Đơn #{c.bookingCode || c.bookingId?.slice(0, 8)} · {new Date(c.createdAt).toLocaleString("vi-VN")}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "13px", fontWeight: 700, color: "#059669" }}>
+                        {durationStr}
+                      </div>
+                      <span style={{ fontSize: "10px", color: "#6b7280" }}>
+                        {c.callStatus === "ANSWERED" || c.callStatus === "COMPLETED" ? "Đã đàm thoại" : "Nhỡ / Bận máy"}
+                      </span>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </>
+      )}
+
+      {toast && <Toast text={toast} />}
+
+      {/* Modal Nạp Tiền Khách Hàng */}
+      <TopUpModal
+        isOpen={showTopUp}
+        onClose={() => setShowTopUp(false)}
+        onSuccess={() => {
+          loadAll()
+        }}
+        userRole="CUSTOMER"
+      />
+    </section>
+  )
+}
+

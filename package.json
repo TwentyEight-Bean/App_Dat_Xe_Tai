@@ -8,7 +8,11 @@
     "api": "tsx src/server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx run-migrations.ts",
+    "db:check": "tsx check-db.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -18,6 +22,7 @@
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "firebase-admin": "^14.5.0",
+    "geoip-lite": "^2.0.3",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.6.0",
     "postgres": "^3.4.9",
@@ -29,6 +34,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/express": "^5.0.6",
+    "@types/geoip-lite": "^1.4.4",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",
