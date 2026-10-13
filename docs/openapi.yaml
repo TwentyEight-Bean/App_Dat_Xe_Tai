@@ -93,6 +93,49 @@ components:
           enum: [CUSTOMER, DRIVER, ADMIN]
 
     # ------------------
+    # UPLOAD & CLOUD STORAGE SCHEMAS
+    # ------------------
+    UploadSignatureRequest:
+      type: object
+      properties:
+        folder:
+          type: string
+          enum: [avatars, licenses, chat_images]
+          default: avatars
+          example: "avatars"
+
+    UploadSignatureData:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+          example: 1773315000
+        signature:
+          type: string
+          example: "a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9"
+        apiKey:
+          type: string
+          example: "547889363283284"
+        cloudName:
+          type: string
+          example: "fbgdh4zl"
+        folder:
+          type: string
+          example: "avatars"
+
+    UploadSignatureResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Tạo chữ ký số upload Cloudinary thành công"
+        data:
+          $ref: '#/components/schemas/UploadSignatureData'
+
+    # ------------------
     # ADDRESS SCHEMAS
     # ------------------
     CreateAddressRequest:
@@ -626,6 +669,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
+
+  # ==========================================
+  # UPLOAD & CLOUD STORAGE MODULE
+  # ==========================================
+  /upload/signature:
+    post:
+      tags:
+        - Upload (Cloud Storage)
+      summary: Lấy chữ ký số Cloudinary (Signed Direct Upload) để tải ảnh trực tiếp
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadSignatureRequest'
+      responses:
+        '200':
+          description: Tạo chữ ký số upload thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSignatureResponse'
+        '400':
+          description: Thư mục (folder) không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Chưa xác thực (Missing / Invalid Bearer Token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   # ==========================================
   # SỔ ĐỊA CHỈ KHÁCH HÀNG (ADDRESS BOOK)
@@ -1412,7 +1491,15 @@ paths:
               properties:
                 status:
                   type: string
-                  enum: [IN_TRANSIT, COMPLETED]
+                  enum: [ARRIVED_AT_PICKUP, IN_TRANSIT, COMPLETED]
+                  example: "ARRIVED_AT_PICKUP"
+                note:
+                  type: string
+                  example: "Đã có mặt tại cổng bốc hàng"
+                proofImageUrl:
+                  type: string
+                  format: uri
+                  example: "https://res.cloudinary.com/demo/image/upload/sample_pod.jpg"
       responses:
         '200':
           description: Cập nhật thành công

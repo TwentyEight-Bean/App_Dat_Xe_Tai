@@ -22,18 +22,22 @@ export const authenticate = (authHeader?: string | null): JwtPayload => {
   const token = extractTokenFromHeader(authHeader)
 
   if (!token) {
-    // DEV BYPASS: Cho phép dev môi trường local không cần token
-    if (process.env.NODE_ENV !== "production") {
-      return { userId: "dev-admin", role: "ADMIN", phone: "0000" }
-    }
     throw new Error(
       "UNAUTHORIZED: Không tìm thấy Token xác thực (Missing Bearer Token)",
     )
   }
 
-  // NẾU CÓ TOKEN (VD: DEV_ADMIN_TOKEN để bypass)
-  if (token === "DEV_ADMIN_TOKEN") {
-    return { userId: "dev-admin", role: "ADMIN", phone: "0000" }
+  // Cho phép token DEV đặc biệt trong môi trường non-production
+  if (process.env.NODE_ENV !== "production") {
+    if (token === "DEV_ADMIN_TOKEN") {
+      return { userId: "dev-admin", role: "ADMIN", phone: "0000" }
+    }
+    if (token === "DEV_DRIVER_TOKEN") {
+      return { userId: "dev-driver", role: "DRIVER", phone: "0900000002" }
+    }
+    if (token === "DEV_CUSTOMER_TOKEN") {
+      return { userId: "dev-customer", role: "CUSTOMER", phone: "0900000001" }
+    }
   }
 
   return verifyToken(token)

@@ -1,21 +1,30 @@
 import Pusher from "pusher"
+
 import * as dotenv from "dotenv"
 
 dotenv.config()
 
 // Khởi tạo Pusher Server nếu có cấu hình trong biến môi trường
+
 const isPusherConfigured = Boolean(
   process.env.PUSHER_APP_ID &&
+    !process.env.PUSHER_APP_ID.startsWith("your_") &&
     process.env.PUSHER_KEY &&
-    process.env.PUSHER_SECRET,
+    !process.env.PUSHER_KEY.startsWith("your_") &&
+    process.env.PUSHER_SECRET &&
+    !process.env.PUSHER_SECRET.startsWith("your_"),
 )
 
 export const pusherServer: Pusher | null = isPusherConfigured
   ? new Pusher({
       appId: process.env.PUSHER_APP_ID!,
+
       key: process.env.PUSHER_KEY!,
+
       secret: process.env.PUSHER_SECRET!,
+
       cluster: process.env.PUSHER_CLUSTER || "ap1",
+
       useTLS: process.env.PUSHER_USE_TLS !== "false",
     })
   : null
@@ -23,7 +32,9 @@ export const pusherServer: Pusher | null = isPusherConfigured
 if (isPusherConfigured) {
   console.log(
     "📡 [Pusher] Kết nối dịch vụ Pusher thành công (Cluster:",
+
     process.env.PUSHER_CLUSTER || "ap1",
+
     ")",
   )
 } else {
@@ -32,36 +43,89 @@ if (isPusherConfigured) {
   )
 }
 
+export interface PusherEventRecord {
+  id: string
+  channel: string
+  event: string
+  data: any
+  timestamp: number
+}
+
+const eventBuffer: PusherEventRecord[] = []
+const MAX_BUFFER_SIZE = 200
+
+export function getRecentEvents(
+  channel?: string,
+  sinceTimestamp?: number,
+): PusherEventRecord[] {
+  let list = eventBuffer
+  if (channel) {
+    list = list.filter(
+      (e) =>
+        e.channel === channel ||
+        e.channel === `private-${channel}` ||
+        channel === `private-${e.channel}`,
+    )
+  }
+  if (sinceTimestamp) {
+    list = list.filter((e) => e.timestamp > sinceTimestamp)
+  }
+  return list
+}
+
 /**
  * Hàm chung bắn sự kiện Realtime qua Pusher
  * Tuân thủ quy định: Payload tối giản để tiết kiệm chi phí băng thông (docs/note.txt)
  */
+
 export async function triggerEvent(
   channel: string,
+
   event: string,
+
   data: any,
 ): Promise<boolean> {
   try {
+    const record: PusherEventRecord = {
+      id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      channel,
+      event,
+      data,
+      timestamp: Date.now(),
+    }
+    eventBuffer.push(record)
+    if (eventBuffer.length > MAX_BUFFER_SIZE) {
+      eventBuffer.shift()
+    }
+
     if (pusherServer) {
       await pusherServer.trigger(channel, event, data)
+
       console.log(
         `📡 [Pusher Event] [${channel}] -> "${event}":`,
+
         JSON.stringify(data),
       )
+
       return true
     } else {
       // Mock log trong môi trường development
+
       console.log(
         `📡 [Pusher Mock] [${channel}] -> "${event}":`,
+
         JSON.stringify(data),
       )
+
       return true
     }
   } catch (err: any) {
     console.error(
       `❌ [Pusher Error] Không thể gửi sự kiện [${channel}] -> "${event}":`,
+
       err.message,
     )
+
     return false
   }
 }
@@ -71,32 +135,51 @@ export async function triggerEvent(
  * Kênh: driver-{driverId}
  * Sự kiện: booking:new-offer
  */
+
 export async function triggerDriverNewOffer(
   driverId: string,
+
   offerData: {
     bookingId: string
+
     bookingCode: string
+
     originAddress: string
+
     destinationAddress: string
+
     distanceKm: number
+
     totalPrice: number
+
     vehicleTypeName?: string | null
+
     expiresInSeconds?: number
   },
 ) {
   const channel = `driver-${driverId}`
+
   const event = "booking:new-offer"
 
   // Payload siêu nhẹ (Signaling) theo chuẩn thiết kế
+
   const payload = {
     bookingId: offerData.bookingId,
+
     bookingCode: offerData.bookingCode,
+
     originAddress: offerData.originAddress,
+
     destinationAddress: offerData.destinationAddress,
+
     distanceKm: offerData.distanceKm,
+
     totalPrice: offerData.totalPrice,
+
     vehicleTypeName: offerData.vehicleTypeName || null,
+
     expiresInSeconds: offerData.expiresInSeconds || 20,
+
     timestamp: Date.now(),
   }
 
@@ -108,33 +191,51 @@ export async function triggerDriverNewOffer(
  * Kênh: trip-{bookingId}
  * Sự kiện: booking:accepted
  */
+
 export async function triggerBookingAccepted(
   bookingId: string,
+
   driverInfo: {
     driverId: string
+
     driverName: string
+
     driverPhone: string
+
     avatarUrl?: string | null
+
     licensePlate?: string | null
+
     vehicleTypeName?: string | null
+
     ratingAvg?: number
   },
 ) {
   const channel = `trip-${bookingId}`
+
   const event = "booking:accepted"
 
   const payload = {
     bookingId,
+
     status: "ACCEPTED",
+
     driver: {
       id: driverInfo.driverId,
+
       name: driverInfo.driverName,
+
       phone: driverInfo.driverPhone,
+
       avatarUrl: driverInfo.avatarUrl || null,
+
       licensePlate: driverInfo.licensePlate || null,
+
       vehicleTypeName: driverInfo.vehicleTypeName || null,
+
       ratingAvg: driverInfo.ratingAvg || 5.0,
     },
+
     timestamp: Date.now(),
   }
 
@@ -146,17 +247,23 @@ export async function triggerBookingAccepted(
  * Kênh: driver-{driverId}
  * Sự kiện: offer:cancelled
  */
+
 export async function triggerOfferCancelled(
   driverId: string,
+
   bookingId: string,
+
   reason = "TAKEN",
 ) {
   const channel = `driver-${driverId}`
+
   const event = "offer:cancelled"
 
   const payload = {
     bookingId,
+
     reason, // 'TAKEN' (Đã có người nhận) hoặc 'EXPIRED' (Hết thời gian chờ)
+
     timestamp: Date.now(),
   }
 
@@ -168,24 +275,35 @@ export async function triggerOfferCancelled(
  * Kênh: trip-{bookingId}
  * Sự kiện: booking:status-change
  */
+
 export async function triggerBookingStatusChange(
   bookingId: string,
+
   newStatus: string,
+
   extra: {
     message?: string
+
     driverId?: string
+
     note?: string | null
   } = {},
 ) {
   const channel = `trip-${bookingId}`
+
   const event = "booking:status-change"
 
   const payload = {
     bookingId,
+
     status: newStatus,
+
     message: extra.message || `Chuyến xe đã cập nhật trạng thái: ${newStatus}`,
+
     driverId: extra.driverId || null,
+
     note: extra.note || null,
+
     timestamp: Date.now(),
   }
 
@@ -197,24 +315,34 @@ export async function triggerBookingStatusChange(
  * Kênh: trip-{bookingId} và driver-{driverId}
  * Sự kiện: booking:cancelled
  */
+
 export async function triggerBookingCancelled(
   bookingId: string,
+
   cancelledBy: "CUSTOMER" | "DRIVER" | "SYSTEM",
+
   reason?: string,
+
   driverId?: string | null,
 ) {
   const payload = {
     bookingId,
+
     status: "CANCELLED",
+
     cancelledBy,
+
     reason: reason || "Chuyến xe đã bị hủy",
+
     timestamp: Date.now(),
   }
 
   // Báo trên kênh chuyến đi cho khách
+
   await triggerEvent(`trip-${bookingId}`, "booking:cancelled", payload)
 
   // Báo trên kênh riêng của tài xế nếu chuyến đã có tài xế nhận
+
   if (driverId) {
     await triggerEvent(`driver-${driverId}`, "booking:cancelled", payload)
   }
@@ -227,26 +355,39 @@ export async function triggerBookingCancelled(
  * Kênh: trip-{bookingId}
  * Sự kiện: driver:location-update
  */
+
 export async function triggerDriverLocationUpdate(
   bookingId: string,
+
   location: {
     driverId: string
+
     latitude: number
+
     longitude: number
+
     heading?: number | null
+
     speed?: number | null
   },
 ) {
   const channel = `trip-${bookingId}`
+
   const event = "driver:location-update"
 
   const payload = {
     bookingId,
+
     driverId: location.driverId,
+
     latitude: location.latitude,
+
     longitude: location.longitude,
+
     heading: location.heading !== undefined ? location.heading : null,
+
     speed: location.speed !== undefined ? location.speed : null,
+
     timestamp: Date.now(),
   }
 
@@ -258,41 +399,65 @@ export async function triggerDriverLocationUpdate(
  * Kênh: chat-{bookingId} và trip-{bookingId}
  * Sự kiện: chat:new-message
  */
+
 export async function triggerNewChatMessage(
   bookingId: string,
+
   message: {
     messageId: string
+
     bookingId: string
+
     senderId: string
+
     senderRole: "CUSTOMER" | "DRIVER" | "ADMIN"
+
     senderName: string
+
     senderAvatar?: string | null
+
     messageType: "TEXT" | "IMAGE" | "LOCATION"
+
     content: string
+
     mediaUrl?: string | null
+
     createdAt: string | Date
   },
 ) {
   const payload = {
     messageId: message.messageId,
+
     bookingId: message.bookingId,
+
     senderId: message.senderId,
+
     senderRole: message.senderRole,
+
     senderName: message.senderName,
+
     senderAvatar: message.senderAvatar || null,
+
     messageType: message.messageType,
+
     content: message.content,
+
     mediaUrl: message.mediaUrl || null,
+
     createdAt:
       message.createdAt instanceof Date
         ? message.createdAt.toISOString()
         : message.createdAt,
+
     timestamp: Date.now(),
   }
 
   // Bắn đồng thời trên kênh chat riêng và kênh chuyến đi
+
   await triggerEvent(`chat-${bookingId}`, "chat:new-message", payload)
+
   await triggerEvent(`trip-${bookingId}`, "chat:new-message", payload)
+
   return true
 }
 
@@ -301,14 +466,19 @@ export async function triggerNewChatMessage(
  * Kênh: chat-{bookingId}
  * Sự kiện: chat:messages-read
  */
+
 export async function triggerMessagesRead(
   bookingId: string,
+
   readByUserId: string,
 ) {
   const payload = {
     bookingId,
+
     readByUserId,
+
     timestamp: Date.now(),
   }
+
   return await triggerEvent(`chat-${bookingId}`, "chat:messages-read", payload)
 }

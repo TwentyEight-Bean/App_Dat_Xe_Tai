@@ -10,6 +10,8 @@ import paymentRoutes from "./routes/payment"
 import chatRoutes from "./routes/chat"
 import callRoutes from "./routes/calls"
 import accountingRoutes from "./routes/accounting"
+import uploadRoutes from "./routes/upload"
+import pusherRoutes from "./routes/pusher"
 import { errorHandler } from "./middleware"
 
 const app = express()
@@ -36,6 +38,7 @@ app.use((req, res, next) => {
 // We support both /api/v1/* and /api/*
 const mountRoutes = (prefix: string) => {
   app.use(`${prefix}/auth`, authRoutes)
+  app.use(`${prefix}/upload`, uploadRoutes)
   app.use(`${prefix}/customer`, customerRoutes)
   app.use(`${prefix}/driver`, driverRoutes)
   app.use(`${prefix}/admin`, adminRoutes)
@@ -45,6 +48,7 @@ const mountRoutes = (prefix: string) => {
   app.use(`${prefix}/chat`, chatRoutes)
   app.use(`${prefix}/calls`, callRoutes)
   app.use(`${prefix}/accounting`, accountingRoutes)
+  app.use(`${prefix}/pusher`, pusherRoutes)
 }
 
 mountRoutes("/api/v1")

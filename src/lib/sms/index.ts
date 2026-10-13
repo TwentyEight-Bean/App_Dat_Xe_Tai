@@ -1,11 +1,17 @@
 import { ISmsProvider } from "./types"
+
 import { MockSmsProvider } from "./mock"
+
 import { EsmsProvider } from "./esms"
+
 import { VietGuysProvider } from "./vietguys"
 
 export * from "./types"
+
 export * from "./mock"
+
 export * from "./esms"
+
 export * from "./vietguys"
 
 let cachedProvider: ISmsProvider | null = null
@@ -16,6 +22,7 @@ let cachedProvider: ISmsProvider | null = null
  * - 'esms' -> EsmsProvider
  * - 'vietguys' -> VietGuysProvider
  */
+
 export function getSmsProvider(): ISmsProvider {
   if (cachedProvider) {
     return cachedProvider
@@ -26,13 +33,19 @@ export function getSmsProvider(): ISmsProvider {
   switch (providerType) {
     case "esms":
       cachedProvider = new EsmsProvider()
+
       break
+
     case "vietguys":
       cachedProvider = new VietGuysProvider()
+
       break
+
     case "mock":
+
     default:
       cachedProvider = new MockSmsProvider()
+
       break
   }
 

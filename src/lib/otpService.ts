@@ -1,9 +1,10 @@
 import { eq, and, desc, gt } from "drizzle-orm"
 import { db } from "../db"
-import { users, wallets, otpVerifications } from "../db/schema"
+import { users, otpVerifications, driverProfiles } from "../db/schema"
 import { validateAndNormalizePhone } from "./sms/types"
 import { getSmsProvider } from "./sms"
 import { generateToken } from "./auth"
+import { checkVietnamIp } from "./geoIp"
 
 export interface RequestOtpResponse {
   success: boolean
@@ -44,10 +45,12 @@ export function generateOtpCode(): string {
 }
 
 /**
- * 1. Yêu cầu gửi mã OTP tới số điện thoại (Có cơ chế Rate-limit & Mock)
+ * 1. Yêu cầu gửi mã OTP tới số điện thoại (Hệ thống chống Spam 3 tầng: Geo-IP, IP, và SĐT)
  */
 export async function requestOtp(
   rawPhone: string,
+  clientIp?: string,
+  options?: { forceStrictGeoIp?: boolean },
 ): Promise<RequestOtpResponse> {
   // Validate định dạng SĐT Việt Nam
   const phoneValidation = validateAndNormalizePhone(rawPhone)
@@ -58,17 +61,71 @@ export async function requestOtp(
   const phone = phoneValidation.standardPhone
   const now = new Date()
 
-  // Kiểm tra Rate Limit 1: Không gửi quá 3 lần trong 10 phút gần nhất
-  const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000)
-  const recentOtps = await db
+  // ------------------------------------------------------------------------
+  // TẦNG 1: KIỂM TRA GEO-IP QUỐC TẾ (CHỈ PHỤC VỤ NỘI ĐỊA VIỆT NAM)
+  // ------------------------------------------------------------------------
+  if (clientIp) {
+    const geoCheck = checkVietnamIp(clientIp, {
+      forceStrictCheck: options?.forceStrictGeoIp,
+    })
+    if (!geoCheck.allowed) {
+      throw new Error(
+        "FORBIDDEN: Dịch vụ chỉ phục vụ tại Việt Nam. Không hỗ trợ gửi OTP từ địa chỉ IP quốc tế.",
+      )
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // TẦNG 2: GIỚI HẠN IP MẠNG (TỐI ĐA 3 SĐT DUY NHẤT TRONG 15 PHÚT)
+  // Ngăn chặn bot cắm tool spam hàng loạt số khác nhau từ 1 máy / IP
+  // ------------------------------------------------------------------------
+  if (clientIp) {
+    const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000)
+    const recentIpOtps = await db
+      .select({ phone: otpVerifications.phone })
+      .from(otpVerifications)
+      .where(
+        and(
+          eq(otpVerifications.ipAddress, clientIp),
+          gt(otpVerifications.createdAt, fifteenMinutesAgo),
+        ),
+      )
+
+    const uniquePhonesForIp = new Set(recentIpOtps.map((r) => r.phone))
+    // Nếu IP này đã gửi cho 3 số điện thoại khác nhau trong 15p, và số hiện tại là số thứ 4
+    if (uniquePhonesForIp.size >= 3 && !uniquePhonesForIp.has(phone)) {
+      throw new Error(
+        "Địa chỉ mạng của bạn đang yêu cầu mã OTP cho quá nhiều số điện thoại. Vui lòng thử lại sau 15 phút.",
+      )
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // TẦNG 3: GIỚI HẠN THEO SỐ ĐIỆN THOẠI (COOLDOWN + 10 PHÚT + CẦU DAO 24 GIỜ)
+  // ------------------------------------------------------------------------
+  // 3.1. Cầu dao 24 giờ: Tối đa 5 lần gửi / 24 giờ cho 1 số điện thoại (Bảo vệ ngân sách SMS)
+  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  const dailyOtps = await db
     .select()
     .from(otpVerifications)
     .where(
       and(
         eq(otpVerifications.phone, phone),
-        gt(otpVerifications.createdAt, tenMinutesAgo),
+        gt(otpVerifications.createdAt, twentyFourHoursAgo),
       ),
     )
+
+  if (dailyOtps.length >= 5) {
+    throw new Error(
+      "Số điện thoại này đã đạt giới hạn 5 lần nhận mã OTP trong 24 giờ. Vui lòng thử lại vào ngày mai để đảm bảo an toàn.",
+    )
+  }
+
+  // 3.2. Giới hạn ngắn hạn: Không gửi quá 3 lần trong 10 phút gần nhất
+  const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000)
+  const recentOtps = dailyOtps.filter(
+    (otp) => otp.createdAt && otp.createdAt > tenMinutesAgo,
+  )
 
   if (recentOtps.length >= 3) {
     throw new Error(
@@ -76,9 +133,8 @@ export async function requestOtp(
     )
   }
 
-  // Kiểm tra Rate Limit 2: Khoảng cách giữa 2 lần gửi liên tiếp tối thiểu 60 giây (chống spam liên tục)
+  // 3.3. Cooldown liên tiếp: Tối thiểu 60 giây giữa 2 lần gửi
   if (recentOtps.length > 0) {
-    // Sắp xếp lấy cái mới nhất
     const sorted = [...recentOtps].sort(
       (a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0),
     )
@@ -100,16 +156,7 @@ export async function requestOtp(
   const otpCode = generateOtpCode()
   const expiresAt = new Date(now.getTime() + 5 * 60 * 1000)
 
-  // Lưu bản ghi OTP vào DB
-  await db.insert(otpVerifications).values({
-    phone,
-    otpCode,
-    attempts: 0,
-    isUsed: false,
-    expiresAt,
-  })
-
-  // Gửi mã OTP qua SMS Gateway
+  // Task 1.3: Gửi mã OTP qua SMS Gateway TRƯỚC khi ghi nhận vào DB
   const smsProvider = getSmsProvider()
   const sendResult = await smsProvider.sendOtp(phone, otpCode)
 
@@ -122,6 +169,16 @@ export async function requestOtp(
       sendResult.error || "Không thể gửi tin nhắn OTP. Vui lòng thử lại sau.",
     )
   }
+
+  // Chỉ khi gửi SMS thành công mới lưu bản ghi OTP vào DB (bao gồm ipAddress)
+  await db.insert(otpVerifications).values({
+    phone,
+    otpCode,
+    attempts: 0,
+    isUsed: false,
+    expiresAt,
+    ipAddress: clientIp || null,
+  })
 
   return {
     success: true,
@@ -137,6 +194,7 @@ export async function requestOtp(
 export async function verifyOtp(
   rawPhone: string,
   inputOtp: string,
+  desiredRole?: "CUSTOMER" | "DRIVER",
 ): Promise<VerifyOtpResponse> {
   const phoneValidation = validateAndNormalizePhone(rawPhone)
   if (!phoneValidation.valid) {
@@ -222,32 +280,21 @@ export async function verifyOtp(
 
   let userRecord
   let isNewUser = false
+  const targetRole = desiredRole === "DRIVER" ? "DRIVER" : "CUSTOMER"
 
   if (existingUsers.length === 0) {
-    // Tự động tạo người dùng mới (Role: CUSTOMER, Status: ACTIVE)
+    // Tự động tạo người dùng mới
     const insertedUsers = await db
       .insert(users)
       .values({
         phone,
-        role: "CUSTOMER",
+        role: targetRole,
         status: "ACTIVE",
       })
       .returning()
 
     userRecord = insertedUsers[0]
     isNewUser = true
-
-    // Khởi tạo ví tiền rỗng cho khách hàng mới (Đã comment cho Sprint 2, sẽ làm ở Sprint 4)
-    // try {
-    //   await db.insert(wallets).values({
-    //     userId: userRecord.id,
-    //     balance: '0',
-    //     lockedBalance: '0',
-    //     currency: 'VND',
-    //   });
-    // } catch (walletErr) {
-    //   console.warn('[Wallet Init Warning] Không thể tạo ví tự động:', walletErr);
-    // }
   } else {
     userRecord = existingUsers[0]
 
@@ -256,6 +303,33 @@ export async function verifyOtp(
       throw new Error(
         "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ bộ phận hỗ trợ khách hàng.",
       )
+    }
+
+    // Nếu đăng nhập từ phía Tài xế và user hiện tại có role CUSTOMER, nâng cấp lên DRIVER
+    if (desiredRole === "DRIVER" && userRecord.role === "CUSTOMER") {
+      await db
+        .update(users)
+        .set({ role: "DRIVER", updatedAt: new Date() })
+        .where(eq(users.id, userRecord.id))
+      userRecord.role = "DRIVER"
+    }
+  }
+
+  // Nếu người dùng có quyền DRIVER, đảm bảo có bản ghi hồ sơ driverProfiles
+  if (userRecord.role === "DRIVER") {
+    const existingProfiles = await db
+      .select()
+      .from(driverProfiles)
+      .where(eq(driverProfiles.userId, userRecord.id))
+      .limit(1)
+
+    if (existingProfiles.length === 0) {
+      await db.insert(driverProfiles).values({
+        userId: userRecord.id,
+        kycStatus: "PENDING",
+        isOnline: false,
+        isActive: true,
+      })
     }
   }
 

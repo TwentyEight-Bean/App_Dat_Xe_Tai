@@ -1,33 +1,69 @@
 import { useEffect, useState } from "react"
-import "./admin.css"
-import { Icon, Avatar, type IconName } from "./admin/ui"
-import { orders, pending, complaints0, type Complaint } from "./admin/data"
-import Dashboard from "./admin/Dashboard"
-import OrdersPage, { OrderDetail } from "./admin/Orders"
-import Drivers, { type Decision } from "./admin/Drivers"
-import Users from "./admin/Users"
-import Complaints from "./admin/Complaints"
-import Pricing from "./admin/Pricing"
-import MobileAdmin from "./admin/Mobile"
 
-type Section = "dashboard" | "pricing" | "orders" | "drivers" | "users" | "complaints" | "settings"
+import "./admin.css"
+
+import { Icon, Avatar, type IconName } from "./admin/ui"
+
+import { orders, pending, complaints0, type Complaint } from "./admin/data"
+
+import Dashboard from "./admin/Dashboard"
+
+import OrdersPage, { OrderDetail } from "./admin/Orders"
+
+import Drivers, { type Decision } from "./admin/Drivers"
+
+import Users from "./admin/Users"
+
+import Complaints from "./admin/Complaints"
+
+import Pricing from "./admin/Pricing"
+
+import MobileAdmin from "./admin/Mobile"
+import AdminLoginGate from "./AdminLoginGate"
+import Accounting from "./admin/Accounting"
+import Wallets from "./admin/Wallets"
+import SystemCron from "./admin/SystemCron"
+import B2B from "./admin/B2B"
+
+type Section =
+  | "dashboard"
+  | "accounting"
+  | "pricing"
+  | "orders"
+  | "drivers"
+  | "wallets"
+  | "b2b"
+  | "users"
+  | "complaints"
+  | "cron"
+  | "settings"
+
 type View = Section | "order-detail"
 
-const nav: { id: Section label: string icon: IconName }[] = [
+const nav: { id: Section; label: string; icon: IconName }[] = [
   { id: "dashboard", label: "Tổng quan", icon: "grid" },
+  { id: "accounting", label: "Kế toán", icon: "file" },
   { id: "pricing", label: "Bảng giá", icon: "wallet" },
   { id: "orders", label: "Đơn hàng", icon: "orders" },
   { id: "drivers", label: "Tài xế", icon: "drivers" },
+  { id: "wallets", label: "Ví tài xế", icon: "wallet" },
+  { id: "b2b", label: "Khách B2B", icon: "shield" },
   { id: "users", label: "Người dùng", icon: "users" },
   { id: "complaints", label: "Khiếu nại", icon: "alert" },
+  { id: "cron", label: "Hệ thống", icon: "clock" },
 ]
+
 const crumb: Record<Section, string> = {
   dashboard: "Tổng quan",
+  accounting: "Kế toán & Doanh thu",
   pricing: "Bảng giá",
   orders: "Đơn hàng",
   drivers: "Tài xế",
+  wallets: "Quản lý ví tài xế",
+  b2b: "Khách hàng Doanh nghiệp B2B",
   users: "Người dùng",
   complaints: "Khiếu nại",
+  cron: "Tác vụ nền & CSDL",
   settings: "Cài đặt",
 }
 
@@ -35,30 +71,45 @@ type Cmd = { label: string hint: string icon: IconName fn: () => void }
 
 function PaletteInner({
   onClose,
+
   q,
+
   setQ,
+
   idx,
+
   setIdx,
+
   cmds,
 }: {
   onClose: () => void
+
   q: string
+
   setQ: (s: string) => void
+
   idx: number
+
   setIdx: (n: number) => void
+
   cmds: Cmd[]
 }) {
   const list = cmds
+
     .filter((c) =>
       `${c.label} ${c.hint}`.toLowerCase().includes(q.toLowerCase()),
     )
+
     .slice(0, 8)
+
   const go = (c?: Cmd) => {
     if (c) {
       onClose()
+
       c.fn()
     }
   }
+
   return (
     <div className="scrim top" role="presentation" onMouseDown={onClose}>
       <div
@@ -76,18 +127,24 @@ function PaletteInner({
             placeholder="Tìm đơn hàng, tài xế, trang…"
             onChange={(e) => {
               setQ(e.target.value)
+
               setIdx(0)
             }}
             onKeyDown={(e) => {
               if (e.key === "Escape") onClose()
+
               if (e.key === "ArrowDown") {
                 e.preventDefault()
+
                 setIdx(Math.min(idx + 1, list.length - 1))
               }
+
               if (e.key === "ArrowUp") {
                 e.preventDefault()
+
                 setIdx(Math.max(idx - 1, 0))
               }
+
               if (e.key === "Enter") go(list[idx])
             }}
           />
@@ -117,70 +174,160 @@ function PaletteInner({
 
 function useIsMobile() {
   const q = "(max-width: 760px)"
+
   const [m, setM] = useState(() => window.matchMedia(q).matches)
+
   useEffect(() => {
     const mq = window.matchMedia(q)
+
     const h = () => setM(mq.matches)
+
     mq.addEventListener("change", h)
+
     return () => mq.removeEventListener("change", h)
   }, [])
+
   return m
 }
 
 export default function Admin() {
+  const [adminToken, setAdminToken] = useState<string | null>(() => {
+    return localStorage.getItem("admin_auth_token")
+  })
+
+  const [adminUser, setAdminUser] = useState<any>(() => {
+    try {
+      const raw = localStorage.getItem("admin_user_info")
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })
+
+  const handleLogout = () => {
+    if (
+      window.confirm("Bạn có chắc chắn muốn đăng xuất khỏi Cổng Quản trị viên?")
+    ) {
+      localStorage.removeItem("admin_auth_token")
+      localStorage.removeItem("admin_user_info")
+      setAdminToken(null)
+      setAdminUser(null)
+    }
+  }
+
   const mobile = useIsMobile()
+
   const [view, setView] = useState<View>("dashboard")
+
   const [sel, setSel] = useState<string | null>("DH1024")
+
   const [orderDrawer, setOrderDrawer] = useState<string | null>(null)
+
   const [detailId, setDetailId] = useState("DH1024")
+
   const [decided, setDecided] = useState<Record<string, Decision>>({})
+
   const [driverTab, setDriverTab] = useState<"review" | "all">("review")
+
   const [driverFocus, setDriverFocus] = useState<string | undefined>()
+
   const [cs, setCs] = useState<Complaint[]>(complaints0)
+
   const [csFocus, setCsFocus] = useState<string | undefined>()
+
   const [palette, setPalette] = useState(false)
+
   const [q, setQ] = useState("")
+
   const [pIdx, setPIdx] = useState(0)
+
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault()
+
         setPalette(true)
       }
     }
+
     window.addEventListener("keydown", h)
+
     return () => window.removeEventListener("keydown", h)
   }, [])
 
+  if (!adminToken) {
+    return (
+      <main className="app-shell">
+        <section
+          className="phone-frame"
+          style={{
+            background: "#030712",
+            color: "#f8fafc",
+            overflow: "hidden",
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.45)",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
+        >
+          <AdminLoginGate
+            onSuccess={(token, user) => {
+              setAdminToken(token)
+              setAdminUser(user)
+            }}
+            onBackToCustomer={() => {
+              window.location.hash = ""
+            }}
+          />
+        </section>
+      </main>
+    )
+  }
+
   const section: Section = view === "order-detail" ? "orders" : view
+
   const pendingLeft = pending.filter((p) => !decided[p.id]).length
+
   const newCs = cs.filter((c) => c.status === "Mới").length
+
   const badge: Partial<Record<Section, number>> = {
     drivers: pendingLeft,
+
     complaints: newCs,
   }
+
   const idx = nav.findIndex((n) => n.id === section)
 
   const go = (s: Section) => {
     setView(s)
+
     setDriverFocus(undefined)
+
     setCsFocus(undefined)
   }
+
   const openFull = (id: string) => {
     setDetailId(id)
+
     setView("order-detail")
   }
+
   const goDrivers = (id?: string, tab: "review" | "all" = "review") => {
     setDriverFocus(id)
+
     setDriverTab(tab)
+
     setTick((t) => t + 1)
+
     setView("drivers")
   }
+
   const goComplaints = (id?: string) => {
     setCsFocus(id)
+
     setTick((t) => t + 1)
+
     setView("complaints")
   }
 
@@ -188,24 +335,35 @@ export default function Admin() {
     ...nav.map(
       (n): Cmd => ({
         label: n.label,
+
         hint: "Trang",
+
         icon: n.icon,
+
         fn: () => go(n.id),
       }),
     ),
+
     ...orders.map(
       (o): Cmd => ({
         label: `#${o.id} · ${o.customer}`,
+
         hint: o.status,
+
         icon: "orders",
+
         fn: () => openFull(o.id),
       }),
     ),
+
     ...pending.map(
       (p): Cmd => ({
         label: p.name,
+
         hint: "Hồ sơ chờ duyệt",
+
         icon: "drivers",
+
         fn: () => goDrivers(p.id),
       }),
     ),
@@ -219,6 +377,8 @@ export default function Admin() {
           setDecided={setDecided}
           cs={cs}
           setCs={setCs}
+          onLogout={handleLogout}
+          adminUser={adminUser}
         />
       </div>
     )
@@ -267,12 +427,85 @@ export default function Admin() {
             <Icon name="settings" size={18} />
             <span>Cài đặt</span>
           </button>
-          <div className="a-me">
-            <Avatar initials="AD" size={30} />
-            <span>
-              <strong>Minh Anh</strong>
-              <small>Quản trị viên</small>
+          <div
+            className="a-me"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "8px",
+            }}
+          >
+            <Avatar
+              initials={
+                adminUser?.fullName
+                  ? adminUser.fullName.substring(0, 2).toUpperCase()
+                  : "AD"
+              }
+              size={30}
+            />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <strong
+                style={{
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "block",
+                }}
+              >
+                {adminUser?.fullName || "Minh Anh"}
+              </strong>
+              <small
+                style={{
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "block",
+                }}
+              >
+                {adminUser?.email || "Quản trị viên"}
+              </small>
             </span>
+            <button
+              type="button"
+              title="Đăng xuất quản trị"
+              onClick={handleLogout}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#94a3b8",
+                cursor: "pointer",
+                padding: "6px",
+                borderRadius: "6px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "#ef4444"
+                e.currentTarget.style.backgroundColor =
+                  "rgba(239, 68, 68, 0.12)"
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "#94a3b8"
+                e.currentTarget.style.backgroundColor = "transparent"
+              }}
+            >
+              <svg
+                style={{ width: 16, height: 16 }}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       </aside>
@@ -324,6 +557,7 @@ export default function Admin() {
             />
           )}
           {view === "pricing" && <Pricing />}
+          {view === "accounting" && <Accounting />}
           {view === "orders" && (
             <OrdersPage
               activeId={orderDrawer}
@@ -344,6 +578,8 @@ export default function Admin() {
               setTab={setDriverTab}
             />
           )}
+          {view === "wallets" && <Wallets />}
+          {view === "b2b" && <B2B />}
           {view === "users" && <Users openOrder={openFull} />}
           {view === "complaints" && (
             <Complaints
@@ -354,6 +590,7 @@ export default function Admin() {
               openOrder={openFull}
             />
           )}
+          {view === "cron" && <SystemCron />}
           {view === "settings" && (
             <div className="page">
               <div className="page-head">
@@ -380,7 +617,9 @@ export default function Admin() {
         <PaletteInner
           onClose={() => {
             setPalette(false)
+
             setQ("")
+
             setPIdx(0)
           }}
           q={q}

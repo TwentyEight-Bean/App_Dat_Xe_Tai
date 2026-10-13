@@ -7,91 +7,183 @@ import {
   type TouchEvent as ReactTouchEvent,
   type ReactNode,
 } from "react"
+
 import "./interactiveMap.css"
 
 export type MapMode = "customer" | "driver"
+
 export type MapLayer = "standard" | "traffic" | "satellite"
 
 export interface InteractiveMapProps {
   mode?: MapMode
+
   phase?: string // booking, searching, found, arriving, arrived, pickedup, delivering, delivered
+
   pickupAddr?: string
+
   destAddr?: string
+
   onPickupChange?: (addr: string) => void
+
   online?: boolean
+
   jobState?: string // none, incoming, toPickup, atPickup, delivering, complete
+
   children?: ReactNode
 }
 
 // Saigon landmarks and coordinates
+
 const STREET_NAMES = [
   "21 Nguyễn Đình Chiểu, Đa Kao, Q.1",
+
   "145 Hai Bà Trưng, P.6, Q.3",
+
   "88 Điện Biên Phủ, P. Đa Kao, Q.1",
+
   "56 Nam Kỳ Khởi Nghĩa, Bến Nghé, Q.1",
+
   "128 Hoàng Diệu, P.12, Q.4",
+
   "34 Võ Thị Sáu, P. Tân Định, Q.1",
+
   "200 Nguyễn Thị Minh Khai, P.6, Q.3",
+
   "15 Lê Duẩn, Bến Nghé, Q.1",
+
   "92 Pasteur, Bến Nghé, Q.1",
+
   "40 Tôn Đức Thắng, Bến Nghé, Q.1",
+
   "12 Bến Vân Đồn, P.12, Q.4",
+
   "175 Cách Mạng Tháng 8, P.4, Q.3",
 ]
 
 const ROUTE_PICKUP = { x: 194, y: 220 }
+
 const ROUTE_DEST = { x: 290, y: 110 }
+
 const ROUTE_DRIVER_START = { x: 45, y: 155 }
 
 export default function InteractiveMap({
   mode = "customer",
+
   phase = "booking",
+
   pickupAddr,
+
   destAddr,
+
   onPickupChange,
+
   online = true,
+
   jobState = "none",
+
   children,
 }: InteractiveMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Map transform: pan offset (x, y) & zoom scale
+
   const [pan, setPan] = useState({ x: 0, y: 0 })
+
   const [zoom, setZoom] = useState(1)
+
   const [layer, setLayer] = useState<MapLayer>("standard")
+
   const [layerMenuOpen, setLayerMenuOpen] = useState(false)
 
   // Drag state
+
   const isDragging = useRef(false)
+
   const dragStart = useRef({ x: 0, y: 0 })
+
   const panStart = useRef({ x: 0, y: 0 })
+
   const [dragging, setDragging] = useState(false)
+
   const [pinLifted, setPinLifted] = useState(false)
 
   // Pinch zoom state
+
   const touchDistance = useRef<number | null>(null)
+
   const zoomStart = useRef(1)
 
   // Driver animated progress (0 -> 1)
+
   const [driverProgress, setDriverProgress] = useState(0)
 
+  // Nearby trucks from DB
+  const [nearbyTrucks, setNearbyTrucks] = useState<
+    Array<{ x: number; y: number; delay: string; name?: string; plate?: string }>
+  >([
+    { x: 140, y: 180, delay: "0ms" },
+    { x: 260, y: 240, delay: "200ms" },
+    { x: 190, y: 290, delay: "400ms" },
+  ])
+
+  useEffect(() => {
+    if (phase !== "searching") return
+    let isMounted = true
+    fetch("/api/v1/driver/nearby?lat=10.7769&lng=106.7009&radiusKm=5&limit=6")
+      .then((r) => r.json())
+      .then((json) => {
+        if (!isMounted) return
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const mapped = json.data.map((d: any, i: number) => {
+            const lngDiff = ((Number(d.lng || 106.7) - 106.69) * 3500) % 200
+            const latDiff = ((10.785 - Number(d.lat || 10.77)) * 3500) % 180
+            const x = Math.min(360, Math.max(90, 200 + (i % 2 === 0 ? lngDiff : -lngDiff)))
+            const y = Math.min(320, Math.max(120, 220 + (i % 2 === 0 ? latDiff : -latDiff)))
+            return {
+              x: Math.round(x),
+              y: Math.round(y),
+              delay: `${i * 200}ms`,
+              name: d.name,
+              plate: d.licensePlate,
+            }
+          })
+          setNearbyTrucks(mapped)
+        }
+      })
+      .catch((err) => console.warn("Lỗi tải radar InteractiveMap:", err))
+
+    return () => {
+      isMounted = false
+    }
+  }, [phase])
+
   // Determine active route state
+
   const isCustomerTracking = [
     "found",
+
     "arriving",
+
     "arrived",
+
     "pickedup",
+
     "delivering",
+
     "delivered",
   ].includes(phase)
+
   const isDriverWorking =
     jobState === "toPickup" ||
     jobState === "atPickup" ||
     jobState === "delivering"
+
   const isSearching = phase === "searching"
+
   const isBooking = phase === "booking" && jobState === "none"
 
   // Simulate smooth truck movement along the route
+
   useEffect(() => {
     if (
       phase === "arriving" ||
@@ -102,9 +194,11 @@ export default function InteractiveMap({
       const interval = window.setInterval(() => {
         setDriverProgress((p) => {
           if (p >= 1) return 0
+
           return p + 0.008
         })
       }, 50)
+
       return () => window.clearInterval(interval)
     } else if (phase === "arrived" || jobState === "atPickup") {
       setDriverProgress(1)
@@ -114,65 +208,95 @@ export default function InteractiveMap({
   }, [phase, jobState])
 
   // Recenter map smoothly to focal point
+
   const recenter = useCallback(() => {
     setPan({ x: 0, y: 0 })
+
     setZoom(1)
   }, [])
 
   // Zoom handlers
+
   const handleZoomIn = () =>
     setZoom((z) => Math.min(2.4, Number((z + 0.25).toFixed(2))))
+
   const handleZoomOut = () =>
     setZoom((z) => Math.max(0.75, Number((z - 0.25).toFixed(2))))
 
   // Mouse Drag Events
+
   const onMouseDown = (e: ReactMouseEvent) => {
     if (e.button !== 0) return
+
     isDragging.current = true
+
     dragStart.current = { x: e.clientX, y: e.clientY }
+
     panStart.current = { ...pan }
+
     setDragging(true)
+
     if (isBooking) setPinLifted(true)
   }
 
   const onMouseMove = (e: ReactMouseEvent) => {
     if (!isDragging.current) return
+
     const dx = e.clientX - dragStart.current.x
+
     const dy = e.clientY - dragStart.current.y
+
     setPan({
       x: panStart.current.x + dx,
+
       y: panStart.current.y + dy,
     })
   }
 
   const onMouseUp = () => {
     if (!isDragging.current) return
+
     isDragging.current = false
+
     setDragging(false)
+
     if (isBooking) {
       setPinLifted(false)
+
       // Pick dynamic nearby address when dropped
+
       const randomIdx = Math.floor(
         Math.abs(pan.x + pan.y) % STREET_NAMES.length,
       )
+
       onPickupChange?.(STREET_NAMES[randomIdx])
     }
   }
 
   // Touch Drag & Pinch Events
+
   const onTouchStart = (e: ReactTouchEvent) => {
     if (e.touches.length === 1) {
       isDragging.current = true
+
       dragStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+
       panStart.current = { ...pan }
+
       setDragging(true)
+
       if (isBooking) setPinLifted(true)
     } else if (e.touches.length === 2) {
       // Pinch to zoom start
+
       isDragging.current = false
+
       const dx = e.touches[0].clientX - e.touches[1].clientX
+
       const dy = e.touches[0].clientY - e.touches[1].clientY
+
       touchDistance.current = Math.hypot(dx, dy)
+
       zoomStart.current = zoom
     }
   }
@@ -180,16 +304,23 @@ export default function InteractiveMap({
   const onTouchMove = (e: ReactTouchEvent) => {
     if (e.touches.length === 1 && isDragging.current) {
       const dx = e.touches[0].clientX - dragStart.current.x
+
       const dy = e.touches[0].clientY - dragStart.current.y
+
       setPan({
         x: panStart.current.x + dx,
+
         y: panStart.current.y + dy,
       })
     } else if (e.touches.length === 2 && touchDistance.current !== null) {
       const dx = e.touches[0].clientX - e.touches[1].clientX
+
       const dy = e.touches[0].clientY - e.touches[1].clientY
+
       const dist = Math.hypot(dx, dy)
+
       const ratio = dist / touchDistance.current
+
       setZoom(Math.min(2.5, Math.max(0.7, zoomStart.current * ratio)))
     }
   }
@@ -197,45 +328,65 @@ export default function InteractiveMap({
   const onTouchEnd = () => {
     if (isDragging.current) {
       isDragging.current = false
+
       setDragging(false)
+
       if (isBooking) {
         setPinLifted(false)
+
         const randomIdx = Math.floor(
           Math.abs(pan.x + pan.y) % STREET_NAMES.length,
         )
+
         onPickupChange?.(STREET_NAMES[randomIdx])
       }
     }
+
     touchDistance.current = null
   }
 
   // Wheel zoom
+
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault()
+
     const delta = e.deltaY * -0.0015
+
     setZoom((z) =>
       Math.min(2.4, Math.max(0.75, Number((z + delta).toFixed(2)))),
     )
   }
 
   // Compute animated driver coordinates along bezier path
+
   const calcDriverPos = (t: number) => {
     const isToPickup =
       phase === "arriving" || phase === "found" || jobState === "toPickup"
+
     const p0 = isToPickup ? ROUTE_DRIVER_START : ROUTE_PICKUP
+
     const p1 = isToPickup ? { x: 120, y: 180 } : { x: 240, y: 170 }
+
     const p2 = isToPickup ? ROUTE_PICKUP : ROUTE_DEST
 
     // Quadratic Bezier
+
     const u = 1 - t
+
     const tt = t * t
+
     const uu = u * u
+
     const x = uu * p0.x + 2 * u * t * p1.x + tt * p2.x
+
     const y = uu * p0.y + 2 * u * t * p1.y + tt * p2.y
 
     // Angle of heading
+
     const dx = 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x)
+
     const dy = 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y)
+
     const angle = (Math.atan2(dy, dx) * 180) / Math.PI
 
     return { x, y, angle }
@@ -402,14 +553,11 @@ export default function InteractiveMap({
           {/* Nearby Drivers when Searching */}
           {isSearching && (
             <>
-              {[
-                { x: 140, y: 180, delay: "0ms" },
-                { x: 260, y: 240, delay: "200ms" },
-                { x: 190, y: 290, delay: "400ms" },
-              ].map((d, i) => (
+              {nearbyTrucks.map((d, i) => (
                 <div
                   className="nearby-truck-marker"
                   key={i}
+                  title={d.name ? `${d.name} (${d.plate || "Xe tải"})` : "Tài xế sẵn sàng"}
                   style={{ left: d.x, top: d.y, animationDelay: d.delay }}
                 >
                   <span className="truck-pulse" />
@@ -472,7 +620,9 @@ export default function InteractiveMap({
               className="live-driver-truck"
               style={{
                 left: driverPos.x,
+
                 top: driverPos.y,
+
                 transform: `translate(-50%, -50%) rotate(${driverPos.angle}deg)`,
               }}
             >
@@ -545,6 +695,7 @@ export default function InteractiveMap({
                 }`}
                 onClick={() => {
                   setLayer("standard")
+
                   setLayerMenuOpen(false)
                 }}
                 type="button"
@@ -555,6 +706,7 @@ export default function InteractiveMap({
                 className={`layer-opt ${layer === "traffic" ? "selected" : ""}`}
                 onClick={() => {
                   setLayer("traffic")
+
                   setLayerMenuOpen(false)
                 }}
                 type="button"
@@ -567,6 +719,7 @@ export default function InteractiveMap({
                 }`}
                 onClick={() => {
                   setLayer("satellite")
+
                   setLayerMenuOpen(false)
                 }}
                 type="button"

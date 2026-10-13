@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
+
 import "./mobile.css"
+
 import { Icon, Status, Avatar, type IconName } from "./ui"
+
 import { Steps } from "./Orders"
+
 import { OpsMap } from "./Dashboard"
+
 import { DocPreview, type Decision } from "./Drivers"
+
 import {
   orders,
   pending,
@@ -19,60 +25,91 @@ import {
 } from "./data"
 
 type Tab = "home" | "orders" | "act" | "more"
+
 type Screen = { k: "order" id: string } | { k: "driver" id: string } | {
   k: "drivers"
 } | { k: "user" id: string } | { k: "users" } | {
   k: "complaint"
+
   id: string
 } | { k: "complaints" tab?: string } | { k: "settings" }
 
 type Nav = { push: (s: Screen) => void pop: () => void tab: (t: Tab) => void }
+
 type Shared = {
   decided: Record<string, Decision>
+
   setDecided: (
     f: (p: Record<string, Decision>) => Record<string, Decision>,
   ) => void
+
   cs: Complaint[]
+
   setCs: (f: (p: Complaint[]) => Complaint[]) => void
+
+  onLogout?: () => void
+
+  adminUser?: any
 }
+
 type Attn = {
   sev: "red" | "amber"
+
   group: "urgent" | "todo" | "review"
+
   title: string
+
   sub: string
+
   action: string
+
   go: () => void
 }
 
 const csCode = (id: string) => `#${id.replace("-", "")}`
+
 const csTone = (s: string) =>
   (s === "Mới"
     ? "red"
     : s === "Đã giải quyết"
       ? "green"
       : "amber") as "red" | "green" | "amber"
+
 const stateLabel: Record<DocState, string> = {
   none: "Chưa kiểm tra",
+
   ok: "Hợp lệ",
+
   review: "Cần xem lại",
 }
+
 const docMeta = [
   { label: "CCCD", icon: "user" as IconName },
+
   { label: "GPLX", icon: "file" as IconName },
+
   { label: "Đăng ký xe", icon: "truck" as IconName },
+
   { label: "Ảnh xác thực", icon: "shield" as IconName },
 ]
 
 /* ---------- primitives ---------- */
+
 function Sheet({
   title,
+
   onClose,
+
   children,
+
   foot,
 }: {
   title: string
+
   onClose: () => void
+
   children: ReactNode
+
   foot?: ReactNode
 }) {
   return (
@@ -104,16 +141,23 @@ function Sheet({
 
 function Fold({
   title,
+
   hint,
+
   open: o = false,
+
   children,
 }: {
   title: string
+
   hint?: string
+
   open?: boolean
+
   children: ReactNode
 }) {
   const [open, setOpen] = useState(o)
+
   return (
     <section className={`m-fold ${open ? "open" : ""}`}>
       <button
@@ -133,13 +177,19 @@ function Fold({
 
 function Header({
   title,
+
   sub,
+
   onBack,
+
   end,
 }: {
   title: string
+
   sub?: string
+
   onBack: () => void
+
   end?: ReactNode
 }) {
   return (
@@ -163,11 +213,15 @@ function Header({
 
 function Search({
   value,
+
   set,
+
   ph,
 }: {
   value: string
+
   set: (s: string) => void
+
   ph: string
 }) {
   return (
@@ -209,28 +263,44 @@ function OrderRow({ o, onClick }: { o: Order onClick: () => void }) {
 }
 
 /* ---------- screens ---------- */
+
 function Home({
   nav,
+
   attn,
+
   top,
+
   lateCount,
+
   sel,
+
   setSel,
 }: {
   nav: Nav
+
   attn: Attn[]
+
   top: Attn[]
+
   lateCount: number
+
   sel: string | null
+
   setSel: (id: string | null) => void
 }) {
   const picked = orders.find((o) => o.id === sel)
+
   const cells = [
     { l: "Đơn hôm nay", v: "248", n: "+12,8%", t: "up" },
+
     { l: "Đang giao", v: "86", n: `${lateCount} chậm`, t: "warn" },
+
     { l: "Tài xế online", v: "164", n: "+8", t: "up" },
+
     { l: "Doanh thu", v: "48,6tr", n: "+9,2%", t: "up" },
   ]
+
   return (
     <div className="m-page">
       <header className="m-top">
@@ -340,6 +410,7 @@ function Home({
               className="m-btn m-btn-primary m-btn-block"
               onClick={() => {
                 nav.push({ k: "order", id: picked.id })
+
                 setSel(null)
               }}
             >
@@ -369,20 +440,33 @@ function Home({
 
 function OrdersList({ nav }: { nav: Nav }) {
   const [q, setQ] = useState("")
+
   const [chip, setChip] = useState("Tất cả")
+
   const [sheet, setSheet] = useState(false)
+
   const [status, setStatus] = useState("Tất cả")
+
   const [vehicle, setVehicle] = useState("Tất cả")
+
   const [date, setDate] = useState("Hôm nay")
+
   const statuses = [
     "Tất cả",
+
     "Chờ tài xế",
+
     "Đã nhận",
+
     "Đang giao",
+
     "Hoàn thành",
+
     "Đã hủy",
   ]
+
   const vehicles = ["Tất cả", "Xe máy", "Xe van", "Xe bán tải", "Xe tải 500kg"]
+
   const rows = orders.filter(
     (o) =>
       (chip === "Tất cả" ||
@@ -390,20 +474,28 @@ function OrdersList({ nav }: { nav: Nav }) {
       (status === "Tất cả" || o.status === status) &&
       (vehicle === "Tất cả" || o.vehicle === vehicle) &&
       `${o.id} ${o.customer} ${o.driver}`
+
         .toLowerCase()
+
         .includes(q.toLowerCase()),
   )
+
   const active =
     (status !== "Tất cả" ? 1 : 0) +
     (vehicle !== "Tất cả" ? 1 : 0) +
     (date !== "Hôm nay" ? 1 : 0)
+
   const Chips = ({
     list,
+
     v,
+
     set,
   }: {
     list: string[]
+
     v: string
+
     set: (s: string) => void
   }) => (
     <div className="m-chips wrap">
@@ -419,6 +511,7 @@ function OrdersList({ nav }: { nav: Nav }) {
       ))}
     </div>
   )
+
   return (
     <div className="m-page">
       <header className="m-top">
@@ -468,7 +561,9 @@ function OrdersList({ nav }: { nav: Nav }) {
                 className="m-btn"
                 onClick={() => {
                   setStatus("Tất cả")
+
                   setVehicle("Tất cả")
+
                   setDate("Hôm nay")
                 }}
               >
@@ -502,9 +597,13 @@ function OrdersList({ nav }: { nav: Nav }) {
 
 function OrderDetailM({ id, nav }: { id: string nav: Nav }) {
   const o = orders.find((x) => x.id === id)!
+
   const promo = o.value > 100000 ? 10000 : 0
+
   const surge = o.late ? 15000 : 0
+
   const live = !o.cancelled && o.stage < 4
+
   return (
     <div className="m-detail">
       <Header title={`#${o.id}`} sub={`Tạo lúc ${o.time}`} onBack={nav.pop} />
@@ -599,9 +698,13 @@ function OrderDetailM({ id, nav }: { id: string nav: Nav }) {
           <div className="m-person">
             <Avatar
               initials={o.customer
+
                 .split(" ")
+
                 .slice(-2)
+
                 .map((w) => w[0])
+
                 .join("")}
               size={40}
             />
@@ -619,10 +722,14 @@ function OrderDetailM({ id, nav }: { id: string nav: Nav }) {
 function ActionCenter({ nav, attn }: { nav: Nav attn: Attn[] }) {
   const groups: { g: Attn["group"] t: string }[] = [
     { g: "urgent", t: "Khẩn cấp" },
+
     { g: "todo", t: "Cần xử lý" },
+
     { g: "review", t: "Chờ duyệt" },
   ]
+
   void nav
+
   return (
     <div className="m-page">
       <header className="m-top">
@@ -633,7 +740,9 @@ function ActionCenter({ nav, attn }: { nav: Nav attn: Attn[] }) {
       </header>
       {groups.map(({ g, t }) => {
         const list = attn.filter((a) => a.group === g)
+
         if (!list.length) return null
+
         return (
           <section className="m-sec" key={g}>
             <h2>
@@ -676,19 +785,35 @@ function ActionCenter({ nav, attn }: { nav: Nav attn: Attn[] }) {
 
 function More({
   nav,
+
   waiting,
+
   newCs,
+
+  onLogout,
+
+  adminUser,
 }: {
   nav: Nav
+
   waiting: number
+
   newCs: number
+
+  onLogout?: () => void
+
+  adminUser?: any
 }) {
-  const items: { icon: IconName l: string s: Screen n?: number }[] = [
+  const items: { icon: IconName; l: string; s: Screen; n?: number }[] = [
     { icon: "drivers", l: "Tài xế", s: { k: "drivers" }, n: waiting },
+
     { icon: "users", l: "Người dùng", s: { k: "users" } },
+
     { icon: "alert", l: "Khiếu nại", s: { k: "complaints" }, n: newCs },
+
     { icon: "settings", l: "Cài đặt", s: { k: "settings" } },
   ]
+
   return (
     <div className="m-page">
       <header className="m-top">
@@ -696,12 +821,44 @@ function More({
           <strong className="m-h1">Thêm</strong>
         </div>
       </header>
-      <div className="m-card m-me">
-        <Avatar initials="AD" size={44} />
-        <span>
-          <strong>Minh Anh</strong>
-          <small>Quản trị viên · TP. Hồ Chí Minh</small>
-        </span>
+      <div
+        className="m-card m-me"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Avatar
+            initials={
+              adminUser?.fullName
+                ? adminUser.fullName.substring(0, 2).toUpperCase()
+                : "AD"
+            }
+            size={44}
+          />
+          <span>
+            <strong>{adminUser?.fullName || "Minh Anh"}</strong>
+            <small>
+              {adminUser?.email || "Quản trị viên · TP. Hồ Chí Minh"}
+            </small>
+          </span>
+        </div>
+        {onLogout && (
+          <button
+            type="button"
+            onClick={onLogout}
+            className="m-btn m-btn-sm"
+            style={{
+              color: "#ef4444",
+              borderColor: "rgba(239, 68, 68, 0.4)",
+              background: "rgba(239, 68, 68, 0.05)",
+            }}
+          >
+            Đăng xuất
+          </button>
+        )}
       </div>
       <ul className="m-card m-menu">
         {items.map((i) => (
@@ -723,15 +880,21 @@ function More({
 
 function DriversM({
   nav,
+
   sh,
+
   docs,
 }: {
   nav: Nav
+
   sh: Shared
+
   docs: Record<string, DocState[]>
 }) {
   const [tab, setTab] = useState<"review" | "all">("review")
+
   const list = pending.filter((p) => !sh.decided[p.id])
+
   return (
     <div className="m-detail">
       <Header title="Tài xế" onBack={nav.pop} />
@@ -810,34 +973,54 @@ function DriversM({
 
 function DriverReview({
   p,
+
   nav,
+
   sh,
+
   docs,
+
   setDocs,
 }: {
   p: Pending
+
   nav: Nav
+
   sh: Shared
+
   docs: Record<string, DocState[]>
+
   setDocs: (
     f: (x: Record<string, DocState[]>) => Record<string, DocState[]>,
   ) => void
 }) {
   const [open, setOpen] = useState<number | null>(null)
+
   const [reject, setReject] = useState(false)
+
   const [reason, setReason] = useState("")
+
   const ds = docs[p.id]
+
   const dec = sh.decided[p.id]
+
   const next = pending.find((x) => x.id !== p.id && !sh.decided[x.id])
+
   const setState = (i: number, s: DocState) =>
     setDocs((x) => ({ ...x, [p.id]: x[p.id].map((v, j) => (j === i ? s : v)) }))
+
   const info: [string, string][] = [
     ["Điện thoại", p.phone],
+
     ["Khu vực", p.area],
+
     ["Ngày sinh", p.dob],
+
     ["Biển số", p.plate],
+
     ["Phương tiện", p.brand],
   ]
+
   return (
     <div className="m-detail has-foot">
       <Header title="Duyệt hồ sơ" sub={p.id} onBack={nav.pop} />
@@ -917,6 +1100,7 @@ function DriverReview({
               className="m-btn m-btn-primary m-btn-block"
               onClick={() => {
                 nav.pop()
+
                 nav.push({ k: "driver", id: next.id })
               }}
             >
@@ -965,6 +1149,7 @@ function DriverReview({
                 className="m-btn m-btn-primary m-btn-block"
                 onClick={() => {
                   setState(open, "ok")
+
                   setOpen(open < 3 ? open + 1 : null)
                 }}
               >
@@ -1014,9 +1199,12 @@ function DriverReview({
                 onClick={() => {
                   sh.setDecided((x) => ({
                     ...x,
+
                     [p.id]: { res: "rejected", reason },
                   }))
+
                   setReject(false)
+
                   setReason("")
                 }}
               >
@@ -1040,11 +1228,15 @@ function DriverReview({
 
 function UsersM({ nav }: { nav: Nav }) {
   const [q, setQ] = useState("")
+
   const rows = users.filter((u) =>
     `${u.name} ${u.phone} ${u.email} ${u.id}`
+
       .toLowerCase()
+
       .includes(q.toLowerCase()),
   )
+
   return (
     <div className="m-detail">
       <Header title="Người dùng" onBack={nav.pop} />
@@ -1179,35 +1371,53 @@ function UserDetailM({ u, nav }: { u: UserRow nav: Nav }) {
 
 function ComplaintsM({
   nav,
+
   sh,
+
   initial,
 }: {
   nav: Nav
+
   sh: Shared
+
   initial?: string
 }) {
   const [q, setQ] = useState("")
+
   const [tab, setTab] = useState(initial ?? "Tất cả")
+
   const [sheet, setSheet] = useState(false)
+
   const [cat, setCat] = useState("Tất cả")
+
   const [date, setDate] = useState("Tất cả")
+
   const cats = ["Tất cả", ...Array.from(new Set(sh.cs.map((c) => c.cat)))]
+
   const nNew = sh.cs.filter((c) => c.status === "Mới").length
+
   const rows = sh.cs.filter(
     (c) =>
       (tab === "Tất cả" || c.status === tab) &&
       (cat === "Tất cả" || c.cat === cat) &&
       `${c.title} ${c.customer} ${c.order} ${c.id}`
+
         .toLowerCase()
+
         .includes(q.toLowerCase()),
   )
+
   const Chips = ({
     list,
+
     v,
+
     set,
   }: {
     list: string[]
+
     v: string
+
     set: (s: string) => void
   }) => (
     <div className="m-chips wrap">
@@ -1223,7 +1433,9 @@ function ComplaintsM({
       ))}
     </div>
   )
+
   const active = (cat !== "Tất cả" ? 1 : 0) + (date !== "Tất cả" ? 1 : 0)
+
   return (
     <div className="m-detail">
       <Header title="Khiếu nại" onBack={nav.pop} />
@@ -1232,7 +1444,9 @@ function ComplaintsM({
         <div className="m-chips">
           {[
             ["Tất cả", ""],
+
             ["Mới", nNew ? String(nNew) : ""],
+
             ["Đang xử lý", ""],
           ].map(([t, n]) => (
             <button
@@ -1288,7 +1502,9 @@ function ComplaintsM({
                 className="m-btn"
                 onClick={() => {
                   setCat("Tất cả")
+
                   setDate("Tất cả")
+
                   setTab("Tất cả")
                 }}
               >
@@ -1326,47 +1542,67 @@ function ComplaintsM({
 
 function ComplaintDetailM({
   c,
+
   nav,
+
   sh,
 }: {
   c: Complaint
+
   nav: Nav
+
   sh: Shared
 }) {
   const [reply, setReply] = useState("")
+
   const patch = (f: (x: Complaint) => Complaint) =>
     sh.setCs((p) => p.map((x) => (x.id === c.id ? f(x) : x)))
+
   const setStatus = (s: string) =>
     patch((x) => ({
       ...x,
+
       status: s,
+
       events: [
         ...x.events,
+
         {
           text:
             s === "Đã giải quyết" ? "Đã giải quyết" : "Admin tiếp nhận xử lý",
+
           at: "Vừa xong",
         },
       ],
     }))
+
   const send = () => {
     if (!reply.trim()) return
+
     patch((x) => ({
       ...x,
+
       messages: [
         ...x.messages,
+
         { from: "admin", text: reply.trim(), at: "Vừa xong" },
       ],
+
       status: x.status === "Mới" ? "Đang xử lý" : x.status,
     }))
+
     setReply("")
   }
+
   const escalate = (what: string) =>
     patch((x) => ({
       ...x,
+
       events: [...x.events, { text: what, at: "Vừa xong" }],
     }))
+
   const done = c.status === "Đã giải quyết"
+
   return (
     <div className="m-detail has-foot">
       <Header title="Khiếu nại" sub={c.id} onBack={nav.pop} />
@@ -1482,113 +1718,178 @@ function ComplaintDetailM({
 }
 
 /* ---------- shell ---------- */
+
 export default function MobileAdmin({
   decided,
+
   setDecided,
+
   cs,
+
   setCs,
+
+  onLogout,
+
+  adminUser,
 }: Shared) {
   const [tab, setTab] = useState<Tab>("home")
+
   const [stack, setStack] = useState<Screen[]>([])
+
   const [sel, setSel] = useState<string | null>(null)
+
   const [docs, setDocs] = useState<Record<string, DocState[]>>(() =>
     Object.fromEntries(pending.map((p) => [p.id, p.docs0])),
   )
+
   const scroller = useRef<HTMLDivElement>(null)
+
   const top = stack[stack.length - 1]
+
   const key = top ? JSON.stringify(top) : tab
+
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 })
   }, [key])
 
   const nav: Nav = {
     push: (s) => setStack((p) => [...p, s]),
+
     pop: () => setStack((p) => p.slice(0, -1)),
+
     tab: (t) => {
       setTab(t)
+
       setStack([])
     },
   }
+
   const sh: Shared = { decided, setDecided, cs, setCs }
 
   const late = orders
+
     .filter((o) => o.late)
+
     .sort((a, b) => (b.late ?? 0) - (a.late ?? 0))
+
   const waiting = pending.filter((p) => !decided[p.id])
+
   const newCs = cs.filter((c) => c.status === "Mới")
+
   const attn: Attn[] = [
     ...late.map(
       (o): Attn => ({
         sev: (o.late ?? 0) >= 15 ? "red" : "amber",
+
         group: (o.late ?? 0) >= 15 ? "urgent" : "todo",
+
         title: `Đơn #${o.id}`,
+
         sub: `Giao chậm ${o.late} phút`,
+
         action: "Xem",
+
         go: () => nav.push({ k: "order", id: o.id }),
       }),
     ),
+
     ...newCs.map(
       (c, i): Attn => ({
         sev: i === 0 ? "red" : "amber",
+
         group: i === 0 ? "urgent" : "todo",
+
         title: `Khiếu nại ${csCode(c.id)}`,
+
         sub: c.title,
+
         action: "Xử lý",
+
         go: () => nav.push({ k: "complaint", id: c.id }),
       }),
     ),
+
     {
       sev: "amber",
+
       group: "todo",
+
       title: "Lê Thành Đạt",
+
       sub: "Tài xế cần xác minh · GPLX sắp hết hạn",
+
       action: "Xác minh",
+
       go: () => nav.push({ k: "drivers" }),
     },
+
     ...waiting.map(
       (p): Attn => ({
         sev: "amber",
+
         group: "review",
+
         title: p.name,
+
         sub: `Hồ sơ tài xế chờ duyệt · ${p.submitted}`,
+
         action: "Xem hồ sơ",
+
         go: () => nav.push({ k: "driver", id: p.id }),
       }),
     ),
   ]
+
   const home: Attn[] = [
     ...(late[0]
       ? [
           {
             sev: "red",
+
             group: "urgent",
+
             title: `#${late[0].id}`,
+
             sub: `Giao chậm ${late[0].late} phút`,
+
             action: "Xem",
+
             go: () => nav.push({ k: "order", id: late[0].id }),
           } as Attn,
         ]
       : []),
+
     ...(waiting.length
       ? [
           {
             sev: "amber",
+
             group: "review",
+
             title: `${waiting.length} tài xế chờ duyệt`,
+
             sub: "Hồ sơ mới cần kiểm tra",
+
             action: "Duyệt",
+
             go: () => nav.push({ k: "drivers" }),
           } as Attn,
         ]
       : []),
+
     ...(newCs.length
       ? [
           {
             sev: "red",
+
             group: "urgent",
+
             title: `${newCs.length} khiếu nại mới`,
+
             sub: newCs[0].title,
+
             action: "Xử lý",
+
             go: () => nav.push({ k: "complaints", tab: "Mới" }),
           } as Attn,
         ]
@@ -1596,6 +1897,7 @@ export default function MobileAdmin({
   ]
 
   let body: ReactNode
+
   if (top?.k === "order") body = <OrderDetailM id={top.id} nav={nav} />
   else if (top?.k === "drivers")
     body = <DriversM nav={nav} sh={sh} docs={docs} />
@@ -1650,15 +1952,29 @@ export default function MobileAdmin({
     )
   else if (tab === "orders") body = <OrdersList nav={nav} />
   else if (tab === "act") body = <ActionCenter nav={nav} attn={attn} />
-  else body = <More nav={nav} waiting={waiting.length} newCs={newCs.length} />
+  else
+    body = (
+      <More
+        nav={nav}
+        waiting={waiting.length}
+        newCs={newCs.length}
+        onLogout={onLogout}
+        adminUser={adminUser}
+      />
+    )
 
   const tabs: { id: Tab l: string icon: IconName n?: number }[] = [
     { id: "home", l: "Tổng quan", icon: "grid" },
+
     { id: "orders", l: "Đơn hàng", icon: "orders" },
+
     { id: "act", l: "Xử lý", icon: "alert", n: attn.length },
+
     { id: "more", l: "Thêm", icon: "more" },
   ]
+
   const hideNav = !!top
+
   return (
     <div className="m-app">
       <div className={`m-scroll ${hideNav ? "no-nav" : ""}`} ref={scroller}>

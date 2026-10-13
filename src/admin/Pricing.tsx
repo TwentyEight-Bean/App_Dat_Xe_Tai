@@ -1,44 +1,70 @@
 import { useEffect, useState } from "react"
+
 import { Icon, Status } from "./ui"
+
 import { vnd } from "./data"
 
 /* ── Types ── */
+
 type PricingRule = {
   id: string
+
   vehicleTypeId: string
+
   basePrice: string
+
   baseDistanceKm: string
+
   pricePerKm: string
+
   vehicleCode: string
+
   vehicleName: string
+
   payloadCapacityKg: string
+
   dimensionsLxwxh: string | null
+
   createdAt: string
+
   updatedAt: string
 }
 
 type Surcharge = {
   id: string
+
   code: string
+
   name: string
+
   price: string
+
   description: string | null
+
   isActive: boolean
 }
 
 /* ── helpers ── */
+
 const fmtVnd = (v: string | number) => {
   const n = typeof v === "string" ? parseFloat(v) : v
+
   if (isNaN(n)) return "—"
+
   return n.toLocaleString("vi-VN") + "đ"
 }
+
 const fmtKm = (v: string | number) => {
   const n = typeof v === "string" ? parseFloat(v) : v
+
   return isNaN(n) ? "—" : `${n} km`
 }
+
 const fmtWeight = (v: string) => {
   const n = parseFloat(v)
+
   if (isNaN(n)) return v
+
   return n >= 1000
     ? `${(n / 1000).toLocaleString("vi-VN")} tấn`
     : `${n.toLocaleString("vi-VN")} kg`
@@ -46,59 +72,88 @@ const fmtWeight = (v: string) => {
 
 const vehicleIcons: Record<string, string> = {
   MOTORBIKE: "🏍️",
+
   VAN: "🚐",
+
   PICKUP: "🛻",
+
   TRUCK_500KG: "🚚",
+
   TRUCK_1T: "🚛",
+
   TRUCK_2T: "🚛",
+
   TRUCK_5T: "🚛",
+
   TRUCK_10T: "🚛",
 }
 
 /* ── API fetch wrapper ── */
+
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...opts,
+
     headers: {
       "Content-Type": "application/json",
-      Authorization: "Bearer DEV_ADMIN_TOKEN",
+
+      Authorization: `Bearer ${localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"}`,
+
       ...(opts?.headers ?? {}),
     },
   })
+
   const json = await res.json()
+
   if (!res.ok || json.success === false)
     throw new Error(json.message || "Lỗi API")
+
   return json.data as T
 }
 
 /* ── Inline Edit Modal ── */
+
 function EditRuleModal({
   rule,
+
   onClose,
+
   onSaved,
 }: {
   rule: PricingRule
+
   onClose: () => void
+
   onSaved: () => void
 }) {
   const [basePrice, setBasePrice] = useState(rule.basePrice)
+
   const [baseKm, setBaseKm] = useState(rule.baseDistanceKm)
+
   const [perKm, setPerKm] = useState(rule.pricePerKm)
+
   const [saving, setSaving] = useState(false)
+
   const [err, setErr] = useState("")
 
   const save = async () => {
     setSaving(true)
+
     setErr("")
+
     try {
       await apiFetch(`/api/admin/pricing/rules/${rule.vehicleTypeId}`, {
         method: "PATCH",
+
         body: JSON.stringify({
           basePrice: parseFloat(basePrice),
+
           baseDistanceKm: parseFloat(baseKm),
+
           pricePerKm: parseFloat(perKm),
         }),
       })
+
       onSaved()
     } catch (e: any) {
       setErr(e.message)
@@ -192,50 +247,212 @@ function EditRuleModal({
   )
 }
 
-/* ── Surcharge Edit Modal ── */
-function EditSurchargeModal({
-  item,
+function CreateRuleModal({
   onClose,
-  onSaved, // null = create new
+  onSaved,
 }: {
-  item: Surcharge | null
   onClose: () => void
   onSaved: () => void
 }) {
-  const isNew = !item
-  const [code, setCode] = useState(item?.code ?? "")
-  const [name, setName] = useState(item?.name ?? "")
-  const [price, setPrice] = useState(item?.price ?? "0")
-  const [desc, setDesc] = useState(item?.description ?? "")
-  const [active, setActive] = useState(item?.isActive ?? true)
+  const [vehicleTypeId, setVehicleTypeId] = useState("v-3ton")
+  const [basePrice, setBasePrice] = useState("320000")
+  const [baseKm, setBaseKm] = useState("4.0")
+  const [perKm, setPerKm] = useState("23000")
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState("")
 
   const save = async () => {
+    if (!vehicleTypeId.trim()) {
+      setErr("Vui lòng nhập mã loại xe (vehicleTypeId)")
+      return
+    }
     setSaving(true)
     setErr("")
+    try {
+      await apiFetch("/api/admin/pricing/rules", {
+        method: "POST",
+        body: JSON.stringify({
+          vehicleTypeId: vehicleTypeId.trim(),
+          basePrice: parseFloat(basePrice) || 0,
+          baseDistanceKm: parseFloat(baseKm) || 2,
+          pricePerKm: parseFloat(perKm) || 0,
+        }),
+      })
+      onSaved()
+    } catch (e: any) {
+      setErr(e.message || "Lỗi tạo bảng giá loại xe")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="scrim" role="presentation" onMouseDown={onClose}>
+      <div
+        className="modal glass"
+        role="dialog"
+        aria-label="Thêm bảng giá loại xe mới"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="pr-modal-ic">
+          <span>🚚</span>
+        </div>
+        <h3>Thêm bảng giá loại xe mới</h3>
+        <p>Thiết lập công thức tính cước vận chuyển cho loại phương tiện mới.</p>
+
+        {err && (
+          <div
+            style={{
+              color: "#ef4444",
+              fontSize: "12px",
+              marginBottom: "10px",
+              textAlign: "center",
+            }}
+          >
+            {err}
+          </div>
+        )}
+
+        <div className="pr-form">
+          <label className="pr-field">
+            <span className="pr-label">Mã loại xe (vehicleTypeId) *</span>
+            <input
+              type="text"
+              value={vehicleTypeId}
+              onChange={(e) => setVehicleTypeId(e.target.value)}
+              placeholder="VD: v-3ton, v-pickup"
+            />
+            <small className="pr-hint">
+              Định danh phân khúc xe trong cơ sở dữ liệu
+            </small>
+          </label>
+          <label className="pr-field">
+            <span className="pr-label">Giá mở cửa (đ) *</span>
+            <input
+              type="number"
+              value={basePrice}
+              onChange={(e) => setBasePrice(e.target.value)}
+              min={0}
+              step={1000}
+            />
+            <small className="pr-hint">Cước khởi điểm chuyến đi</small>
+          </label>
+          <label className="pr-field">
+            <span className="pr-label">Cự ly mở cửa (km)</span>
+            <input
+              type="number"
+              value={baseKm}
+              onChange={(e) => setBaseKm(e.target.value)}
+              min={0}
+              step={0.5}
+            />
+            <small className="pr-hint">Số km đã bao gồm trong giá mở cửa</small>
+          </label>
+          <label className="pr-field">
+            <span className="pr-label">Đơn giá km tiếp theo (đ/km) *</span>
+            <input
+              type="number"
+              value={perKm}
+              onChange={(e) => setPerKm(e.target.value)}
+              min={0}
+              step={500}
+            />
+            <small className="pr-hint">
+              Phí tính thêm cho mỗi km vượt cự ly mở cửa
+            </small>
+          </label>
+        </div>
+
+        <div className="modal-actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={onClose}
+            disabled={saving}
+          >
+            Hủy
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={save}
+            disabled={saving || !vehicleTypeId.trim()}
+          >
+            {saving ? "Đang lưu…" : "Tạo bảng giá"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Surcharge Edit Modal ── */
+
+function EditSurchargeModal({
+  item,
+
+  onClose,
+
+  onSaved, // null = create new
+}: {
+  item: Surcharge | null
+
+  onClose: () => void
+
+  onSaved: () => void
+}) {
+  const isNew = !item
+
+  const [code, setCode] = useState(item?.code ?? "")
+
+  const [name, setName] = useState(item?.name ?? "")
+
+  const [price, setPrice] = useState(item?.price ?? "0")
+
+  const [desc, setDesc] = useState(item?.description ?? "")
+
+  const [active, setActive] = useState(item?.isActive ?? true)
+
+  const [saving, setSaving] = useState(false)
+
+  const [err, setErr] = useState("")
+
+  const save = async () => {
+    setSaving(true)
+
+    setErr("")
+
     try {
       if (isNew) {
         await apiFetch("/api/admin/pricing/surcharges", {
           method: "POST",
+
           body: JSON.stringify({
             code,
+
             name,
+
             price: parseFloat(price),
+
             description: desc,
           }),
         })
       } else {
         await apiFetch(`/api/admin/pricing/surcharges/${item!.code}`, {
           method: "PATCH",
+
           body: JSON.stringify({
             name,
+
             price: parseFloat(price),
+
             description: desc,
+
             isActive: active,
           }),
         })
       }
+
       onSaved()
     } catch (e: any) {
       setErr(e.message)
@@ -341,67 +558,121 @@ function EditSurchargeModal({
 const DEFAULT_RULES: PricingRule[] = [
   {
     id: "p-500kg",
+
     vehicleTypeId: "v-500kg",
+
     basePrice: "150000",
+
     baseDistanceKm: "4.0",
+
     pricePerKm: "15000",
+
     vehicleCode: "TRUCK_500KG",
+
     vehicleName: "Xe Van 500kg",
+
     payloadCapacityKg: "500",
+
     dimensionsLxwxh: "1.7m x 1.2m x 1.2m",
+
     createdAt: new Date().toISOString(),
+
     updatedAt: new Date().toISOString(),
   },
+
   {
     id: "p-1ton",
+
     vehicleTypeId: "v-1ton",
+
     basePrice: "200000",
+
     baseDistanceKm: "4.0",
+
     pricePerKm: "17000",
+
     vehicleCode: "TRUCK_1T",
+
     vehicleName: "Xe tải 1 tấn",
+
     payloadCapacityKg: "1000",
+
     dimensionsLxwxh: "3.0m x 1.6m x 1.7m",
+
     createdAt: new Date().toISOString(),
+
     updatedAt: new Date().toISOString(),
   },
+
   {
     id: "p-2ton-thungkin",
+
     vehicleTypeId: "v-2ton-thungkin",
+
     basePrice: "280000",
+
     baseDistanceKm: "4.0",
+
     pricePerKm: "21000",
+
     vehicleCode: "TRUCK_2T",
+
     vehicleName: "Xe tải 2 tấn (Thùng kín)",
+
     payloadCapacityKg: "2000",
+
     dimensionsLxwxh: "4.3m x 1.8m x 1.8m",
+
     createdAt: new Date().toISOString(),
+
     updatedAt: new Date().toISOString(),
   },
+
   {
     id: "p-2ton-muibat",
+
     vehicleTypeId: "v-2ton-muibat",
+
     basePrice: "280000",
+
     baseDistanceKm: "4.0",
+
     pricePerKm: "21000",
+
     vehicleCode: "TRUCK_2T",
+
     vehicleName: "Xe tải 2 tấn (Mui bạt)",
+
     payloadCapacityKg: "2000",
+
     dimensionsLxwxh: "4.3m x 1.8m x 1.9m",
+
     createdAt: new Date().toISOString(),
+
     updatedAt: new Date().toISOString(),
   },
+
   {
     id: "p-5ton",
+
     vehicleTypeId: "v-5ton",
+
     basePrice: "450000",
+
     baseDistanceKm: "4.0",
+
     pricePerKm: "28000",
+
     vehicleCode: "TRUCK_5T",
+
     vehicleName: "Xe tải 5 tấn",
+
     payloadCapacityKg: "5000",
+
     dimensionsLxwxh: "6.0m x 2.2m x 2.2m",
+
     createdAt: new Date().toISOString(),
+
     updatedAt: new Date().toISOString(),
   },
 ]
@@ -409,78 +680,124 @@ const DEFAULT_RULES: PricingRule[] = [
 const DEFAULT_SURCHARGES: Surcharge[] = [
   {
     id: "s-loading-floor",
+
     code: "LOADING_FLOOR",
+
     name: "Bốc xếp tầng trệt",
+
     description:
       "Tài xế hỗ trợ bốc xếp hàng hóa lên/xuống xe tại tầng trệt (bán kính dưới 10m)",
+
     price: "50000",
+
     isActive: true,
   },
+
   {
     id: "s-loading-stairs",
+
     code: "LOADING_STAIRS",
+
     name: "Bốc xếp lầu / thang bộ",
+
     description:
       "Khuân vác hàng hóa lên/xuống cầu thang bộ (không có thang máy)",
+
     price: "100000",
+
     isActive: true,
   },
+
   {
     id: "s-extra-helper",
+
     code: "EXTRA_HELPER",
+
     name: "Thêm 1 người bốc xếp theo xe",
+
     description:
       "Bố trí thêm 1 phụ xe đi cùng hỗ trợ bốc xếp các kiện hàng cồng kềnh",
+
     price: "200000",
+
     isActive: true,
   },
+
   {
     id: "s-night-surcharge",
+
     code: "NIGHT_SURCHARGE",
+
     name: "Phụ phí ban đêm (22:00 - 06:00)",
+
     description: "Phụ thu chạy xe và giao hàng khung giờ đêm",
+
     price: "20000",
+
     isActive: true,
   },
+
   {
     id: "s-extra-stop",
+
     code: "EXTRA_STOP",
+
     name: "Thêm điểm giao hàng phụ",
+
     description:
       "Dừng thêm 1 điểm trên cùng tuyến đường (bán kính lệch dưới 5km)",
+
     price: "35000",
+
     isActive: true,
   },
 ]
 
 /* ── Main Pricing Page ── */
+
 export default function Pricing() {
   const [tab, setTab] = useState<"rules" | "surcharges">("rules")
+
   const [rules, setRules] = useState<PricingRule[]>([])
+
   const [surcharges, setSurcharges] = useState<Surcharge[]>([])
+
   const [loading, setLoading] = useState(true)
+
   const [error, setError] = useState("")
+
   const [editRule, setEditRule] = useState<PricingRule | null>(null)
+
+  const [createRuleOpen, setCreateRuleOpen] = useState(false)
+
   const [editSurcharge, setEditSurcharge] = useState<Surcharge | null | "new">(
     null,
   )
 
   const fetchAll = async () => {
     setLoading(true)
+
     setError("")
+
     try {
       const [r, s] = await Promise.all([
         apiFetch<PricingRule[]>("/api/pricing/rules"),
-        apiFetch<Surcharge[]>("/api/pricing/services"),
+
+        apiFetch<Surcharge[]>("/api/admin/pricing/surcharges"),
       ])
+
       setRules(r.length > 0 ? r : DEFAULT_RULES)
+
       setSurcharges(s.length > 0 ? s : DEFAULT_SURCHARGES)
     } catch (e: any) {
       console.warn(
         "Pricing API fetch failed, loading default fallback data:",
+
         e.message,
       )
+
       setRules(DEFAULT_RULES)
+
       setSurcharges(DEFAULT_SURCHARGES)
     } finally {
       setLoading(false)
@@ -493,7 +810,11 @@ export default function Pricing() {
 
   const refresh = () => {
     setEditRule(null)
+
+    setCreateRuleOpen(false)
+
     setEditSurcharge(null)
+
     fetchAll()
   }
 
@@ -507,6 +828,16 @@ export default function Pricing() {
           <p>Quản lý cước vận chuyển và phụ phí dịch vụ</p>
         </div>
         <div className="h-row">
+          {tab === "vehicles" && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setCreateRuleOpen(true)}
+            >
+              <Icon name="truck" size={14} />
+              Thêm bảng giá xe
+            </button>
+          )}
           {tab === "surcharges" && (
             <button
               type="button"
@@ -795,6 +1126,12 @@ export default function Pricing() {
         <EditRuleModal
           rule={editRule}
           onClose={() => setEditRule(null)}
+          onSaved={refresh}
+        />
+      )}
+      {createRuleOpen && (
+        <CreateRuleModal
+          onClose={() => setCreateRuleOpen(false)}
           onSaved={refresh}
         />
       )}

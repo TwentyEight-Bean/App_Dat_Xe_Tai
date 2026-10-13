@@ -5,6 +5,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react"
+import { subscribeRealtime } from "./lib/pusherClient"
 
 /* ---------- types & store ---------- */
 
@@ -12,174 +13,269 @@ export type Side = "customer" | "driver"
 
 export type Msg = {
   id: number
+
   from: Side
+
   kind: "text" | "location"
+
   text: string
+
   time: string
 }
 
 export type Conv = {
   id: string
+
   driverName: string
+
   driverInitials: string
+
   customerName: string
+
   vehicle: string
+
   order: string
+
   status: "active" | "completed"
+
   endedAt?: string
+
   messages: Msg[]
+
   unread: Record<Side, number>
 }
 
 export const CURRENT_CONV = "c1"
 
 let seq = 100
+
 const m = (
   from: Side,
+
   text: string,
+
   time: string,
+
   kind: Msg["kind"] = "text",
 ): Msg => ({
   id: ++seq,
+
   from,
+
   kind,
+
   text,
+
   time,
 })
 
 let state: Conv[] = [
   {
     id: "c1",
+
     driverName: "Nguyễn Văn Minh",
+
     driverInitials: "NM",
+
     customerName: "Chị Lan Anh",
+
     vehicle: "Xe van",
+
     order: "#DH1024",
+
     status: "active",
+
     unread: { customer: 1, driver: 0 },
+
     messages: [
       m("driver", "Chào bạn, mình là Minh, tài xế nhận đơn #DH1024.", "10:24"),
+
       m(
         "customer",
+
         "Chào anh, hàng là 6 thùng carton, để sẵn ở cổng nhé.",
+
         "10:26",
       ),
+
       m("driver", "Ok bạn, mình đang chạy từ Quận 3 qua.", "10:27"),
+
       m("customer", "Bạn tới đâu rồi?", "10:31"),
+
       m("driver", "Anh sắp tới điểm lấy rồi nhé", "10:32"),
     ],
   },
+
   {
     id: "c2",
+
     driverName: "Trần Quốc Bảo",
+
     driverInitials: "TB",
+
     customerName: "Chị Lan Anh",
+
     vehicle: "Xe tải 500kg",
+
     order: "#DH0987",
+
     status: "completed",
+
     endedAt: "Hôm qua",
+
     unread: { customer: 0, driver: 0 },
+
     messages: [
       m("driver", "Mình đã tới điểm lấy hàng, bạn ra giúp mình nhé.", "14:05"),
+
       m("customer", "Mình ra ngay, anh chờ chút nhé.", "14:06"),
+
       m("driver", "Đã giao xong, cảm ơn bạn!", "15:12"),
     ],
   },
+
   {
     id: "c3",
+
     driverName: "Lê Hoàng Nam",
+
     driverInitials: "LN",
+
     customerName: "Chị Lan Anh",
+
     vehicle: "Xe van",
+
     order: "#DH0952",
+
     status: "completed",
+
     endedAt: "Thứ Hai",
+
     unread: { customer: 0, driver: 0 },
+
     messages: [
       m("customer", "Khi tới gọi mình nhé", "09:10"),
+
       m("driver", "Mình sẽ gọi khi tới", "09:11"),
+
       m("driver", "Giao hàng thành công nhé bạn.", "10:02"),
     ],
   },
 ]
 
 const viewing: Record<Side, string | null> = { customer: null, driver: null }
+
 const listeners = new Set<() => void>()
+
 const emit = () => listeners.forEach((l) => l())
+
 const subscribe = (l: () => void) => {
   listeners.add(l)
+
   return () => listeners.delete(l)
 }
 
 const nextTime = (c: Conv) => {
   const [h, mm] = (c.messages[c.messages.length - 1]?.time ?? "10:32")
+
     .split(":")
+
     .map(Number)
+
   const t = h * 60 + mm + 1
+
   return `${String(Math.floor(t / 60) % 24).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`
 }
 
 const update = (id: string, fn: (c: Conv) => Conv) => {
   state = state.map((c) => (c.id === id ? fn(c) : c))
+
   emit()
 }
 
 export function sendMessage(
   id: string,
+
   from: Side,
+
   text: string,
+
   kind: Msg["kind"] = "text",
 ) {
   const to: Side = from === "customer" ? "driver" : "customer"
+
   update(id, (c) => ({
     ...c,
+
     messages: [...c.messages, m(from, text, nextTime(c), kind)],
+
     unread: { ...c.unread, [to]: viewing[to] === id ? 0 : c.unread[to] + 1 },
   }))
 }
 
 export function markRead(id: string, side: Side) {
   const c = state.find((x) => x.id === id)
+
   if (!c || c.unread[side] === 0) return
+
   update(id, (x) => ({ ...x, unread: { ...x.unread, [side]: 0 } }))
 }
 
 export function setOrderStatus(id: string, status: Conv["status"]) {
   const c = state.find((x) => x.id === id)
+
   if (!c || c.status === status) return
+
   update(id, (x) => ({
     ...x,
+
     status,
+
     endedAt: status === "completed" ? "Vừa xong" : undefined,
   }))
 }
 
 const replyFor = (text: string, kind: Msg["kind"]) => {
   if (kind === "location") return "Mình thấy vị trí rồi nhé, mình tới ngay."
+
   if (text === "Bạn tới đâu rồi?") return "Mình còn khoảng 3 phút nữa tới nhé."
+
   if (text === "Khi tới gọi mình nhé") return "Ok bạn, mình tới sẽ gọi."
+
   if (text === "Mình đang ở điểm lấy hàng")
     return "Mình thấy rồi, mình tới ngay."
+
   return "Mình nhận được rồi nhé."
 }
 
 const replyTimers = new Map<string, number>()
+
 export function scheduleReply(
   id: string,
+
   from: Side,
+
   text: string,
+
   kind: Msg["kind"],
 ) {
   window.clearTimeout(replyTimers.get(id))
+
   const delay = 2200
+
   replyTimers.set(
     id,
+
     window.setTimeout(() => {
       const c = state.find((x) => x.id === id)
+
       if (!c || c.status !== "active") return
+
       sendMessage(
         id,
+
         from === "customer" ? "driver" : "customer",
+
         from === "customer"
           ? replyFor(text, kind)
           : "Vâng, mình ở cổng số 2 nhé.",
@@ -189,11 +285,15 @@ export function scheduleReply(
 }
 
 let ambientStarted = false
+
 export function startAmbient() {
   if (ambientStarted) return
+
   ambientStarted = true
+
   window.setTimeout(() => {
     const c = state.find((x) => x.id === CURRENT_CONV)
+
     if (c?.status === "active")
       sendMessage(CURRENT_CONV, "driver", "Hàng có cần bốc xếp giúp không bạn?")
   }, 20000)
@@ -202,10 +302,13 @@ export function startAmbient() {
 export function simulateCustomerPing() {
   window.setTimeout(() => {
     const c = state.find((x) => x.id === CURRENT_CONV)
+
     if (c?.status === "active")
       sendMessage(
         CURRENT_CONV,
+
         "customer",
+
         "Mình ở cổng số 2, bác tài tới nhắn mình nhé.",
       )
   }, 6000)
@@ -222,8 +325,11 @@ export function useUnread(side: Side) {
 export function useViewing(side: Side, id: string | null) {
   useEffect(() => {
     if (!id) return
+
     viewing[side] = id
+
     markRead(id, side)
+
     return () => {
       viewing[side] = null
     }
@@ -236,26 +342,35 @@ type CI = "back" | "send" | "plus" | "pin" | "phone" | "truck" | "check" | "chev
 
 function CIcon({
   name,
+
   size = 20,
+
   strokeWidth = 1.8,
 }: {
   name: CI
+
   size?: number
+
   strokeWidth?: number
 }) {
   const paths: Record<CI, ReactNode> = {
     back: <path d="m15 18-6-6 6-6" />,
+
     send: <path d="M12 19V5m-5 5 5-5 5 5" />,
+
     plus: <path d="M12 5v14M5 12h14" />,
+
     pin: (
       <>
         <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
         <circle cx="12" cy="10" r="2.5" />
       </>
     ),
+
     phone: (
       <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z" />
     ),
+
     truck: (
       <>
         <path d="M3 6h11v11H3zM14 10h4l3 3v4h-7z" />
@@ -263,14 +378,18 @@ function CIcon({
         <circle cx="18" cy="18" r="2" />
       </>
     ),
+
     check: <path d="m5 12 4 4L19 6" />,
+
     chevron: <path d="m9 18 6-6-6-6" />,
+
     keyboard: (
       <>
         <rect height="12" rx="2" width="18" x="3" y="6" />
         <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" />
       </>
     ),
+
     lock: (
       <>
         <rect height="9" rx="2" width="14" x="5" y="11" />
@@ -278,6 +397,7 @@ function CIcon({
       </>
     ),
   }
+
   return (
     <svg
       aria-hidden="true"
@@ -298,13 +418,120 @@ function CIcon({
 /* ---------- messages list (customer) ---------- */
 
 export function MessagesScreen({ onOpen }: { onOpen: (id: string) => void }) {
-  const convs = useConvs()
-  const active = convs.filter((c) => c.status === "active")
-  const recent = convs.filter((c) => c.status === "completed")
+  const localConvs = useConvs()
+  const [serverConvs, setServerConvs] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const token = localStorage.getItem("auth_token") || localStorage.getItem("token")
+    if (!token) return
+
+    setLoading(true)
+    fetch("/api/v1/chat/conversations", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setServerConvs(res.data)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  // Nếu có dữ liệu từ server thì ưu tiên hiển thị
+  if (serverConvs.length > 0) {
+    const activeServer = serverConvs.filter(
+      (c) => c.bookingStatus !== "COMPLETED" && c.bookingStatus !== "CANCELLED",
+    )
+    const recentServer = serverConvs.filter(
+      (c) => c.bookingStatus === "COMPLETED" || c.bookingStatus === "CANCELLED",
+    )
+
+    const serverRow = (c: any) => {
+      const partnerName = c.partner?.name || "Đối tác"
+      const initials = partnerName.slice(0, 2).toUpperCase()
+      const timeStr = c.lastMessage?.time
+        ? new Date(c.lastMessage.time).toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : ""
+
+      return (
+        <li key={c.bookingId}>
+          <button
+            className={`conv-row ${c.unreadCount > 0 ? "unread" : ""}`}
+            onClick={() => onOpen(c.bookingId)}
+            type="button"
+          >
+            <span className="driver-avatar small" aria-hidden="true">
+              {initials}
+              {c.bookingStatus !== "COMPLETED" && (
+                <span className="driver-online" />
+              )}
+            </span>
+            <span className="conv-main">
+              <span className="conv-top">
+                <strong>{partnerName}</strong>
+                <time>{timeStr}</time>
+              </span>
+              <small className="conv-order">
+                {c.vehicleTypeName || "Xe tải"} · Đơn #{c.bookingCode}
+              </small>
+              <span className="conv-last">
+                {c.lastMessage?.type === "LOCATION"
+                  ? "Đã chia sẻ vị trí"
+                  : c.lastMessage?.type === "IMAGE"
+                    ? "Đã gửi một hình ảnh"
+                    : c.lastMessage?.content || "Bắt đầu cuộc trò chuyện..."}
+              </span>
+            </span>
+            {c.unreadCount > 0 && (
+              <span
+                aria-label={`${c.unreadCount} tin chưa đọc`}
+                className="conv-badge"
+              >
+                {c.unreadCount}
+              </span>
+            )}
+          </button>
+        </li>
+      )
+    }
+
+    return (
+      <section className="orders-screen messages-screen">
+        <header className="orders-head">
+          <h1>Tin nhắn</h1>
+        </header>
+        {activeServer.length > 0 && (
+          <>
+            <h2 className="conv-section">Đang hoạt động</h2>
+            <ul className="conv-list">{activeServer.map(serverRow)}</ul>
+          </>
+        )}
+        {recentServer.length > 0 && (
+          <>
+            <h2 className="conv-section">Đã hoàn thành</h2>
+            <ul className="conv-list">{recentServer.map(serverRow)}</ul>
+          </>
+        )}
+      </section>
+    )
+  }
+
+  // Fallback danh sách local demo
+  const active = localConvs.filter((c) => c.status === "active")
+  const recent = localConvs.filter((c) => c.status === "completed")
 
   const row = (c: Conv) => {
     const last = c.messages[c.messages.length - 1]
     const unread = c.unread.customer
+
     return (
       <li key={c.id}>
         <button
@@ -319,13 +546,13 @@ export function MessagesScreen({ onOpen }: { onOpen: (id: string) => void }) {
           <span className="conv-main">
             <span className="conv-top">
               <strong>{c.driverName}</strong>
-              <time>{c.status === "completed" ? c.endedAt : last.time}</time>
+              <time>{c.status === "completed" ? c.endedAt : last?.time}</time>
             </span>
             <small className="conv-order">
               {c.vehicle} · Đơn {c.order}
             </small>
             <span className="conv-last">
-              {last.kind === "location" ? "Đã gửi một vị trí" : last.text}
+              {last?.kind === "location" ? "Đã gửi một vị trí" : last?.text}
             </span>
           </span>
           {unread > 0 && (
@@ -364,14 +591,18 @@ export function MessagesScreen({ onOpen }: { onOpen: (id: string) => void }) {
 const quickReplies: Record<Side, string[]> = {
   customer: [
     "Bạn tới đâu rồi?",
+
     "Khi tới gọi mình nhé",
+
     "Mình đang ở điểm lấy hàng",
   ],
+
   driver: ["Mình đang đến", "Mình đã tới điểm lấy", "Mình sẽ gọi khi tới"],
 }
 
 const sharedPlace: Record<Side, string> = {
   customer: "21 Nguyễn Đình Chiểu, Q.1",
+
   driver: "Gần 45 Pasteur, Q.1",
 }
 
@@ -409,11 +640,16 @@ function MiniMap() {
 
 export function ChatScreen({
   convId,
+
   side,
+
   moving = false,
+
   onBack,
   onTrip,
   onOpenMap,
+  bookingId,
+  onCall,
 }: {
   convId: string
   side: Side
@@ -421,20 +657,73 @@ export function ChatScreen({
   onBack: () => void
   onTrip?: () => void
   onOpenMap: () => void
+  bookingId?: string
+  onCall?: () => void
 }) {
   const conv = useConvs().find((c) => c.id === convId)
   useViewing(side, convId)
+
   const [draft, setDraft] = useState("")
   const [menu, setMenu] = useState(false)
   const [typing, setTyping] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
+
   const count = conv?.messages.length ?? 0
+
+  // 1. Tải lịch sử tin nhắn thực tế từ Server DB nếu có bookingId
+  const activeBookingId = bookingId || (convId !== "c1" && convId !== "c2" && convId !== "c3" ? convId : undefined)
+
+  useEffect(() => {
+    if (!activeBookingId) return
+    const token = typeof window !== "undefined"
+      ? (localStorage.getItem("token") || localStorage.getItem("driver_auth_token"))
+      : ""
+    if (!token) return
+
+    // Tải tin nhắn từ API GET /api/v1/chat/:bookingId/messages
+    fetch(`/api/v1/chat/${activeBookingId}/messages`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data?.messages) {
+          // Đồng bộ tin nhắn DB vào store
+          data.data.messages.forEach((mItem: any) => {
+            const fromRole: Side = mItem.senderRole === "DRIVER" ? "driver" : "customer"
+            const exists = conv?.messages.some((m) => m.text === mItem.content)
+            if (!exists) {
+              sendMessage(convId, fromRole, mItem.content, mItem.messageType === "LOCATION" ? "location" : "text")
+            }
+          })
+        }
+      })
+      .catch((err) => console.warn("Lỗi tải tin nhắn từ server:", err))
+
+    // Đánh dấu đã đọc qua API PATCH /api/v1/chat/:bookingId/read
+    fetch(`/api/v1/chat/${activeBookingId}/read`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {})
+
+    // Lắng nghe tin nhắn mới Realtime qua Pusher
+    const unsubscribe = subscribeRealtime(`chat-${activeBookingId}`, "chat:new-message", (newMsg: any) => {
+      if (newMsg && newMsg.content) {
+        const fromRole: Side = newMsg.senderRole === "DRIVER" ? "driver" : "customer"
+        sendMessage(convId, fromRole, newMsg.content, newMsg.messageType === "LOCATION" ? "location" : "text")
+      }
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [activeBookingId, convId])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" })
   }, [count])
 
   if (!conv) return null
+
   const done = conv.status === "completed"
   const isDriver = side === "driver"
   const name = isDriver ? conv.customerName : conv.driverName
@@ -444,10 +733,36 @@ export function ChatScreen({
   const send = (text: string, kind: Msg["kind"] = "text") => {
     const t = text.trim()
     if (!t || done) return
+
+    // 1. Cập nhật giao diện ngay lập tức (Optimistic UI)
     sendMessage(convId, side, t, kind)
-    scheduleReply(convId, side, t, kind)
+    if (!activeBookingId) {
+      scheduleReply(convId, side, t, kind)
+    }
+
     setDraft("")
     setMenu(false)
+
+    // 2. Gửi API lên Server POST /api/v1/chat/send
+    if (activeBookingId) {
+      const token = typeof window !== "undefined"
+        ? (localStorage.getItem("token") || localStorage.getItem("driver_auth_token"))
+        : ""
+      if (token) {
+        fetch("/api/v1/chat/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            bookingId: activeBookingId,
+            content: t,
+            messageType: kind === "location" ? "LOCATION" : "TEXT",
+          }),
+        }).catch((err) => console.warn("Lỗi gửi tin nhắn lên server:", err))
+      }
+    }
   }
 
   return (
@@ -478,14 +793,15 @@ export function ChatScreen({
                 : "Trực tuyến · Đang giao hàng"}
           </small>
         </span>
-        <a
+        <button
           aria-label={`Gọi ${name}`}
           className="chat-icon-btn call"
-          href="tel:"
-          onClick={(e) => e.preventDefault()}
+          onClick={onCall || ((e) => e.preventDefault())}
+          type="button"
+          style={{ background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
         >
           <CIcon name="phone" size={20} />
-        </a>
+        </button>
       </header>
 
       <div className={`chat-order ${done ? "done" : ""}`}>
@@ -603,6 +919,7 @@ export function ChatScreen({
               className="composer glass glass-strong"
               onSubmit={(e) => {
                 e.preventDefault()
+
                 send(draft)
               }}
             >

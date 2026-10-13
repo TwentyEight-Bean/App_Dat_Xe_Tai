@@ -1,54 +1,84 @@
 import { useState } from "react"
+
 import { Icon, Status } from "./ui"
+
 import { orders, idleDrivers, vnd, type Order, type Pt } from "./data"
 
 const ctrl = (p: Pt, d: Pt): Pt => [
   (p[0] + d[0]) / 2 + (d[1] - p[1]) * 0.18,
+
   (p[1] + d[1]) / 2 - (d[0] - p[0]) * 0.18,
 ]
+
 const bez = (p: Pt, d: Pt, t: number): Pt => {
   const c = ctrl(p, d)
+
   const u = 1 - t
+
   return [
     u * u * p[0] + 2 * u * t * c[0] + t * t * d[0],
+
     u * u * p[1] + 2 * u * t * c[1] + t * t * d[1],
   ]
 }
+
 const routeD = (p: Pt, d: Pt) => {
   const c = ctrl(p, d)
+
   return `M${p[0]} ${p[1]} Q${c[0]} ${c[1]} ${d[0]} ${d[1]}`
 }
 
 const districts: { n: string x: number y: number }[] = [
   { n: "Gò Vấp", x: 30, y: 7 },
+
   { n: "Thủ Đức", x: 78, y: 10 },
+
   { n: "Bình Thạnh", x: 54, y: 22 },
+
   { n: "Tân Bình", x: 17, y: 36 },
+
   { n: "Quận 1", x: 46, y: 47 },
+
   { n: "Quận 5", x: 30, y: 72 },
+
   { n: "Quận 7", x: 64, y: 90 },
+
   { n: "Bình Chánh", x: 8, y: 86 },
 ]
 
 export function OpsMap({
   sel,
+
   setSel,
+
   hover,
+
   onOpen,
+
   mobile,
 }: {
   sel: string | null
+
   setSel: (id: string | null) => void
+
   hover: string | null
+
   onOpen: (id: string) => void
+
   mobile?: boolean
 }) {
   const [layer, setLayer] = useState<"all" | "problem">("all")
+
   const active = orders.filter((o) => o.tone === "blue" || o.tone === "sky")
+
   const waiting = orders.filter((o) => o.tone === "amber")
+
   const late = orders.filter((o) => o.late)
+
   const focus = orders.find((o) => o.id === (hover ?? sel))
+
   const selected = orders.find((o) => o.id === sel)
+
   const dim = (o: Order) => layer === "problem" && !o.late
 
   return (
@@ -162,6 +192,7 @@ export function OpsMap({
           style={{ left: `${o.p[0]}%`, top: `${o.p[1]}%` }}
           onClick={(e) => {
             e.stopPropagation()
+
             setSel(o.id)
           }}
           aria-label={`Đơn ${o.id} chờ tài xế`}
@@ -175,6 +206,7 @@ export function OpsMap({
 
       {active.map((o) => {
         const [x, y] = bez(o.p, o.d, o.t)
+
         return (
           <button
             key={o.id}
@@ -185,6 +217,7 @@ export function OpsMap({
             style={{ left: `${x}%`, top: `${y}%` }}
             onClick={(e) => {
               e.stopPropagation()
+
               setSel(o.id)
             }}
             aria-label={`Đơn ${o.id}`}
@@ -319,12 +352,16 @@ export function OpsMap({
 function Spark({ data, tone = "blue" }: { data: number[] tone?: string }) {
   const max = Math.max(...data),
     min = Math.min(...data)
+
   const pts = data
+
     .map(
       (v, i) =>
         `${(i / (data.length - 1)) * 64},${20 - ((v - min) / (max - min || 1)) * 18}`,
     )
+
     .join(" ")
+
   return (
     <svg
       className={`spark spark-${tone}`}
@@ -348,44 +385,75 @@ function Summary({ late }: { late: number }) {
   const cells = [
     {
       label: "Đơn hôm nay",
+
       value: "248",
+
       unit: "",
+
       trend: "+12,8%",
+
       up: true,
+
       note: "so với hôm qua",
+
       spark: [18, 22, 20, 28, 31, 30, 38, 44],
     },
+
     {
       label: "Đang giao",
+
       value: "86",
+
       unit: "",
+
       trend: `${late} chậm`,
+
       up: false,
+
       warn: true,
+
       note: "34,7% tổng đơn",
+
       spark: [40, 52, 48, 60, 72, 68, 80, 86],
     },
+
     {
       label: "Tài xế online",
+
       value: "164",
+
       unit: "",
+
       trend: "+8",
+
       up: true,
+
       note: "62 đang rảnh",
+
       spark: [120, 128, 140, 136, 150, 155, 158, 164],
+
       tone: "green",
     },
+
     {
       label: "Doanh thu hôm nay",
+
       value: "48,6",
+
       unit: "triệu đ",
+
       trend: "+9,2%",
+
       up: true,
+
       note: "so với hôm qua",
+
       spark: [12, 18, 22, 27, 33, 38, 44, 48],
+
       tone: "amber",
     },
   ]
+
   return (
     <section className="summary" aria-label="Tóm tắt hôm nay">
       {cells.map((c) => (
@@ -413,35 +481,55 @@ function Summary({ late }: { late: number }) {
 
 type Attn = {
   kind: "driver" | "order" | "complaint" | "verify"
+
   sev: "red" | "amber"
+
   title: string
+
   sub: string
+
   time?: string
+
   action: string
+
   go: () => void
+
   hoverId?: string
 }
 
 function Attention({
   items,
+
   counts,
+
   filter,
+
   setFilter,
+
   setHover,
 }: {
   items: Attn[]
+
   counts: Record<string, number>
+
   filter: string
+
   setFilter: (k: string) => void
+
   setHover: (id: string | null) => void
 }) {
   const tiles = [
     { k: "driver", n: counts.driver, l: "hồ sơ chờ duyệt" },
+
     { k: "order", n: counts.order, l: "đơn giao chậm" },
+
     { k: "complaint", n: counts.complaint, l: "khiếu nại mới" },
+
     { k: "verify", n: counts.verify, l: "cần xác minh" },
   ]
+
   const shown = items.filter((i) => filter === "all" || i.kind === filter)
+
   return (
     <aside className="attention" aria-label="Cần xử lý">
       <div className="attn-head">
@@ -510,107 +598,171 @@ function Attention({
 
 export default function Dashboard({
   sel,
+
   setSel,
+
   openOrder,
+
   goDrivers,
+
   goComplaints,
+
   pendingLeft,
+
   newComplaints,
 }: {
   sel: string | null
+
   setSel: (id: string | null) => void
+
   openOrder: (id: string) => void
+
   goDrivers: (id?: string, tab?: "review" | "all") => void
+
   goComplaints: (id?: string) => void
+
   pendingLeft: number
+
   newComplaints: number
 }) {
   const [hover, setHover] = useState<string | null>(null)
+
   const [filter, setFilter] = useState("all")
+
   const [tableFilter, setTableFilter] = useState("Tất cả")
+
   const lateOrders = orders
+
     .filter((o) => o.late)
+
     .sort((a, b) => (b.late ?? 0) - (a.late ?? 0))
 
   const items: Attn[] = [
     ...lateOrders.slice(0, 2).map(
       (o): Attn => ({
         kind: "order",
+
         sev: "red",
+
         title: "Đơn giao chậm",
+
         sub: `#${o.id} · chậm ${o.late} phút`,
+
         action: "Xem đơn",
+
         go: () => openOrder(o.id),
+
         hoverId: o.id,
       }),
     ),
+
     ...(newComplaints > 0
       ? [
           {
             kind: "complaint",
+
             sev: "red",
+
             title: "Khiếu nại mới",
+
             sub: "#DH0987 · Hàng bị trầy xước",
+
             time: "4 phút trước",
+
             action: "Xử lý",
+
             go: () => goComplaints("KN-0231"),
           } as Attn,
         ]
       : []),
+
     ...(pendingLeft > 0
       ? [
           {
             kind: "driver",
+
             sev: "amber",
+
             title: "Hồ sơ tài xế mới",
+
             sub: "Nguyễn Văn Minh",
+
             time: "2 phút trước",
+
             action: "Xem hồ sơ",
+
             go: () => goDrivers("HS-1291", "review"),
           } as Attn,
         ]
       : []),
+
     ...lateOrders.slice(2).map(
       (o): Attn => ({
         kind: "order",
+
         sev: "amber",
+
         title: "Đơn giao chậm",
+
         sub: `#${o.id} · chậm ${o.late} phút`,
+
         action: "Xem đơn",
+
         go: () => openOrder(o.id),
+
         hoverId: o.id,
       }),
     ),
+
     ...(newComplaints > 1
       ? [
           {
             kind: "complaint",
+
             sev: "amber",
+
             title: "Khiếu nại mới",
+
             sub: "#DH0975 · Phụ phí ngoài dự kiến",
+
             time: "22 phút trước",
+
             action: "Xử lý",
+
             go: () => goComplaints("KN-0229"),
           } as Attn,
         ]
       : []),
+
     {
       kind: "verify",
+
       sev: "amber",
+
       title: "Tài xế cần xác minh",
+
       sub: "Lê Thành Đạt · GPLX sắp hết hạn",
+
       time: "1 giờ trước",
+
       action: "Xác minh",
+
       go: () => goDrivers(undefined, "all"),
     },
+
     ...(pendingLeft > 1
       ? [
           {
             kind: "driver",
+
             sev: "amber",
+
             title: `${pendingLeft - 1} hồ sơ khác đang chờ`,
+
             sub: "Chờ duyệt từ 38 phút trước",
+
             action: "Mở hàng đợi",
+
             go: () => goDrivers("HS-1290", "review"),
           } as Attn,
         ]
@@ -726,8 +878,11 @@ export default function Dashboard({
           items={items}
           counts={{
             driver: pendingLeft,
+
             order: lateOrders.length,
+
             complaint: newComplaints,
+
             verify: 1,
           }}
           filter={filter}

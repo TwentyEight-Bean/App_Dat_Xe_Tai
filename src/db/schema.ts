@@ -151,11 +151,20 @@ export const otpVerifications = pgTable(
     attempts: integer("attempts").default(0).notNull(),
     isUsed: boolean("is_used").default(false).notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    ipAddress: varchar("ip_address", { length: 45 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => {
     return {
       phoneIdx: index("idx_otp_verifications_phone").on(table.phone),
+      ipCreatedIdx: index("idx_otp_verifications_ip_created").on(
+        table.ipAddress,
+        table.createdAt,
+      ),
+      phoneCreatedIdx: index("idx_otp_verifications_phone_created").on(
+        table.phone,
+        table.createdAt,
+      ),
     }
   },
 )
@@ -298,6 +307,17 @@ export const bookings = pgTable(
 
     paymentMethod: paymentMethodEnum("payment_method").default("CASH"),
     paymentStatus: paymentStatusEnum("payment_status").default("UNPAID"),
+
+    // Sprint 3: Lưu vết hủy đơn & Bằng chứng giao hàng POD
+    cancelledBy: varchar("cancelled_by", { length: 20 }),
+    cancellationReason: text("cancellation_reason"),
+    cancellationFee: decimal("cancellation_fee", {
+      precision: 12,
+      scale: 2,
+    }).default("0"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    pickupProofImage: text("pickup_proof_image"),
+    deliveryProofImage: text("delivery_proof_image"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

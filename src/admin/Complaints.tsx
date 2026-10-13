@@ -1,5 +1,7 @@
 import { useState } from "react"
+
 import { Icon, Status, Avatar } from "./ui"
+
 import { type Complaint } from "./data"
 
 const tone = (s: string) =>
@@ -8,61 +10,87 @@ const tone = (s: string) =>
     : s === "Đã giải quyết"
       ? "green"
       : "amber") as "red" | "green" | "amber"
+
 const statuses = ["Mới", "Đang xử lý", "Đã giải quyết"]
 
 export default function Complaints({
   items,
+
   setItems,
+
   focus,
+
   openOrder,
 }: {
   items: Complaint[]
+
   setItems: (f: (p: Complaint[]) => Complaint[]) => void
+
   focus?: string
+
   openOrder: (id: string) => void
 }) {
   const [st, setSt] = useState("Tất cả")
+
   const [cat, setCat] = useState("Tất cả")
+
   const [sel, setSel] = useState(focus ?? items[0].id)
+
   const [reply, setReply] = useState("")
+
   const cats = Array.from(new Set(items.map((i) => i.cat)))
+
   const list = items.filter(
     (i) =>
       (st === "Tất cả" || i.status === st) &&
       (cat === "Tất cả" || i.cat === cat),
   )
+
   const c = items.find((i) => i.id === sel) ?? items[0]
 
   const patch = (f: (c: Complaint) => Complaint) =>
     setItems((p) => p.map((x) => (x.id === c.id ? f(x) : x)))
+
   const setStatus = (s: string) =>
     patch((x) => ({
       ...x,
+
       status: s,
+
       events: [
         ...x.events,
+
         {
           text:
             s === "Đã giải quyết" ? "Đã giải quyết" : "Admin tiếp nhận xử lý",
+
           at: "Vừa xong",
         },
       ],
     }))
+
   const send = () => {
     if (!reply.trim()) return
+
     patch((x) => ({
       ...x,
+
       messages: [
         ...x.messages,
+
         { from: "admin", text: reply.trim(), at: "Vừa xong" },
       ],
+
       status: x.status === "Mới" ? "Đang xử lý" : x.status,
     }))
+
     setReply("")
   }
+
   const escalate = (what: string) =>
     patch((x) => ({
       ...x,
+
       events: [...x.events, { text: what, at: "Vừa xong" }],
     }))
 
@@ -184,9 +212,13 @@ export default function Complaints({
                 <dd>
                   <Avatar
                     initials={c.customer
+
                       .split(" ")
+
                       .slice(-2)
+
                       .map((w) => w[0])
+
                       .join("")}
                     size={22}
                   />
