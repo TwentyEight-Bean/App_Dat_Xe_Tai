@@ -76,6 +76,8 @@ export function runTabTransition(
 
   outgoing.setAttribute("aria-hidden", "true")
 
+  if (shell.classList.contains("customer-frame")) outgoing.inert = true
+
   outgoing.classList.add("tab-sheet-ghost")
 
   placeOverlay(outgoing, currentRect, shellRect)

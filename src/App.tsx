@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -11,8 +12,12 @@ import AccountScreen, {
   syncAddressesFromApi,
   useAddresses,
   useProfile,
+  usePaymentPreference,
+  clearCustomerData,
 } from "./account"
+
 import AuthOtpBottomSheet from "./AuthOtpBottomSheet"
+
 import NotificationModal from "./NotificationModal"
 
 import {
@@ -21,14 +26,20 @@ import {
   MessagesScreen,
   setOrderStatus,
   startAmbient,
-  useUnread,
 } from "./chat"
 
 import { runTabTransition, type TabDirection } from "./tabMotion"
 
 import InteractiveMap from "./InteractiveMap"
-import { subscribeRealtime, emitLocalRealtime } from "./lib/pusherClient"
+
+import { subscribeRealtime } from "./lib/pusherClient"
+
 import CallingModal from "./CallingModal"
+
+import useCustomerDialog from "./customerDialog"
+
+import "./customer.css"
+import CustomerTripSheet from "./CustomerTripSheet"
 
 type IconName = "home" | "orders" | "message" | "user" | "bell" | "pin" | "arrow" | "target" | "layers" | "chevron" | "chevron-up" | "chevron-down" | "close" | "check" | "truck" | "phone" | "star"
 
@@ -213,7 +224,7 @@ function LocationInput({
   const isPickup = kind === "pickup"
 
   return (
-    <label className={`location-field ${error ? "invalid" : ""}`}>
+    <div className={`location-field ${error ? "invalid" : ""}`}>
       <span
         className={`location-marker ${isPickup ? "pickup" : "destination"}`}
       >
@@ -229,7 +240,7 @@ function LocationInput({
         </span>
         <input
           aria-label={isPickup ? "Điểm lấy hàng" : "Điểm giao hàng"}
-          aria-describedby={error ? "destination-error" : undefined}
+          aria-describedby={error ? `${kind}-error` : undefined}
           aria-invalid={error || undefined}
           list="saved-addresses"
           onChange={(event) => onChange(event.target.value)}
@@ -237,10 +248,10 @@ function LocationInput({
           value={value}
         />
       </span>
-      {value && !isPickup ? (
+      {value ? (
         <button
           className="clear-button"
-          aria-label="Xóa điểm giao"
+          aria-label={isPickup ? "Xóa điểm lấy" : "Xóa điểm giao"}
           onClick={() => onChange("")}
           type="button"
         >
@@ -249,7 +260,7 @@ function LocationInput({
       ) : (
         <Icon name="chevron" size={18} />
       )}
-    </label>
+    </div>
   )
 }
 
@@ -456,11 +467,15 @@ function VehicleGlyph({ type }: { type: Vehicle["type"] }) {
 
 function VehicleSelector({
   vehicleList = defaultVehicles,
+
   selected,
+
   onSelect,
 }: {
   vehicleList?: Vehicle[]
+
   selected: string
+
   onSelect: (vehicle: Vehicle) => void
 }) {
   return (
@@ -483,10 +498,13 @@ function VehicleSelector({
             <span
               style={{
                 fontSize: "11px",
+
                 fontWeight: "700",
+
                 color: active
                   ? "var(--brand-900)"
                   : "var(--brand-600, #2563eb)",
+
                 marginTop: "3px",
               }}
             >
@@ -506,37 +524,53 @@ function VehicleSelector({
 
 function SurchargeServicesSelector({
   services,
+
   selectedServices,
+
   onToggleService,
 }: {
   services: SurchargeServiceItem[]
+
   selectedServices: Record<string, number>
+
   onToggleService: (code: string, delta: number) => void
 }) {
   const [expanded, setExpanded] = useState(false)
+
   const isNight = (() => {
     const vnHour = (new Date().getUTCHours() + 7) % 24
+
     return vnHour >= 22 || vnHour < 6
   })()
 
-  const selectedCount = Object.values(selectedServices).filter((v) => v > 0).length
+  const selectedCount = Object.values(selectedServices).filter(
+    (v) => v > 0,
+  ).length
 
   return (
     <div
       style={{
         margin: "12px 0",
+
         padding: "10px 14px",
+
         background: "rgba(255, 255, 255, 0.75)",
+
         border: "1px solid rgba(226, 232, 240, 0.9)",
+
         borderRadius: "14px",
+
         backdropFilter: "blur(8px)",
       }}
     >
       <div
         style={{
           display: "flex",
+
           justifyContent: "space-between",
+
           alignItems: "center",
+
           cursor: "pointer",
         }}
         onClick={() => setExpanded(!expanded)}
@@ -552,10 +586,15 @@ function SurchargeServicesSelector({
             <span
               style={{
                 fontSize: "10px",
+
                 fontWeight: "700",
+
                 background: "var(--brand-500, #3b82f6)",
+
                 color: "#fff",
+
                 borderRadius: "10px",
+
                 padding: "1px 7px",
               }}
             >
@@ -567,7 +606,9 @@ function SurchargeServicesSelector({
           className="text-button"
           style={{
             fontSize: "12px",
+
             color: "var(--brand-600, #2563eb)",
+
             padding: 0,
           }}
           type="button"
@@ -580,14 +621,23 @@ function SurchargeServicesSelector({
         <div
           style={{
             display: "flex",
+
             alignItems: "center",
+
             gap: "6px",
+
             background: "rgba(254, 243, 199, 0.8)",
+
             border: "1px solid #fde68a",
+
             padding: "5px 10px",
+
             borderRadius: "8px",
+
             fontSize: "11px",
+
             color: "#92400e",
+
             marginTop: "8px",
           }}
         >
@@ -602,13 +652,17 @@ function SurchargeServicesSelector({
         <div
           style={{
             marginTop: "10px",
+
             display: "flex",
+
             flexDirection: "column",
+
             gap: "8px",
           }}
         >
           {services.map((srv) => {
             const qty = selectedServices[srv.code] || 0
+
             const active = qty > 0
 
             return (
@@ -616,14 +670,21 @@ function SurchargeServicesSelector({
                 key={srv.code}
                 style={{
                   display: "flex",
+
                   justifyContent: "space-between",
+
                   alignItems: "center",
+
                   padding: "8px 10px",
+
                   borderRadius: "10px",
+
                   background: active
                     ? "rgba(239, 246, 255, 0.9)"
                     : "rgba(248, 250, 252, 0.7)",
+
                   border: active ? "1px solid #bfdbfe" : "1px solid #f1f5f9",
+
                   transition: "all 0.2s ease",
                 }}
               >
@@ -631,7 +692,9 @@ function SurchargeServicesSelector({
                   <div
                     style={{
                       fontSize: "12px",
+
                       fontWeight: "600",
+
                       color: "#334155",
                     }}
                   >
@@ -650,21 +713,32 @@ function SurchargeServicesSelector({
                     <div
                       style={{
                         display: "flex",
+
                         alignItems: "center",
+
                         gap: "6px",
                       }}
                     >
                       <button
                         style={{
                           width: "24px",
+
                           height: "24px",
+
                           borderRadius: "6px",
+
                           border: "1px solid #cbd5e1",
+
                           background: "#fff",
+
                           cursor: "pointer",
+
                           display: "flex",
+
                           alignItems: "center",
+
                           justifyContent: "center",
+
                           fontWeight: "bold",
                         }}
                         onClick={() => onToggleService(srv.code, -1)}
@@ -675,8 +749,11 @@ function SurchargeServicesSelector({
                       <span
                         style={{
                           fontSize: "13px",
+
                           fontWeight: "700",
+
                           minWidth: "14px",
+
                           textAlign: "center",
                         }}
                       >
@@ -685,14 +762,23 @@ function SurchargeServicesSelector({
                       <button
                         style={{
                           width: "24px",
+
                           height: "24px",
+
                           borderRadius: "6px",
+
                           border: "1px solid #cbd5e1",
+
                           background: "#fff",
+
                           cursor: "pointer",
+
                           display: "flex",
+
                           alignItems: "center",
+
                           justifyContent: "center",
+
                           fontWeight: "bold",
                         }}
                         onClick={() => onToggleService(srv.code, 1)}
@@ -705,12 +791,19 @@ function SurchargeServicesSelector({
                     <button
                       style={{
                         padding: "4px 10px",
+
                         fontSize: "11px",
+
                         fontWeight: "600",
+
                         borderRadius: "8px",
+
                         border: "1px solid #cbd5e1",
+
                         background: "#fff",
+
                         color: "#334155",
+
                         cursor: "pointer",
                       }}
                       onClick={() => onToggleService(srv.code, 1)}
@@ -729,7 +822,10 @@ function SurchargeServicesSelector({
   )
 }
 
-const navItems: { label: string icon: IconName }[] = [
+const navItems: {
+  label: string
+  icon: IconName
+}[] = [
   { label: "Trang chủ", icon: "home" },
 
   { label: "Đơn hàng", icon: "orders" },
@@ -743,14 +839,59 @@ function BottomNavigation({
   active,
 
   onChange,
+  authToken,
+  chatOpen,
+  bookingId,
 }: {
   active: string
 
   onChange: (label: string) => void
+  authToken: string | null
+  chatOpen: boolean
+  bookingId: string | null
 }) {
   const index = navItems.findIndex((item) => item.label === active)
 
-  const unread = useUnread("customer")
+  const [unread, setUnread] = useState(0)
+  useEffect(() => {
+    if (!authToken) {
+      setUnread(0)
+      return
+    }
+    const controller = new AbortController()
+    const refresh = () =>
+      fetch("/api/v1/chat/conversations", {
+        signal: controller.signal,
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (
+            !controller.signal.aborted &&
+            data.success &&
+            Array.isArray(data.data)
+          )
+            setUnread(
+              data.data.reduce(
+                (total: number, conv: { unreadCount?: number }) =>
+                  total + Number(conv.unreadCount || 0),
+                0,
+              ),
+            )
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted)
+            console.warn("Không thể cập nhật số tin nhắn chưa đọc", error)
+        })
+    refresh()
+    const unsubscribe = bookingId
+      ? subscribeRealtime(`chat-${bookingId}`, "chat:new-message", refresh)
+      : () => {}
+    return () => {
+      controller.abort()
+      unsubscribe()
+    }
+  }, [authToken, active, chatOpen, bookingId])
 
   const [flow, setFlow] = useState<TabDirection | null>(null)
 
@@ -839,7 +980,10 @@ const PHASE_DELAY: Partial<Record<Phase, number>> = {
   pickedup: 3500,
 }
 
-const DRIVER_PROGRESS: Partial<Record<Phase, { to: number ms: number }>> = {
+const DRIVER_PROGRESS: Partial<Record<Phase, {
+  to: number
+  ms: number
+}>> = {
   found: { to: 0.3, ms: 4500 },
 
   arriving: { to: 0.92, ms: 7000 },
@@ -933,46 +1077,66 @@ function MapCanvas({ phase }: { phase: Phase }) {
 
   const delivered = phase === "delivered"
 
-  const [liveNearby, setLiveNearby] = useState<
-    Array<{
+  const [liveNearby, setLiveNearby] =
+    useState<Array<{
       left: number
+
       top: number
+
       driverId?: string
+
       name?: string
+
       licensePlate?: string
-    }>
-  >(nearbyDrivers)
+    }>>(nearbyDrivers)
 
   useEffect(() => {
     let isMounted = true
+
     // Quét tài xế lân cận thực tế từ PostGIS Backend
+
     fetch("/api/v1/driver/nearby?lat=10.7769&lng=106.7009&radiusKm=5&limit=8")
+
       .then((r) => r.json())
+
       .then((json) => {
         if (!isMounted) return
+
         if (json.success && Array.isArray(json.data) && json.data.length > 0) {
           const mapped = json.data.map((d: any, idx: number) => {
             const lngDiff = ((Number(d.lng || 106.7) - 106.69) * 3200) % 240
+
             const latDiff = ((10.785 - Number(d.lat || 10.77)) * 3200) % 180
+
             const left = Math.min(
               310,
+
               Math.max(50, 160 + (idx % 2 === 0 ? lngDiff : -lngDiff)),
             )
+
             const top = Math.min(
               240,
+
               Math.max(60, 130 + (idx % 2 === 0 ? latDiff : -latDiff)),
             )
+
             return {
               left: Math.round(left),
+
               top: Math.round(top),
+
               driverId: d.driverId,
+
               name: d.name,
+
               licensePlate: d.licensePlate,
             }
           })
+
           setLiveNearby(mapped)
         }
       })
+
       .catch((err) => console.warn("Lỗi tải radar tài xế:", err))
 
     return () => {
@@ -1060,7 +1224,9 @@ function MapCanvas({ phase }: { phase: Phase }) {
             }
             style={{
               left: d.left,
+
               top: d.top,
+
               animationDelay: `${i * 160}ms, ${i * 420}ms`,
             }}
           >
@@ -1080,21 +1246,6 @@ function MapCanvas({ phase }: { phase: Phase }) {
         <span className="pin-core" />
       </span>
     </div>
-  )
-}
-
-function SheetHandle({ onAdvance }: { onAdvance?: () => void }) {
-  if (!onAdvance) return <div className="sheet-handle" />
-
-  return (
-    <button
-      aria-label="Chuyển sang bước tiếp theo (demo)"
-      className="sheet-handle-btn"
-      onClick={onAdvance}
-      type="button"
-    >
-      <span className="sheet-handle" />
-    </button>
   )
 }
 
@@ -1128,26 +1279,45 @@ function RouteSummary({
 
 function SearchingSheet({
   pickup,
+
   destination,
+
   vehicle,
+
   bookingCode,
+  priceLabel,
+
   escalated,
+
   isEscalating,
+
   onEscalate,
+
   onCancel,
 }: {
   pickup: string
+
   destination: string
+
   vehicle: Vehicle
+
   bookingCode?: string
+  priceLabel?: string
+
   escalated?: boolean
+
   isEscalating?: boolean
+
   onEscalate?: () => void
+
   onCancel: () => void
 }) {
   return (
-    <section className="booking-sheet phase-sheet" aria-live="polite">
-      <div className="sheet-handle" />
+    <section
+      className="booking-sheet phase-sheet searching-sheet"
+      aria-live="polite"
+      aria-label="Tìm tài xế"
+    >
       <div className="phase-heading">
         <span className="search-badge">
           <Icon name="truck" size={22} />
@@ -1174,8 +1344,8 @@ function SearchingSheet({
             <small>{vehicle.detail}</small>
           </span>
           <span className="summary-price">
-            <small>Giá ước tính</small>
-            <strong>{vehicle.price}</strong>
+            <small>Cước chuyến</small>
+            <strong>{priceLabel || "Xem trong Đơn hàng"}</strong>
           </span>
         </div>
       </div>
@@ -1183,8 +1353,11 @@ function SearchingSheet({
       <div
         style={{
           display: "flex",
+
           flexDirection: "column",
+
           gap: "8px",
+
           marginTop: "12px",
         }}
       >
@@ -1195,21 +1368,33 @@ function SearchingSheet({
             disabled={escalated || isEscalating}
             style={{
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
+
               gap: "8px",
+
               padding: "11px 16px",
+
               borderRadius: "14px",
+
               background: escalated
                 ? "rgba(34, 197, 94, 0.12)"
                 : "linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(147, 51, 234, 0.12))",
+
               border: escalated
                 ? "1px solid rgba(34, 197, 94, 0.4)"
                 : "1px solid rgba(147, 51, 234, 0.35)",
+
               color: escalated ? "#16a34a" : "#4338ca",
+
               fontSize: "13px",
+
               fontWeight: 700,
+
               cursor: escalated ? "default" : "pointer",
+
               transition: "all 0.2s ease",
             }}
           >
@@ -1218,8 +1403,8 @@ function SearchingSheet({
               {isEscalating
                 ? "Đang quét xe vòng 2..."
                 : escalated
-                ? "✓ Đã mở rộng quét bán kính 8km"
-                : "Mở rộng bán kính tìm xe (8km)"}
+                  ? "✓ Đã mở rộng quét bán kính 8km"
+                  : "Mở rộng bán kính tìm xe (8km)"}
             </span>
           </button>
         )}
@@ -1234,37 +1419,59 @@ function SearchingSheet({
 
 function FoundSheet({
   pickup,
+
   destination,
+
   vehicle,
+
   driver,
+
   onCancel,
+
   onAdvance,
+
   onMessage,
+
   onCall,
 }: {
   pickup: string
+
   destination: string
+
   vehicle: Vehicle
+
   driver?: any
+
   onCancel: () => void
+
   onAdvance: () => void
+
   onMessage: () => void
+
   onCall?: () => void
 }) {
   const [open, setOpen] = useState(false)
+
   const driverName = driver?.name || "Nguyễn Văn Minh"
+
   const driverPlate = driver?.licensePlate || "51D-482.15"
+
   const driverRating = driver?.ratingAvg || "4,9"
+
   const driverInitials = driverName
+
     .split(" ")
+
     .slice(-2)
+
     .map((w: string) => w[0])
+
     .join("")
+
     .toUpperCase()
 
   return (
     <section className="booking-sheet phase-sheet" aria-live="polite">
-      <SheetHandle onAdvance={onAdvance} />
       <span className="status-chip found-chip">
         <span className="found-check">
           <Icon name="check" size={10} strokeWidth={3.4} />
@@ -1305,7 +1512,11 @@ function FoundSheet({
           <span className="plate">{driverPlate}</span>
         </div>
         <div className="driver-actions">
-          <button className="primary-button compact" onClick={onCall} type="button">
+          <button
+            className="primary-button compact"
+            onClick={onCall}
+            type="button"
+          >
             <Icon name="phone" size={18} />
             <span>Gọi</span>
           </button>
@@ -1456,66 +1667,128 @@ function OrderProgress({ current }: { current: number }) {
 
 function TrackingSheet({
   phase,
+
   pickup,
+
   destination,
+
   vehicle,
+
   driver,
+
   onAdvance,
+
   onHome,
+
   onViewOrders,
+
   onMessage,
+
   onCall,
+
   onCancelTrip,
+
   bookingId,
+
   onRate,
+  isPaid,
 }: {
   phase: TrackPhase
+
   pickup: string
+
   destination: string
+
   vehicle: Vehicle
+
   driver?: any
+
   bookingId?: string | null
+  isPaid?: boolean
+
   onAdvance: () => void
+
   onHome: () => void
+
   onViewOrders: () => void
+
   onMessage: () => void
+
   onCall?: () => void
+
   onCancelTrip?: () => void
-  onRate?: (rating: number, comment?: string, tags?: string[]) => void | Promise<void>
+
+  onRate?: (
+    rating: number,
+    comment?: string,
+    tags?: string[],
+  ) => void | Promise<void>
 }) {
   const info = trackInfo[phase]
+
   const delivered = phase === "delivered"
+
   const toPickup = phase === "arriving" || phase === "arrived"
-  const currentStep = delivered ? 5 : toPickup ? 2 : 3
+
+  const currentStep = delivered
+    ? 5
+    : toPickup
+      ? 1
+      : phase === "pickedup"
+        ? 2
+        : 3
 
   const driverName = driver?.name || "Anh Minh"
+
   const driverPlate = driver?.licensePlate || "51D-482.15"
+
   const driverRating = driver?.ratingAvg || "4,9"
+
   const driverInitials = driverName
+
     .split(" ")
+
     .slice(-2)
+
     .map((w: string) => w[0])
+
     .join("")
+
     .toUpperCase()
 
   const [rating, setRating] = useState(0)
+
   const [ratingStars, setRatingStars] = useState(5)
+
   const [ratingComment, setRatingComment] = useState("")
+
   const [selectedTags, setSelectedTags] = useState<string[]>([
     "Lái xe an toàn",
+
     "Nhiệt tình",
   ])
+
   const [isSubmittingRate, setIsSubmittingRate] = useState(false)
+  const [rateError, setRateError] = useState("")
+
   const [ratingOpen, setRatingOpen] = useState(false)
+
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const copyTimer = useRef<number | null>(null)
+  useEffect(
+    () => () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current)
+    },
+    [],
+  )
+  const ratePending = useRef(false)
 
   return (
     <section
       className="booking-sheet phase-sheet tracking-sheet"
       aria-live="polite"
     >
-      <SheetHandle onAdvance={onAdvance} />
-
       <div className={`status-head ${info.calm ? "calm" : ""}`} key={phase}>
         <span className="status-badge">
           <Icon
@@ -1526,9 +1799,11 @@ function TrackingSheet({
         </span>
         <div className="status-copy">
           <h1>{info.title}</h1>
-          <p className="phase-sub">{info.message}</p>
+          <p className="phase-sub">
+            {bookingId ? "Trạng thái được cập nhật từ hệ thống" : info.message}
+          </p>
         </div>
-        {info.eta && (
+        {!bookingId && info.eta && (
           <span className="eta-badge">
             <strong>{info.eta}</strong>
             <small>phút</small>
@@ -1594,30 +1869,57 @@ function TrackingSheet({
             <div style={{ textAlign: "center", marginTop: "10px" }}>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const shareUrl = `${window.location.origin}/?trackBooking=${bookingId}`
+
                   if (navigator.clipboard) {
-                    navigator.clipboard.writeText(shareUrl)
-                    alert("Đã sao chép liên kết theo dõi hành trình vào bộ nhớ tạm!")
+                    try {
+                      await navigator.clipboard.writeText(shareUrl)
+                    } catch {
+                      return
+                    }
+                    setCopiedLink(true)
+                    if (copyTimer.current) clearTimeout(copyTimer.current)
+                    copyTimer.current = window.setTimeout(
+                      () => setCopiedLink(false),
+                      2400,
+                    )
                   } else {
                     prompt("Sao chép liên kết theo dõi hành trình:", shareUrl)
                   }
                 }}
                 style={{
-                  background: "#f8fafc",
-                  border: "1px solid #cbd5e1",
+                  background: copiedLink ? "#ecfdf5" : "#f8fafc",
+
+                  border: copiedLink
+                    ? "1px solid #10b981"
+                    : "1px solid #cbd5e1",
+
                   borderRadius: "20px",
+
                   padding: "5px 14px",
-                  color: "#334155",
+
+                  color: copiedLink ? "#047857" : "#334155",
+
                   fontSize: "12px",
+
                   fontWeight: 600,
+
                   cursor: "pointer",
+
                   display: "inline-flex",
+
                   alignItems: "center",
+
                   gap: "6px",
+
+                  transition: "all 0.2s ease",
                 }}
               >
-                <span>🔗 Chia sẻ hành trình</span>
+                <span>{copiedLink ? "✓" : "🔗"}</span>
+                <span>
+                  {copiedLink ? "Đã sao chép liên kết" : "Chia sẻ hành trình"}
+                </span>
               </button>
             </div>
           )}
@@ -1629,10 +1931,15 @@ function TrackingSheet({
                 onClick={onCancelTrip}
                 style={{
                   background: "transparent",
+
                   border: "none",
+
                   color: "#ef4444",
+
                   fontSize: "12px",
+
                   cursor: "pointer",
+
                   textDecoration: "underline",
                 }}
               >
@@ -1656,33 +1963,124 @@ function TrackingSheet({
 
       {delivered && (
         <>
+          {isPaid ? (
+            <div
+              className="paid-success-banner"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "13px 16px",
+                background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)",
+                border: "1.5px solid #a7f3d0",
+                borderRadius: "16px",
+                marginBottom: "12px",
+                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.08)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span
+                  style={{
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    backgroundColor: "#10b981",
+                    color: "#ffffff",
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: "15px",
+                    fontWeight: 700,
+                  }}
+                >
+                  ✓
+                </span>
+                <div>
+                  <div
+                    style={{
+                      color: "#065f46",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                    }}
+                  >
+                    Đã thanh toán thành công
+                  </div>
+                  <div
+                    style={{
+                      color: "#047857",
+                      fontSize: "12px",
+                      marginTop: "1px",
+                    }}
+                  >
+                    Cảm ơn quý khách đã hoàn tất thanh toán
+                  </div>
+                </div>
+              </div>
+              <span
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#059669",
+                  background: "#d1fae5",
+                  padding: "4px 8px",
+                  borderRadius: "8px",
+                }}
+              >
+                Hoàn tất
+              </span>
+            </div>
+          ) : null}
           <div className="summary-card delivered-card">
             <RouteSummary destination={destination} pickup={pickup} />
             <div className="summary-vehicle">
               <VehicleGlyph type={vehicle.type} />
               <span className="summary-vehicle-copy">
-                <strong>{vehicle.name}</strong>
-                <small>Anh Minh · 51D-482.15</small>
+                <strong>
+                  {bookingId
+                    ? driver?.vehicleTypeName || "Xe vận chuyển"
+                    : vehicle.name}
+                </strong>
+                <small>
+                  {bookingId
+                    ? `${driverName} · ${driverPlate}`
+                    : "Anh Minh · 51D-482.15"}
+                </small>
               </span>
               <span className="summary-price">
                 <small>Thành tiền</small>
-                <strong>{vehicle.price}</strong>
+                <strong>
+                  {bookingId ? "Xem trong Đơn hàng" : vehicle.price}
+                </strong>
+                {isPaid && (
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: "11.5px",
+                      color: "#059669",
+                      fontWeight: 700,
+                      marginTop: "3px",
+                    }}
+                  >
+                    ✓ Đã thanh toán
+                  </span>
+                )}
               </span>
             </div>
-            <div className="trip-stats">
-              <span>
-                <small>Hoàn thành</small>
-                <strong>10:46</strong>
-              </span>
-              <span>
-                <small>Thời gian</small>
-                <strong>24 phút</strong>
-              </span>
-              <span>
-                <small>Quãng đường</small>
-                <strong>6,8 km</strong>
-              </span>
-            </div>
+            {!bookingId && (
+              <div className="trip-stats">
+                <span>
+                  <small>Hoàn thành</small>
+                  <strong>10:46</strong>
+                </span>
+                <span>
+                  <small>Thời gian</small>
+                  <strong>24 phút</strong>
+                </span>
+                <span>
+                  <small>Quãng đường</small>
+                  <strong>6,8 km</strong>
+                </span>
+              </div>
+            )}
           </div>
 
           {ratingOpen && !rating ? (
@@ -1690,17 +2088,24 @@ function TrackingSheet({
               className="rate-panel"
               style={{
                 padding: "16px",
+
                 borderRadius: "16px",
+
                 background: "#f8fafc",
+
                 border: "1px solid #e2e8f0",
               }}
             >
               <strong
                 style={{
                   fontSize: "15px",
+
                   display: "block",
+
                   marginBottom: "8px",
+
                   textAlign: "center",
+
                   color: "#0f172a",
                 }}
               >
@@ -1710,7 +2115,12 @@ function TrackingSheet({
                 className="rate-stars"
                 role="radiogroup"
                 aria-label="Đánh giá tài xế"
-                style={{ justifyContent: "center", marginBottom: "12px", display: "flex", gap: "8px" }}
+                style={{
+                  justifyContent: "center",
+                  marginBottom: "12px",
+                  display: "flex",
+                  gap: "8px",
+                }}
               >
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
@@ -1723,13 +2133,22 @@ function TrackingSheet({
                     type="button"
                     style={{
                       transform: n <= ratingStars ? "scale(1.15)" : "scale(1)",
+
                       transition: "transform 0.15s ease",
+
                       cursor: "pointer",
+
                       background: "transparent",
+
                       border: "none",
                     }}
                   >
-                    <span className="star" style={{ color: n <= ratingStars ? "#f59e0b" : "#cbd5e1" }}>
+                    <span
+                      className="star"
+                      style={{
+                        color: n <= ratingStars ? "#f59e0b" : "#cbd5e1",
+                      }}
+                    >
                       <Icon name="star" size={28} strokeWidth={1.6} />
                     </span>
                   </button>
@@ -1740,38 +2159,59 @@ function TrackingSheet({
               <div
                 style={{
                   display: "flex",
+
                   flexWrap: "wrap",
+
                   gap: "6px",
+
                   marginBottom: "12px",
+
                   justifyContent: "center",
                 }}
               >
                 {[
                   "Lái xe an toàn",
+
                   "Nhiệt tình, chu đáo",
+
                   "Đúng giờ",
+
                   "Hàng hóa cẩn thận",
+
                   "Xe sạch đẹp",
                 ].map((tag) => {
                   const active = selectedTags.includes(tag)
+
                   return (
                     <button
                       key={tag}
                       type="button"
                       onClick={() =>
                         setSelectedTags((prev) =>
-                          active ? prev.filter((t) => t !== tag) : [...prev, tag],
+                          active
+                            ? prev.filter((t) => t !== tag)
+                            : [...prev, tag],
                         )
                       }
                       style={{
                         padding: "5px 10px",
+
                         borderRadius: "20px",
+
                         fontSize: "12px",
-                        border: active ? "1px solid #2563eb" : "1px solid #cbd5e1",
+
+                        border: active
+                          ? "1px solid #2563eb"
+                          : "1px solid #cbd5e1",
+
                         background: active ? "#eff6ff" : "#fff",
+
                         color: active ? "#1d4ed8" : "#475569",
+
                         cursor: "pointer",
+
                         fontWeight: active ? 600 : 400,
+
                         transition: "all 0.15s",
                       }}
                     >
@@ -1790,13 +2230,21 @@ function TrackingSheet({
                 rows={2}
                 style={{
                   width: "100%",
+
                   padding: "8px 12px",
+
                   borderRadius: "8px",
+
                   border: "1px solid #cbd5e1",
+
                   fontSize: "13px",
+
                   marginBottom: "12px",
+
                   outline: "none",
+
                   resize: "none",
+
                   boxSizing: "border-box",
                 }}
               />
@@ -1815,15 +2263,25 @@ function TrackingSheet({
                   type="button"
                   disabled={isSubmittingRate}
                   onClick={async () => {
+                    if (ratePending.current) return
+                    ratePending.current = true
                     setIsSubmittingRate(true)
+                    setRateError("")
+
                     try {
                       if (onRate) {
                         await onRate(ratingStars, ratingComment, selectedTags)
                       }
+
                       setRating(ratingStars)
                     } catch (e) {
-                      console.error(e)
+                      setRateError(
+                        e instanceof Error
+                          ? e.message
+                          : "Không thể gửi đánh giá",
+                      )
                     } finally {
+                      ratePending.current = false
                       setIsSubmittingRate(false)
                     }
                   }}
@@ -1832,6 +2290,11 @@ function TrackingSheet({
                   {isSubmittingRate ? "Đang gửi..." : "GỬI ĐÁNH GIÁ"}
                 </button>
               </div>
+              {rateError && (
+                <p role="alert" className="field-error">
+                  {rateError}
+                </p>
+              )}
             </div>
           ) : rating ? (
             <div className="delivered-actions">
@@ -1885,9 +2348,15 @@ function TrackingSheet({
               <Icon name="check" size={22} strokeWidth={2.6} />
             </span>
             <div>
-              <h2 id="delivery-confirm-title">Xác nhận đã giao hàng?</h2>
+              <h2 id="delivery-confirm-title">
+                {bookingId
+                  ? "Kiểm tra trạng thái giao hàng?"
+                  : "Xác nhận đã giao hàng?"}
+              </h2>
               <p id="delivery-confirm-description">
-                Đơn hàng sẽ được đánh dấu là hoàn thành.
+                {bookingId
+                  ? "Trạng thái hoàn thành được xác nhận từ hệ thống."
+                  : "Đơn hàng sẽ được đánh dấu là hoàn thành."}
               </p>
             </div>
             <div className="delivery-confirm-actions">
@@ -1907,7 +2376,7 @@ function TrackingSheet({
                 }}
                 type="button"
               >
-                Đã giao
+                {bookingId ? "Kiểm tra" : "Đã giao"}
               </button>
             </div>
           </div>
@@ -1933,7 +2402,9 @@ type OrderStatus = "active" | "completed" | "cancelled"
 
 type Order = {
   id: string
+
   rawBookingId?: string
+
   status: OrderStatus
 
   created: string
@@ -1954,7 +2425,12 @@ type Order = {
 
   duration: string
 
-  driver?: { name: string initials: string rating: string plate: string }
+  driver?: {
+    name: string
+    initials: string
+    rating: string
+    plate: string
+  }
 
   rated?: number
 }
@@ -2119,7 +2595,10 @@ const orders: Order[] = [
   },
 ]
 
-const statusMeta: Record<OrderStatus, { label: string tone: string }> = {
+const statusMeta: Record<OrderStatus, {
+  label: string
+  tone: string
+}> = {
   active: { label: "Đang giao", tone: "active" },
 
   completed: { label: "Hoàn thành", tone: "completed" },
@@ -2159,67 +2638,134 @@ const filterStatus: Record<string, OrderStatus | undefined> = {
 
 function OrderHistory({
   onOpen,
+
   onTrack,
+
   onReorder,
+
+  onLoaded,
+
+  onNotifications,
 }: {
   onOpen: (o: Order) => void
+
   onTrack: (o: Order) => void
+
   onReorder: (o: Order) => void
+
+  onLoaded: (orders: Order[]) => void
+
+  onNotifications: () => void
 }) {
   const [filter, setFilter] = useState<string>("Tất cả")
+
   const [serverOrders, setServerOrders] = useState<Order[]>([])
+
+  const [loading, setLoading] = useState(false)
+
+  const [error, setError] = useState("")
+
+  const [retry, setRetry] = useState(0)
 
   useEffect(() => {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
     if (!token) return
+
+    const controller = new AbortController()
+
+    setLoading(true)
+
+    setError("")
+
     fetch("/api/v1/bookings", {
+      signal: controller.signal,
+
       headers: { Authorization: `Bearer ${token}` },
     })
+
       .then((r) => r.json())
+
       .then((res) => {
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (controller.signal.aborted) return
+        if (!res.success || !Array.isArray(res.data))
+          throw new Error(res.message || "Không thể tải đơn hàng")
+
+        if (Array.isArray(res.data)) {
           const mapped: Order[] = res.data.map((b: any) => {
             const st: OrderStatus =
               b.status === "COMPLETED"
                 ? "completed"
                 : b.status === "CANCELLED"
-                ? "cancelled"
-                : "active"
+                  ? "cancelled"
+                  : "active"
+
             return {
               id: `#${b.bookingCode || b.id.slice(0, 8)}`,
+
               rawBookingId: b.id,
+
               status: st,
+
               created: new Date(b.createdAt).toLocaleDateString("vi-VN", {
                 day: "2-digit",
+
                 month: "2-digit",
+
                 hour: "2-digit",
+
                 minute: "2-digit",
               }),
+
               pickup: b.originAddress,
+
               destination: b.destinationAddress,
+
               vehicleId: "van",
-              transport: Math.round(Number(b.totalPrice) * 0.9),
-              service: Math.round(Number(b.totalPrice) * 0.1),
+
+              transport: Number(b.totalPrice),
+
+              service: 0,
+
               distance: `${b.distanceKm || "—"} km`,
+
               duration: "—",
+
               driver: b.driver
                 ? {
                     name: b.driver.name || "Tài xế",
+
                     initials: "TX",
+
                     plate: b.driver.licensePlate || "",
+
                     rating: "4.9",
                   }
                 : undefined,
             }
           })
+
           setServerOrders(mapped)
+
+          onLoaded(mapped)
         }
       })
-      .catch((err) => console.warn("Load bookings error:", err))
-  }, [])
 
-  const combinedOrders = serverOrders.length > 0 ? serverOrders : orders
+      .catch((err) => {
+        if (!controller.signal.aborted)
+          setError(err.message || "Không thể tải đơn hàng")
+      })
+
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [retry])
+
+  const combinedOrders = serverOrders
+
   const list = combinedOrders.filter(
     (o) => !filterStatus[filter] || o.status === filterStatus[filter],
   )
@@ -2228,8 +2774,26 @@ function OrderHistory({
     <section className="orders-screen">
       <header className="orders-head">
         <h1>Đơn hàng của bạn</h1>
-        <IconButton badge icon="bell" label="Thông báo" />
+        <IconButton
+          badge
+          icon="bell"
+          label="Thông báo"
+          onClick={onNotifications}
+        />
       </header>
+      {loading && <p role="status">Đang tải đơn hàng...</p>}
+      {error && (
+        <div role="alert">
+          <p>{error}</p>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => setRetry((n) => n + 1)}
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
       <div className="filter-tabs" role="tablist">
         {filters.map((f) => (
           <button
@@ -2245,8 +2809,16 @@ function OrderHistory({
         ))}
       </div>
       <div className="order-list" key={filter}>
-        {list.length === 0 && (
-          <p className="orders-empty">Chưa có đơn hàng nào.</p>
+        {!loading && !error && list.length === 0 && (
+          <div className="acc-empty" style={{ margin: "24px 0" }}>
+            <span className="acc-empty-icon">
+              <Icon name="truck" size={26} />
+            </span>
+            <strong>Chưa có đơn hàng nào</strong>
+            <p>
+              Các chuyến xe bạn đã đặt hoặc đang thực hiện sẽ hiển thị tại đây.
+            </p>
+          </div>
         )}
         {list.map((o) => {
           const v = orderVehicle(o)
@@ -2266,7 +2838,7 @@ function OrderHistory({
                 <span className="order-foot">
                   <span className="order-vehicle">
                     <VehicleGlyph type={v.type} />
-                    <span>{v.name}</span>
+                    <span>{o.rawBookingId ? "Xe vận chuyển" : v.name}</span>
                   </span>
                   <strong>{orderTotal(o)}</strong>
                 </span>
@@ -2323,7 +2895,11 @@ function OrderDetail({
 
   onReorder: (o: Order) => void
 
-  onRate: (value: number, comment?: string, tags?: string[]) => void | Promise<void>
+  onRate: (
+    value: number,
+    comment?: string,
+    tags?: string[],
+  ) => void | Promise<void>
 
   onSupport: (o: Order) => void
 }) {
@@ -2332,30 +2908,69 @@ function OrderDetail({
   const [rateOpen, setRateOpen] = useState(false)
 
   const [draft, setDraft] = useState(5)
+
   const [orderTags, setOrderTags] = useState<string[]>([
     "Lái xe an toàn",
+
     "Nhiệt tình",
   ])
+
   const [orderComment, setOrderComment] = useState("")
+
   const [isSubmittingOrderRate, setIsSubmittingOrderRate] = useState(false)
+  const orderRatePending = useRef(false)
+  const [rateError, setRateError] = useState("")
+  const [bookingDetails, setBookingDetails] = useState<any>(null)
+  const [detailError, setDetailError] = useState("")
+
+  useEffect(() => {
+    if (!order.rawBookingId) return
+    const controller = new AbortController()
+    fetch(`/api/v1/bookings/${order.rawBookingId}`, {
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+      },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success)
+          throw new Error(data.message || "Không thể tải chi tiết đơn")
+        if (!controller.signal.aborted) setBookingDetails(data.data)
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          setDetailError(error.message || "Không thể tải chi tiết đơn")
+      })
+    return () => controller.abort()
+  }, [order.rawBookingId])
+
   const [tripCalls, setTripCalls] = useState<any[]>([])
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") || localStorage.getItem("token") : null
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
     if (!token || !order.rawBookingId) return
+
     fetch(`/api/v1/calls/trip/${order.rawBookingId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
+
       .then((r) => r.json())
+
       .then((res) => {
         if (res.success && Array.isArray(res.data)) {
           setTripCalls(res.data)
         }
       })
+
       .catch(() => {})
   }, [order.rawBookingId])
 
-  const total = order.transport + order.service
+  const total = Number(
+    bookingDetails?.pricing?.totalPrice ?? order.transport + order.service,
+  )
 
   return (
     <section className="orders-screen detail">
@@ -2400,13 +3015,27 @@ function OrderDetail({
       </div>
 
       <h2>Lộ trình</h2>
+      {detailError && (
+        <p className="field-error" role="alert">
+          {detailError}
+        </p>
+      )}
       <div className="detail-card">
         <OrderRoute order={order} />
         <div className="summary-vehicle detail-vehicle">
           <VehicleGlyph type={v.type} />
           <span className="summary-vehicle-copy">
-            <strong>{v.name}</strong>
-            <small>{v.detail}</small>
+            <strong>
+              {order.rawBookingId
+                ? bookingDetails?.driver?.vehicleTypeName || "Xe vận chuyển"
+                : v.name}
+            </strong>
+            <small>
+              {order.rawBookingId
+                ? bookingDetails?.driver?.licensePlate ||
+                  "Đang cập nhật thông tin xe"
+                : v.detail}
+            </small>
           </span>
         </div>
       </div>
@@ -2443,10 +3072,22 @@ function OrderDetail({
           <strong>{order.duration}</strong>
         </span>
       </div>
-      <h2>Liên lạc Hotline 1900-8888 {tripCalls.length > 0 ? `(${tripCalls.length})` : ""}</h2>
+      <h2>
+        Liên lạc Hotline 1900-8888{" "}
+        {tripCalls.length > 0 ? `(${tripCalls.length})` : ""}
+      </h2>
       <div className="detail-card">
         {tripCalls.length === 0 ? (
-          <div style={{ fontSize: "13px", color: "#64748b", padding: "6px 0", display: "flex", alignItems: "center", gap: "8px" }}>
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#64748b",
+              padding: "6px 0",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
             <span style={{ fontSize: "16px" }}>📞</span>
             <span>Chưa ghi nhận cuộc gọi tổng đài nào trong chuyến này.</span>
           </div>
@@ -2454,30 +3095,63 @@ function OrderDetail({
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {tripCalls.map((c: any) => {
               const durM = Math.floor((c.duration_seconds || 0) / 60)
+
               const durS = (c.duration_seconds || 0) % 60
+
               const durStr = `${String(durM).padStart(2, "0")}:${String(durS).padStart(2, "0")}`
-              const isAnswered = c.status === "ANSWERED" || c.status === "COMPLETED"
+
+              const isAnswered =
+                c.status === "ANSWERED" || c.status === "COMPLETED"
+
               return (
                 <div
                   key={c.id}
                   style={{
                     display: "flex",
+
                     justifyContent: "space-between",
+
                     alignItems: "center",
+
                     padding: "8px 0",
+
                     borderBottom: "1px dashed #e2e8f0",
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
-                      {c.caller_role === "DRIVER" ? "Tài xế liên hệ bạn" : "Bạn gọi tài xế"}
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        color: "#1e293b",
+                      }}
+                    >
+                      {c.caller_role === "DRIVER"
+                        ? "Tài xế liên hệ bạn"
+                        : "Bạn gọi tài xế"}
                     </div>
-                    <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                      {new Date(c.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} · Tổng đài bảo mật số
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#64748b",
+                        marginTop: "2px",
+                      }}
+                    >
+                      {new Date(c.created_at).toLocaleTimeString("vi-VN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      · Tổng đài bảo mật số
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "12px", fontWeight: 700, color: isAnswered ? "#16a34a" : "#dc2626" }}>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: isAnswered ? "#16a34a" : "#dc2626",
+                      }}
+                    >
                       {isAnswered ? durStr : "Nhỡ / Không nghe"}
                     </div>
                     <span style={{ fontSize: "10px", color: "#64748b" }}>
@@ -2496,18 +3170,36 @@ function OrderDetail({
         {order.status === "cancelled" ? (
           <div className="pay-row">
             <span>Phí hủy</span>
-            <strong>0đ</strong>
+            <strong>
+              {order.rawBookingId
+                ? bookingDetails?.cancellation
+                  ? money(bookingDetails.cancellation.fee)
+                  : "Chưa có thông tin"
+                : "0đ"}
+            </strong>
           </div>
         ) : (
           <>
-            <div className="pay-row">
-              <span>Cước vận chuyển</span>
-              <span>{money(order.transport)}</span>
-            </div>
-            <div className="pay-row">
-              <span>Phí dịch vụ</span>
-              <span>{money(order.service)}</span>
-            </div>
+            {(!order.rawBookingId || bookingDetails?.pricing) && (
+              <>
+                <div className="pay-row">
+                  <span>Cước vận chuyển</span>
+                  <span>
+                    {money(
+                      bookingDetails?.pricing?.basePrice ?? order.transport,
+                    )}
+                  </span>
+                </div>
+                <div className="pay-row">
+                  <span>Phí dịch vụ</span>
+                  <span>
+                    {money(
+                      bookingDetails?.pricing?.surchargePrice ?? order.service,
+                    )}
+                  </span>
+                </div>
+              </>
+            )}
             <div className="pay-row total">
               <span>Tổng cộng</span>
               <strong>{money(total)}</strong>
@@ -2553,15 +3245,21 @@ function OrderDetail({
                 className="detail-card rated-card open"
                 style={{
                   display: "flex",
+
                   flexDirection: "column",
+
                   gap: "10px",
+
                   padding: "14px",
                 }}
               >
                 <span style={{ fontWeight: 600, color: "#1e293b" }}>
                   Bạn thấy {order.driver?.name} phục vụ thế nào?
                 </span>
-                <span className="rate-stars" style={{ display: "flex", gap: "8px" }}>
+                <span
+                  className="rate-stars"
+                  style={{ display: "flex", gap: "8px" }}
+                >
                   {[1, 2, 3, 4, 5].map((n) => (
                     <button
                       aria-label={`${n} sao`}
@@ -2571,13 +3269,20 @@ function OrderDetail({
                       type="button"
                       style={{
                         background: "transparent",
+
                         border: "none",
+
                         cursor: "pointer",
+
                         transform: n <= draft ? "scale(1.15)" : "scale(1)",
+
                         transition: "all 0.15s",
                       }}
                     >
-                      <span className="star" style={{ color: n <= draft ? "#f59e0b" : "#cbd5e1" }}>
+                      <span
+                        className="star"
+                        style={{ color: n <= draft ? "#f59e0b" : "#cbd5e1" }}
+                      >
                         <Icon name="star" size={24} strokeWidth={1.6} />
                       </span>
                     </button>
@@ -2586,8 +3291,11 @@ function OrderDetail({
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                   {[
                     "Lái xe an toàn",
+
                     "Nhiệt tình",
+
                     "Đúng giờ",
+
                     "Cẩn thận hàng hóa",
                   ].map((t) => (
                     <button
@@ -2602,13 +3310,19 @@ function OrderDetail({
                       }
                       style={{
                         padding: "3px 8px",
+
                         fontSize: "11px",
+
                         borderRadius: "12px",
+
                         border: orderTags.includes(t)
                           ? "1px solid #2563eb"
                           : "1px solid #cbd5e1",
+
                         background: orderTags.includes(t) ? "#eff6ff" : "#fff",
+
                         color: orderTags.includes(t) ? "#1d4ed8" : "#64748b",
+
                         cursor: "pointer",
                       }}
                     >
@@ -2624,10 +3338,15 @@ function OrderDetail({
                   onChange={(e) => setOrderComment(e.target.value)}
                   style={{
                     padding: "6px 10px",
+
                     borderRadius: "6px",
+
                     border: "1px solid #cbd5e1",
+
                     fontSize: "12px",
+
                     outline: "none",
+
                     boxSizing: "border-box",
                   }}
                 />
@@ -2636,11 +3355,22 @@ function OrderDetail({
                   className="primary-button compact"
                   disabled={draft === 0 || isSubmittingOrderRate}
                   onClick={async () => {
-                    if (draft === 0) return
+                    if (draft === 0 || orderRatePending.current) return
+                    orderRatePending.current = true
+
                     setIsSubmittingOrderRate(true)
+                    setRateError("")
+
                     try {
                       await onRate(draft, orderComment, orderTags)
+                    } catch (error) {
+                      setRateError(
+                        error instanceof Error
+                          ? error.message
+                          : "Không thể gửi đánh giá",
+                      )
                     } finally {
+                      orderRatePending.current = false
                       setIsSubmittingOrderRate(false)
                     }
                   }}
@@ -2648,6 +3378,11 @@ function OrderDetail({
                 >
                   {isSubmittingOrderRate ? "Đang gửi..." : "Gửi đánh giá"}
                 </button>
+                {rateError && (
+                  <p className="field-error" role="alert">
+                    {rateError}
+                  </p>
+                )}
               </div>
             ) : null}
             <button
@@ -2697,6 +3432,26 @@ function OrderDetail({
 
 export default function App() {
   const phoneRef = useRef<HTMLElement>(null)
+  const restoreId = useRef(
+    new URLSearchParams(window.location.search).get("trackBooking") ||
+      sessionStorage.getItem("customer-active-booking"),
+  )
+
+  const [customerToast, setCustomerToast] = useState<string | null>(null)
+  const toastTimer = useRef<number | null>(null)
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+    },
+    [],
+  )
+  const showCustomerToast = useCallback((msg: string, duration = 3500) => {
+    setCustomerToast(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => {
+      setCustomerToast((prev) => (prev === msg ? null : prev))
+    }, duration)
+  }, [])
 
   const [pickup, setPickup] = useState("Vị trí hiện tại · 21 Nguyễn Đình Chiểu")
 
@@ -2710,79 +3465,190 @@ export default function App() {
 
   const [destinationError, setDestinationError] = useState(false)
 
+  const [pickupError, setPickupError] = useState(false)
+
+  const [bookingError, setBookingError] = useState("")
+
+  const [estimateError, setEstimateError] = useState("")
+
+  const bookingPending = useRef(false)
+
   const [tab, setTab] = useState("Trang chủ")
 
   const [sheetExpanded, setSheetExpanded] = useState(false)
+  const [tripSheetCollapsed, setTripSheetCollapsed] = useState(false)
+
+  const [showVehicleDetails, setShowVehicleDetails] = useState(false)
+
+  const vehicleDialogRef = useCustomerDialog(showVehicleDetails, () =>
+    setShowVehicleDetails(false),
+  )
+
+  const swipeStart = useRef<number | null>(null)
 
   const [openOrder, setOpenOrder] = useState<Order | null>(null)
+
+  const [customerOrders, setCustomerOrders] = useState<Order[]>([])
+
+  const [supportBooking, setSupportBooking] = useState<Order | null>(null)
 
   const [ratings, setRatings] = useState<Record<string, number>>({
     "#FD240915": 5,
   })
 
   const [chatId, setChatId] = useState<string | null>(null)
+
   const [callModalOpen, setCallModalOpen] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "VNPAY" | "MOMO" | "WALLET">("CASH")
+
+  const [paymentMethod, setPaymentMethod] =
+    useState<"CASH" | "VNPAY" | "MOMO" | "WALLET">("CASH")
+  const defaultPayment = usePaymentPreference()
+  useEffect(() => {
+    const methods = {
+      cash: "CASH",
+      wallet: "WALLET",
+      vnpay: "VNPAY",
+      momo: "MOMO",
+    } as const
+    setPaymentMethod(methods[defaultPayment])
+  }, [defaultPayment])
+
   const [paymentQrOpen, setPaymentQrOpen] = useState(false)
+
   const [paymentQrData, setPaymentQrData] = useState<any>(null)
+
   const [paymentSuccess, setPaymentSuccess] = useState(false)
+  const [paymentError, setPaymentError] = useState("")
+  const [paidBookings, setPaidBookings] = useState<Record<string, boolean>>({})
+  const markBookingPaid = (id?: string | null) => {
+    const targetId = id || currentBookingId
+    if (targetId) {
+      setPaidBookings((prev) => ({ ...prev, [targetId]: true }))
+    }
+  }
+  const closeCustomerPayment = () => {
+    setPaymentQrOpen(false)
+  }
+
   const [paymentChecking, setPaymentChecking] = useState(false)
+  const manualPaymentRequest = useRef<AbortController | null>(null)
+  const manualPaymentPending = useRef(false)
+  useEffect(() => {
+    if (!paymentQrOpen) {
+      manualPaymentRequest.current?.abort()
+      manualPaymentPending.current = false
+      setPaymentChecking(false)
+    }
+    return () => manualPaymentRequest.current?.abort()
+  }, [paymentQrOpen])
+  useEffect(() => {
+    if (!paymentSuccess || !paymentQrOpen) return
+    const timer = window.setTimeout(() => {
+      setPaymentQrOpen(false)
+      setPaymentSuccess(false)
+    }, 2000)
+    return () => window.clearTimeout(timer)
+  }, [paymentSuccess, paymentQrOpen])
 
   // Tự động kiểm tra trạng thái thanh toán trực tuyến (Polling + Socket Pusher)
+
   useEffect(() => {
-    if (!paymentQrOpen || !paymentQrData?.transactionCode || paymentSuccess) return
+    if (
+      !paymentQrOpen ||
+      !paymentQrData?.transactionCode ||
+      paymentSuccess ||
+      paymentError
+    )
+      return
 
     const txnCode = paymentQrData.transactionCode
+    const controller = new AbortController()
+    let pending = false
+
     const checkStatus = async () => {
+      if (pending || controller.signal.aborted) return
+      pending = true
       try {
-        const res = await fetch(`/api/v1/payments/status/${txnCode}`)
+        const res = await fetch(`/api/v1/payments/status/${txnCode}`, {
+          signal: controller.signal,
+        })
+
         const data = await res.json()
+        if (controller.signal.aborted) return
+
         if (data.success && data.data?.isSuccess) {
           setPaymentSuccess(true)
-          setTimeout(() => {
-            setPaymentQrOpen(false)
-            setPaymentSuccess(false)
-          }, 2000)
+          markBookingPaid()
+        } else if (data.data?.status === "FAILED") {
+          setPaymentError("Thanh toán mô phỏng thất bại. Bạn có thể thử lại.")
         }
       } catch (err) {
-        console.warn("Lỗi kiểm tra thanh toán:", err)
+        if (!controller.signal.aborted)
+          console.warn("Lỗi kiểm tra thanh toán:", err)
+      } finally {
+        pending = false
       }
     }
 
     const interval = setInterval(checkStatus, 2500)
-    const unsubscribe = subscribeRealtime(`payment-${txnCode}`, "payment-completed", () => {
-      setPaymentSuccess(true)
-      setTimeout(() => {
-        setPaymentQrOpen(false)
-        setPaymentSuccess(false)
-      }, 2000)
-    })
+
+    const unsubscribe = subscribeRealtime(
+      `payment-${txnCode}`,
+      "payment-completed",
+      () => {
+        setPaymentSuccess(true)
+        markBookingPaid()
+      },
+    )
 
     return () => {
       clearInterval(interval)
+      controller.abort()
+
       unsubscribe()
     }
-  }, [paymentQrOpen, paymentQrData, paymentSuccess])
+  }, [paymentQrOpen, paymentQrData, paymentSuccess, paymentError])
 
   const checkPaymentManual = async () => {
-    if (!paymentQrData?.transactionCode) return
+    if (
+      !paymentQrOpen ||
+      !paymentQrData?.transactionCode ||
+      manualPaymentPending.current
+    )
+      return
+    manualPaymentPending.current = true
+    const controller = new AbortController()
+    manualPaymentRequest.current = controller
+
     setPaymentChecking(true)
+
     try {
-      const res = await fetch(`/api/v1/payments/status/${paymentQrData.transactionCode}`)
+      const res = await fetch(
+        `/api/v1/payments/status/${paymentQrData.transactionCode}`,
+        { signal: controller.signal },
+      )
+
       const data = await res.json()
+      if (controller.signal.aborted) return
+
       if (data.success && data.data?.isSuccess) {
         setPaymentSuccess(true)
-        setTimeout(() => {
-          setPaymentQrOpen(false)
-          setPaymentSuccess(false)
-        }, 1800)
+        markBookingPaid()
+      } else if (data.data?.status === "FAILED") {
+        setPaymentError("Thanh toán mô phỏng thất bại. Bạn có thể thử lại.")
       } else {
-        alert("Hệ thống chưa nhận được tiền từ cổng. Vui lòng hoàn tất quét mã trước.")
+        showCustomerToast(
+          "Hệ thống chưa nhận được tiền từ cổng. Vui lòng hoàn tất quét mã trước.",
+        )
       }
     } catch (err) {
-      alert("Lỗi kiểm tra: " + String(err))
+      if (controller.signal.aborted) return
+      showCustomerToast("Lỗi kiểm tra: " + String(err))
     } finally {
-      setPaymentChecking(false)
+      if (manualPaymentRequest.current === controller) {
+        manualPaymentPending.current = false
+        if (!controller.signal.aborted) setPaymentChecking(false)
+      }
     }
   }
 
@@ -2791,41 +3657,112 @@ export default function App() {
   const [navHidden, setNavHidden] = useState(false)
 
   const [vehicleList, setVehicleList] = useState<Vehicle[]>(defaultVehicles)
+
   const [surchargeServices, setSurchargeServices] =
     useState<SurchargeServiceItem[]>(defaultSurcharges)
-  const [selectedServices, setSelectedServices] = useState<
-    Record<string, number>
-  >({})
+
+  const [selectedServices, setSelectedServices] =
+    useState<Record<string, number>>({})
+
   const [estimateData, setEstimateData] = useState<{
     distanceKm: number
+
     durationMinutes: number
+
     totalPrice: number
+
     surchargesTotal: number
-    breakdown?: any[]
+
+    originLat?: number
+
+    originLng?: number
+
+    destLat?: number
+
+    destLng?: number
+
+    breakdown?: {
+      transportPrice?: number
+      surchargeTotal?: number
+    }
   } | null>(null)
+
   const [isEstimating, setIsEstimating] = useState(false)
 
   const savedAddresses = useAddresses()
+
   const profile = useProfile()
+
   const [showAuthModal, setShowAuthModal] = useState(false)
+
   const [showNotifications, setShowNotifications] = useState(false)
+
   const [authToken, setAuthToken] = useState<string | null>(() =>
     typeof window !== "undefined" ? localStorage.getItem("auth_token") : null,
   )
+  const authTokenRef = useRef(authToken)
+  authTokenRef.current = authToken
+
+  useEffect(() => {
+    const syncAuth = (event: Event) => {
+      if (event instanceof StorageEvent && event.key !== "auth_token") return
+      const token = localStorage.getItem("auth_token")
+      if (token === authTokenRef.current) return
+      authTokenRef.current = token
+      setAuthToken(token)
+      setCustomerOrders([])
+      setSupportBooking(null)
+      setOpenOrder(null)
+      clearCustomerData()
+      setPaymentQrOpen(false)
+      setPaymentQrData(null)
+      setPaymentSuccess(false)
+      setRatings({})
+      setCurrentBookingId(null)
+      setActiveDriver(null)
+      setPhase("booking")
+      setChatId(null)
+      setCallModalOpen(false)
+      if (!token) {
+        restoreId.current = null
+        sessionStorage.removeItem("customer-active-booking")
+        setCurrentBookingId(null)
+        setActiveDriver(null)
+        setPhase("booking")
+        setChatId(null)
+        setCallModalOpen(false)
+      }
+    }
+
+    window.addEventListener("customer-auth-changed", syncAuth)
+
+    window.addEventListener("storage", syncAuth)
+
+    return () => {
+      window.removeEventListener("customer-auth-changed", syncAuth)
+
+      window.removeEventListener("storage", syncAuth)
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("auth_token")) {
       syncUserProfileFromApi()
+
       syncAddressesFromApi()
     }
 
     // 1. Tải bảng giá loại xe thực tế từ DB
+
     fetch("/api/v1/pricing/rules")
+
       .then((r) => r.json())
+
       .then((data) => {
         if (data.success && Array.isArray(data.data) && data.data.length > 0) {
           const mapped = data.data.map((r: any) => {
             const nameLower = (r.vehicleName || "").toLowerCase()
+
             const type: Vehicle["type"] = nameLower.includes("van")
               ? "van"
               : nameLower.includes("1 tấn") || nameLower.includes("1000")
@@ -2836,54 +3773,76 @@ export default function App() {
 
             return {
               id: r.vehicleTypeId || r.id,
+
               vehicleTypeId: r.vehicleTypeId,
+
               name: r.vehicleName || "Xe tải",
-              detail: `Mở cửa ${r.baseDistanceKm || 2}km`,
-              price: `${(r.basePrice || 100000).toLocaleString("vi-VN")}đ`,
+
+              detail: `Mở cửa ${Number(r.baseDistanceKm || 2)}km`,
+
+              price: `${Number(r.basePrice || 100000).toLocaleString("vi-VN")}đ`,
+
               rawBasePrice: r.basePrice || 100000,
+
               type,
             }
           })
+
           setVehicleList(mapped)
+
           if (
             mapped.length > 0 &&
             !mapped.some((v: any) => v.id === selected)
           ) {
-            setSelected(mapped[0].id)
+            setSelected((current) =>
+              mapped.some((vehicle: Vehicle) => vehicle.id === current)
+                ? current
+                : mapped[0].id,
+            )
+
             setPrice(mapped[0].price)
           }
         }
       })
+
       .catch((err) => console.warn("Could not load pricing rules:", err))
 
     // 2. Tải danh mục phụ phí từ DB
+
     fetch("/api/v1/pricing/services")
+
       .then((r) => r.json())
+
       .then((data) => {
         if (data.success && Array.isArray(data.data) && data.data.length > 0) {
           setSurchargeServices(data.data)
         }
       })
-      .catch((err) =>
-        console.warn("Could not load surcharge services:", err),
-      )
+
+      .catch((err) => console.warn("Could not load surcharge services:", err))
   }, [])
 
   const handleToggleService = (code: string, delta: number) => {
     setSelectedServices((prev) => {
       const current = prev[code] || 0
+
       const next = Math.max(0, current + delta)
+
       const copy = { ...prev }
+
       if (next === 0) {
         delete copy[code]
       } else {
         copy[code] = next
       }
+
       return copy
     })
   }
 
   const openSupport = (o: Order) => {
+    setSupportBooking(o)
+
     setOpenOrder(null)
 
     setSupportOrder(o.id)
@@ -2892,7 +3851,7 @@ export default function App() {
   }
 
   const backToOrder = () => {
-    const o = orders.find((x) => x.id === supportOrder) ?? null
+    const o = supportBooking
 
     setSupportOrder(null)
 
@@ -2949,29 +3908,21 @@ export default function App() {
 
   const trackActive = (o: Order) => {
     setPickup(o.pickup)
+
     setDestination(o.destination)
+
     setSelected(o.vehicleId)
 
     const targetBookingId =
       o.rawBookingId || (o.id?.startsWith("BK-") ? o.id : null)
 
-    if (targetBookingId) {
-      setCurrentBookingId(targetBookingId)
-      fetch(`/api/v1/bookings/${targetBookingId}/track`)
-        .then((r) => r.json())
-        .then((res) => {
-          if (res.success && res.data) {
-            if (res.data.driver) setActiveDriver(res.data.driver)
-            if (res.data.status === "ARRIVED_AT_PICKUP") setPhase("arrived")
-            else if (res.data.status === "IN_TRANSIT") setPhase("delivering")
-            else if (res.data.status === "COMPLETED") setPhase("delivered")
-            else setPhase("arriving")
-          }
-        })
-        .catch(() => {})
-    } else {
-      setPhase("delivering")
+    if (!targetBookingId) {
+      showCustomerToast("Thiếu mã đơn để theo dõi")
+      return
     }
+    setCurrentBookingId(targetBookingId)
+    setActiveDriver(null)
+    setPhase("searching")
 
     changeTab("Trang chủ")
   }
@@ -2996,82 +3947,124 @@ export default function App() {
 
   const viewTrip = () => {
     setChatId(null)
-
-    if (!trackPhases.includes(phase)) {
-      setPickup("21 Nguyễn Đình Chiểu, Q.1")
-
-      setDestination("128 Hoàng Diệu, Q.4")
-
-      setSelected("van")
-
-      setPhase("delivering")
+    if (!currentBookingId) {
+      changeTab("Đơn hàng")
+      return
     }
-
     changeTab("Trang chủ")
   }
 
   useEffect(() => {
-    startAmbient()
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search)
-      const trackId = params.get("trackBooking")
-      if (trackId) {
-        fetch(`/api/v1/bookings/${trackId}/track`)
-          .then((r) => r.json())
-          .then((res) => {
-            if (res.success && res.data) {
-              setCurrentBookingId(res.data.bookingId)
-              setCurrentBookingCode(res.data.bookingCode || "")
-              if (res.data.origin?.address) setPickup(res.data.origin.address)
-              if (res.data.destination?.address)
-                setDestination(res.data.destination.address)
-              if (res.data.driver) setActiveDriver(res.data.driver)
-              if (res.data.status === "ARRIVED_AT_PICKUP") setPhase("arrived")
-              else if (res.data.status === "IN_TRANSIT") setPhase("delivering")
-              else if (res.data.status === "COMPLETED") setPhase("delivered")
-              else setPhase("arriving")
-            }
-          })
-          .catch(() => {})
-      }
-    }
-  }, [])
+    const trackId = restoreId.current
+    if (!authToken || !trackId) return
+    const controller = new AbortController()
+    fetch(`/api/v1/bookings/${trackId}/track`, {
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+      .then(async (res) => {
+        const json = await res.json()
+        if (controller.signal.aborted) return
+        if (!res.ok || !json.success || !json.data?.bookingId)
+          throw new Error(json.message || "Không thể khôi phục chuyến xe")
+        restoreId.current = null
+        const data = json.data
+        if (data.status === "CANCELLED") {
+          sessionStorage.removeItem("customer-active-booking")
+          setBookingError("Chuyến xe đã bị hủy.")
+          return
+        }
+        setCurrentBookingId(data.bookingId)
+        setCurrentBookingCode(data.bookingCode || "")
+        if (data.vehicleTypeId) setSelected(data.vehicleTypeId)
+        setPickup(data.origin?.address || "")
+        setDestination(data.destination?.address || "")
+        setActiveDriver(data.driver || null)
+        setPhase(
+          data.status === "COMPLETED"
+            ? "delivered"
+            : data.status === "IN_TRANSIT"
+              ? "delivering"
+              : data.status === "ARRIVED_AT_PICKUP"
+                ? "arrived"
+                : data.status === "ACCEPTED" || data.driver
+                  ? "arriving"
+                  : "searching",
+        )
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          setBookingError(error.message || "Không thể khôi phục chuyến xe")
+      })
+    return () => controller.abort()
+  }, [authToken])
 
   useEffect(() => {
     if (phase === "delivered") setOrderStatus(CURRENT_CONV, "completed")
   }, [phase])
 
   const [currentBookingId, setCurrentBookingId] = useState<string | null>(null)
+
   const [currentBookingCode, setCurrentBookingCode] = useState<string>("")
+
+  useEffect(() => {
+    if (currentBookingId && phase !== "booking" && phase !== "delivered")
+      sessionStorage.setItem("customer-active-booking", currentBookingId)
+    else if (!restoreId.current)
+      sessionStorage.removeItem("customer-active-booking")
+  }, [currentBookingId, phase])
+
   const [activeDriver, setActiveDriver] = useState<any>(null)
+
   const [isBookingLoading, setIsBookingLoading] = useState(false)
+
   const [isEscalating, setIsEscalating] = useState(false)
+
   const [hasEscalated, setHasEscalated] = useState(false)
+
   const [showCustomerCancelModal, setShowCustomerCancelModal] = useState(false)
+
   const [customerCancelReason, setCustomerCancelReason] = useState(
     "Đổi kế hoạch di chuyển",
   )
+
   const [isCancellingCustomer, setIsCancellingCustomer] = useState(false)
 
+  const cancelDialogRef = useCustomerDialog(showCustomerCancelModal, () => {
+    if (!isCancellingCustomer) setShowCustomerCancelModal(false)
+  })
+
+  const paymentDialogRef = useCustomerDialog(
+    paymentQrOpen,
+    closeCustomerPayment,
+  )
+
   // Lắng nghe sự kiện Realtime trên kênh chuyến đi của khách (trip-{bookingId})
+
   useEffect(() => {
     if (!currentBookingId) return
 
     const unsubAccepted = subscribeRealtime(
       `trip-${currentBookingId}`,
+
       "booking:accepted",
+
       (data) => {
         console.log("🎉 [Customer UI] Tài xế đã nhận cuốc:", data)
+
         if (data.driver) {
           setActiveDriver(data.driver)
         }
+
         setPhase("found")
       },
     )
 
     const unsubStatus = subscribeRealtime(
       `trip-${currentBookingId}`,
+
       "booking:status-change",
+
       (data) => {
         console.log("📍 [Customer UI] Cập nhật chặng:", data)
         if (data.status === "ARRIVED_AT_PICKUP") setPhase("arrived")
@@ -3082,40 +4075,81 @@ export default function App() {
 
     const unsubCancelled = subscribeRealtime(
       `trip-${currentBookingId}`,
+
       "booking:cancelled",
+
       (data) => {
         console.log("🛑 [Customer UI] Chuyến xe bị hủy:", data)
-        alert(`Chuyến xe đã bị hủy (${data.reason || "Bởi tài xế"})`)
+
+        showCustomerToast(
+          `Chuyến xe đã bị hủy (${data.reason || "Bởi tài xế"})`,
+          5000,
+        )
+
         setPhase("booking")
+
         setCurrentBookingId(null)
+
         setActiveDriver(null)
       },
     )
 
     return () => {
       unsubAccepted()
+
       unsubStatus()
+
       unsubCancelled()
     }
   }, [currentBookingId])
 
   // Fallback Polling: Định kỳ đồng bộ vị trí xe và trạng thái qua GET /api/v1/bookings/:id/track
+
   useEffect(() => {
     if (!currentBookingId) return
+
     if (phase === "booking" || phase === "delivered") return
+    const controller = new AbortController()
+    let pending = false
 
     const fetchTripTrack = async () => {
+      if (pending || controller.signal.aborted) return
+      pending = true
       try {
         const token =
           typeof window !== "undefined"
-            ? localStorage.getItem("auth_token") || localStorage.getItem("token")
+            ? localStorage.getItem("auth_token")
             : null
+
         const res = await fetch(`/api/v1/bookings/${currentBookingId}/track`, {
+          signal: controller.signal,
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
+
         const json = await res.json()
+        if (controller.signal.aborted) return
+
         if (json.success && json.data) {
           const trackData = json.data
+
+          if (trackData.status === "CANCELLED") {
+            setPhase("booking")
+
+            setCurrentBookingId(null)
+
+            setActiveDriver(null)
+
+            setBookingError("Chuyến xe đã bị hủy.")
+
+            return
+          }
+
+          if (
+            (trackData.status === "ACCEPTED" || trackData.driver) &&
+            (phase === "searching" || phase === "found")
+          )
+            setPhase("arriving")
+
           if (trackData.status === "ARRIVED_AT_PICKUP" && phase !== "arrived") {
             setPhase("arrived")
           } else if (
@@ -3123,44 +4157,98 @@ export default function App() {
             phase !== "delivering"
           ) {
             setPhase("delivering")
-          } else if (
-            trackData.status === "COMPLETED" &&
-            phase !== "delivered"
-          ) {
+          } else if (trackData.status === "COMPLETED") {
             setPhase("delivered")
           }
+
           if (trackData.driver) {
             setActiveDriver((prev: any) => ({
               ...prev,
+
               ...trackData.driver,
+
               currentLocation:
                 trackData.driver.currentLocation || prev?.currentLocation,
             }))
           }
         }
       } catch (err) {
-        console.warn("Lỗi đồng bộ /track:", err)
+        if (!controller.signal.aborted) console.warn("Lỗi đồng bộ /track:", err)
+      } finally {
+        pending = false
       }
     }
 
     fetchTripTrack()
+
     const timer = setInterval(fetchTripTrack, 6000)
-    return () => clearInterval(timer)
+
+    return () => {
+      clearInterval(timer)
+      controller.abort()
+    }
   }, [currentBookingId, phase])
 
-  const advance = () =>
+  const advance = async () => {
+    if (currentBookingId) {
+      if (phase === "found") {
+        setPhase("arriving")
+        return
+      }
+
+      try {
+        const response = await fetch(
+          `/api/v1/bookings/${currentBookingId}/track`,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+            },
+          },
+        )
+
+        const data = await response.json()
+
+        if (!response.ok || !data.success)
+          throw new Error(
+            data.message || "Không thể kiểm tra trạng thái chuyến",
+          )
+
+        const status = data.data.status
+
+        if (status === "COMPLETED") setPhase("delivered")
+        else if (status === "IN_TRANSIT") {
+          setPhase("delivering")
+          if (phase === "delivering")
+            showCustomerToast("Hệ thống chưa xác nhận chuyến đã hoàn thành.")
+        } else if (status === "ARRIVED_AT_PICKUP") setPhase("arrived")
+      } catch (error) {
+        showCustomerToast(
+          error instanceof Error
+            ? error.message
+            : "Không thể kiểm tra trạng thái chuyến",
+        )
+      }
+
+      return
+    }
+
     setPhase(
       (current) =>
         PHASE_ORDER[(PHASE_ORDER.indexOf(current) + 1) % PHASE_ORDER.length],
     )
+  }
 
   useEffect(() => {
     // Nếu đang có cuốc xe thật trên server, không nhảy phase bằng timer
+
     if (currentBookingId) return
 
     const delay = PHASE_DELAY[phase]
+
     if (!delay) return
+
     const timer = window.setTimeout(advance, delay)
+
     return () => window.clearTimeout(timer)
   }, [phase, currentBookingId])
 
@@ -3171,187 +4259,234 @@ export default function App() {
 
   const handleVehicleSelect = (v: Vehicle) => {
     setSelected(v.id)
+
     if (!destination.trim()) {
       setPrice(v.price)
     }
   }
 
   useEffect(() => {
-    if (!destination.trim()) {
-      setEstimateData(null)
-      const currentV = vehicleList.find((v) => v.id === selected)
-      if (currentV) {
-        setPrice(currentV.price)
-      }
+    setEstimateData(null)
+    setEstimateError("")
+    if (!pickup.trim() || !destination.trim()) {
+      setIsEstimating(false)
+      setPrice(vehicleList.find((v) => v.id === selected)?.price || "—")
       return
     }
-
-    const timer = setTimeout(() => {
-      const currentV = vehicleList.find((v) => v.id === selected)
-      const servicesPayload = Object.entries(selectedServices)
-        .filter(([_, qty]) => qty > 0)
-        .map(([code, quantity]) => ({ code, quantity }))
-
-      setIsEstimating(true)
-      fetch("/api/v1/bookings/estimate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pickupAddress: pickup,
-          dropoffAddress: destination,
-          vehicleTypeId: currentV?.vehicleTypeId || currentV?.id,
-          services: servicesPayload,
-        }),
-      })
-        .then((r) => r.json())
-        .then((res) => {
-          if (res.success && res.data) {
-            setEstimateData(res.data)
-            setPrice(`${res.data.totalPrice.toLocaleString("vi-VN")}đ`)
-          }
-        })
-        .catch(() => {
-          // Fallback dự phòng sang /api/v1/pricing/estimate
-          fetch("/api/v1/pricing/estimate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              pickupAddress: pickup,
-              dropoffAddress: destination,
-              vehicleTypeId: currentV?.vehicleTypeId || currentV?.id,
-              services: servicesPayload,
-            }),
-          })
-            .then((r) => r.json())
-            .then((res) => {
-              if (res.success && res.data) {
-                setEstimateData(res.data)
-                setPrice(`${res.data.totalPrice.toLocaleString("vi-VN")}đ`)
-              }
-            })
-            .catch((err) => console.warn("Lỗi tính giá dự tính:", err))
-        })
-        .finally(() => setIsEstimating(false))
-    }, 400)
-
-    return () => clearTimeout(timer)
+    setIsEstimating(false)
+    setPrice("Chưa có cước chuyến")
+    setEstimateError("Chưa có tọa độ thật để tính cước và đặt xe.")
   }, [pickup, destination, selected, selectedServices, vehicleList])
 
   const handleBook = async () => {
+    if (bookingPending.current) return
+    if (isEstimating) return
+
+    setBookingError("")
+
+    if (!pickup.trim()) {
+      setPickupError(true)
+
+      document
+        .querySelector<HTMLInputElement>('[aria-label="Điểm lấy hàng"]')
+        ?.focus()
+
+      return
+    }
+
     if (!destination.trim()) {
       setDestinationError(true)
+
       document
+
         .querySelector<HTMLInputElement>('[aria-label="Điểm giao hàng"]')
+
         ?.focus()
+
       return
     }
 
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
     if (!token) {
       setShowAuthModal(true)
+
       return
     }
 
-    const currentV = vehicleList.find((v) => v.id === selected)
+    const currentV =
+      vehicleList.find((v) => v.id === selected) ||
+      vehicleList[1] ||
+      vehicleList[0]
+
     const servicesPayload = Object.entries(selectedServices)
+
       .filter(([_, qty]) => qty > 0)
+
       .map(([code, quantity]) => ({ code, quantity }))
 
+    let currentEst = estimateData
+    if (
+      !currentEst ||
+      ![
+        currentEst.originLat,
+        currentEst.originLng,
+        currentEst.destLat,
+        currentEst.destLng,
+      ].every((value) => typeof value === "number" && Number.isFinite(value))
+    ) {
+      setBookingError(
+        "Chưa có tọa độ đón/đến từ hệ thống định vị hoặc geocoding. Vui lòng chọn lại điểm đón và điểm đến có tọa độ hợp lệ.",
+      )
+      return
+    }
+
+    bookingPending.current = true
+
     setIsBookingLoading(true)
+
     try {
       const res = await fetch("/api/v1/bookings", {
         method: "POST",
+
         headers: {
           "Content-Type": "application/json",
+
           Authorization: `Bearer ${token}`,
         },
+
         body: JSON.stringify({
           originAddress: pickup,
-          originLat: estimateData?.originLat || 10.7828,
-          originLng: estimateData?.originLng || 106.6958,
+
+          originLat: currentEst.originLat,
+
+          originLng: currentEst.originLng,
+
           destinationAddress: destination,
-          destLat: estimateData?.destLat || 10.7601,
-          destLng: estimateData?.destLng || 106.7042,
+
+          destLat: currentEst.destLat,
+
+          destLng: currentEst.destLng,
+
           vehicleTypeId: currentV?.vehicleTypeId || currentV?.id,
+
           paymentMethod: paymentMethod,
+
           services: servicesPayload,
+
+          surchargePrice:
+            currentEst?.breakdown?.surchargeTotal ??
+            currentEst?.surchargesTotal ??
+            0,
         }),
       })
+
       const data = await res.json()
+
       if (!res.ok || !data.success) {
-        alert(data.message || "Không thể tạo đơn đặt xe.")
+        setBookingError(data.message || "Không thể tạo đơn đặt xe.")
+
         return
       }
 
       const bId = data.data.bookingId
+      if (!bId) throw new Error("Phản hồi đặt xe thiếu mã đơn")
+
+      setTripSheetCollapsed(false)
       setCurrentBookingId(bId)
+
       setCurrentBookingCode(data.data.bookingCode || "")
+
       setHasEscalated(false)
 
-      // Nếu khách chọn thanh toán online qua VNPay hoặc MoMo, tạo link thanh toán & mã QR
       if (paymentMethod === "VNPAY" || paymentMethod === "MOMO") {
         try {
           const payRes = await fetch("/api/v1/payments/create-url", {
             method: "POST",
+
             headers: {
               "Content-Type": "application/json",
+
               Authorization: `Bearer ${token}`,
             },
+
             body: JSON.stringify({
               bookingId: bId,
+
               gateway: paymentMethod,
-              amount: estimateData?.totalPrice || 250000,
-              purpose: "BOOKING_PAYMENT",
+
+              amount: Number(
+                data.data.totalPrice || currentEst.totalPrice || 0,
+              ),
+
+              purpose: "PAY_BOOKING",
             }),
           })
+
           const payData = await payRes.json()
+          if (!payRes.ok || !payData.success)
+            throw new Error(payData.message || "Không thể tạo mã thanh toán")
+
           if (payData.success && payData.data) {
+            setPaymentSuccess(false)
             setPaymentQrData(payData.data)
+
             setPaymentQrOpen(true)
           }
         } catch (payErr) {
-          console.warn("Lỗi tạo mã thanh toán trực tuyến:", payErr)
+          setBookingError(
+            "Đơn đã tạo nhưng chưa lấy được mã thanh toán. Vui lòng kiểm tra lại đơn hàng trước khi thanh toán.",
+          )
         }
       }
 
       setPhase("searching")
     } catch (err: any) {
       console.warn("Error creating booking:", err)
-      // Fallback
-      setPhase("searching")
+
+      setBookingError("Không thể kết nối để đặt xe. Vui lòng thử lại.")
     } finally {
       setIsBookingLoading(false)
+
+      bookingPending.current = false
     }
   }
 
   const handleEscalateDispatch = async () => {
     if (!currentBookingId) {
       setHasEscalated(true)
+
       return
     }
 
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
     setIsEscalating(true)
+
     try {
       const res = await fetch(
         `/api/v1/bookings/${currentBookingId}/escalate`,
+
         {
           method: "POST",
+
           headers: {
             Authorization: `Bearer ${token}`,
           },
         },
       )
+
       const data = await res.json()
+
       if (res.ok && data.success) {
         setHasEscalated(true)
       } else {
-        alert(data.message || "Không thể mở rộng bán kính tìm xe.")
+        showCustomerToast(data.message || "Không thể mở rộng bán kính tìm xe.")
       }
     } catch (err: any) {
-      alert("Lỗi kết nối: " + err.message)
+      showCustomerToast("Lỗi kết nối: " + err.message)
     } finally {
       setIsEscalating(false)
     }
@@ -3360,45 +4495,60 @@ export default function App() {
   const handleCancelBooking = async () => {
     if (!currentBookingId) {
       setPhase("booking")
+
       setShowCustomerCancelModal(false)
+
       return
     }
 
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
     setIsCancellingCustomer(true)
+
     try {
       const res = await fetch(
         `/api/v1/bookings/${currentBookingId}/cancel`,
+
         {
           method: "POST",
+
           headers: {
             "Content-Type": "application/json",
+
             Authorization: `Bearer ${token}`,
           },
+
           body: JSON.stringify({ reason: customerCancelReason }),
         },
       )
+
       const data = await res.json()
+
       if (res.ok && data.success) {
         if (data.data?.cancellationFee > 0) {
-          alert(
+          showCustomerToast(
             `Chuyến xe đã hủy. Do tài xế đã đến điểm đón, áp dụng phí bồi thường: ${data.data.cancellationFee.toLocaleString(
               "vi-VN",
             )}đ.`,
+            5000,
           )
         } else {
-          alert("Bạn đã hủy chuyến xe thành công.")
+          showCustomerToast("Bạn đã hủy chuyến xe thành công.")
         }
+
         setPhase("booking")
+
         setCurrentBookingId(null)
+
         setActiveDriver(null)
+
         setShowCustomerCancelModal(false)
       } else {
-        alert(data.message || "Không thể hủy chuyến xe.")
+        showCustomerToast(data.message || "Không thể hủy chuyến xe.")
       }
     } catch (err: any) {
-      alert("Lỗi khi hủy chuyến: " + err.message)
+      showCustomerToast("Lỗi khi hủy chuyến: " + err.message)
     } finally {
       setIsCancellingCustomer(false)
     }
@@ -3406,38 +4556,48 @@ export default function App() {
 
   const handleRateBooking = async (
     bId: string,
+
     ratingValue: number,
+
     comment?: string,
+
     tags?: string[],
   ) => {
     const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("auth_token") || localStorage.getItem("token")
-        : null
-    if (!bId || !token) return
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
+    if (!bId || !token) throw new Error("Vui lòng đăng nhập lại để đánh giá")
+
     try {
       const res = await fetch(`/api/v1/bookings/${bId}/rate`, {
         method: "POST",
+
         headers: {
           "Content-Type": "application/json",
+
           Authorization: `Bearer ${token}`,
         },
+
         body: JSON.stringify({ rating: ratingValue, comment, tags }),
       })
+
       const data = await res.json()
+
       if (res.ok && data.success) {
         console.log("⭐ Đánh giá chuyến xe thành công:", data)
       } else {
-        console.warn("Lỗi đánh giá:", data.message)
+        throw new Error(data.message || "Không thể gửi đánh giá")
       }
     } catch (e) {
-      console.error("Lỗi gửi đánh giá chuyến đi:", e)
+      throw e instanceof Error ? e : new Error("Không thể gửi đánh giá")
     }
   }
 
   const handleAuthSuccess = (token: string) => {
     setAuthToken(token)
+
     setShowAuthModal(false)
+
     handleBook()
   }
 
@@ -3454,18 +4614,14 @@ export default function App() {
   }
 
   const viewCompletedOrder = () => {
+    setOpenOrder(null)
     changeTab("Đơn hàng")
-
-    setOpenOrder({
-      ...orders[0],
-
-      status: "completed",
-
-      finished: "Hôm nay, 10:46",
-    })
   }
 
-  const pillMap: Record<string, { text: string badge: string }> = {
+  const pillMap: Record<string, {
+    text: string
+    badge: string
+  }> = {
     booking: { text: "Tài xế đang hoạt động gần bạn", badge: "18" },
 
     searching: { text: "Đang tìm quanh bạn", badge: "18 xe" },
@@ -3493,31 +4649,51 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <section className="phone-frame" ref={phoneRef}>
+      <section className="phone-frame customer-frame" ref={phoneRef}>
         <div className="tab-content-surface">
           {tab === "Trang chủ" && (
             <div className="tab-screen home-screen" key="home">
               <div className="map-area">
                 <InteractiveMap
+                  loadNearby={true}
                   destAddr={destination}
                   mode="customer"
-                  onPickupChange={(addr) => setPickup(addr)}
+                  onPickupChange={(addr) => {
+                    if (!isBookingLoading) setPickup(addr)
+                  }}
                   phase={phase}
                   pickupAddr={pickup}
                 />
                 <header className="top-bar">
                   <div
                     className="greeting"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Xem tài khoản và đăng nhập"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault()
+                        navigateTab("Tài khoản")
+                      }
+                    }}
                     onClick={() => navigateTab("Tài khoản")}
                     style={{ cursor: "pointer" }}
                     title="Xem tài khoản & Đăng nhập OTP"
                   >
-                    <span className="avatar" aria-hidden="true" style={{ overflow: "hidden" }}>
+                    <span
+                      className="avatar"
+                      aria-hidden="true"
+                      style={{ overflow: "hidden" }}
+                    >
                       {profile.photo ? (
                         <img
                           src={profile.photo}
                           alt={profile.name}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
                         />
                       ) : (
                         (profile.name || "KH").slice(0, 2).toUpperCase()
@@ -3527,7 +4703,9 @@ export default function App() {
                       <span className="eyebrow">
                         {authToken ? "Chào buổi sáng," : "Khách hàng,"}
                       </span>
-                      <strong>{authToken ? profile.name : "Chạm để đăng nhập"}</strong>
+                      <strong>
+                        {authToken ? profile.name : "Chạm để đăng nhập"}
+                      </strong>
                     </span>
                   </div>
                   <IconButton
@@ -3541,7 +4719,9 @@ export default function App() {
                 <div className="location-pill glass" key={phase}>
                   <span className="active-pulse" />
                   <span>{pillCopy.text}</span>
-                  <strong>{pillCopy.badge}</strong>
+                  <strong>
+                    {currentBookingId ? "Theo hệ thống" : pillCopy.badge}
+                  </strong>
                 </div>
               </div>
 
@@ -3553,6 +4733,20 @@ export default function App() {
                     role="button"
                     tabIndex={0}
                     aria-label="Kéo lên để đặt xe"
+                    onPointerDown={(event) => {
+                      swipeStart.current = event.clientY
+                    }}
+                    onPointerUp={(event) => {
+                      if (
+                        swipeStart.current !== null &&
+                        swipeStart.current - event.clientY > 40
+                      )
+                        setSheetExpanded(true)
+                      swipeStart.current = null
+                    }}
+                    onPointerCancel={() => {
+                      swipeStart.current = null
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault()
@@ -3596,6 +4790,26 @@ export default function App() {
                       role="button"
                       tabIndex={0}
                       aria-label="Thu gọn bảng đặt xe"
+                      onPointerDown={(event) => {
+                        swipeStart.current = event.clientY
+                      }}
+                      onPointerUp={(event) => {
+                        if (
+                          swipeStart.current !== null &&
+                          event.clientY - swipeStart.current > 40
+                        )
+                          setSheetExpanded(false)
+                        swipeStart.current = null
+                      }}
+                      onPointerCancel={() => {
+                        swipeStart.current = null
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault()
+                          setSheetExpanded(false)
+                        }
+                      }}
                     />
                     <div className="booking-heading">
                       <div>
@@ -3615,274 +4829,368 @@ export default function App() {
                       </button>
                     </div>
 
-                    <div className="location-card">
-                      <span className="route-line" />
-                      <LocationInput
-                        kind="pickup"
-                        onChange={setPickup}
-                        placeholder="Chọn điểm lấy hàng"
-                        value={pickup}
-                      />
-                      <div className="field-divider" />
-                      <LocationInput
-                        error={destinationError}
-                        kind="destination"
-                        onChange={(value) => {
-                          setDestination(value)
+                    <fieldset
+                      disabled={isBookingLoading}
+                      style={{ display: "contents" }}
+                      aria-label="Thông tin đặt xe"
+                    >
+                      <div className="location-card">
+                        <span className="route-line" />
+                        <LocationInput
+                          kind="pickup"
+                          error={pickupError}
+                          onChange={(value) => {
+                            setPickup(value)
+                            setPickupError(false)
+                          }}
+                          placeholder="Chọn điểm lấy hàng"
+                          value={pickup}
+                        />
+                        <div className="field-divider" />
+                        <LocationInput
+                          error={destinationError}
+                          kind="destination"
+                          onChange={(value) => {
+                            setDestination(value)
 
-                          if (value.trim()) setDestinationError(false)
-                        }}
-                        placeholder="Nhập địa chỉ giao hàng"
-                        value={destination}
-                      />
-                    </div>
-                    {destinationError && (
-                      <p
-                        className="field-error"
-                        id="destination-error"
-                        role="alert"
-                      >
-                        Vui lòng nhập điểm giao hàng
-                      </p>
-                    )}
-
-                    {savedAddresses.length > 0 && (
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "8px",
-                          overflowX: "auto",
-                          padding: "6px 2px 10px",
-                          margin: "2px 0 6px",
-                          scrollbarWidth: "none",
-                        }}
-                      >
-                        {savedAddresses.map((sa) => {
-                          const isSel = destination === sa.address
-                          return (
-                            <button
-                              key={sa.id}
-                              type="button"
-                              onClick={() => {
-                                setDestination(sa.address)
-                                setDestinationError(false)
-                              }}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                padding: "6px 12px",
-                                borderRadius: "16px",
-                                border: isSel
-                                  ? "1px solid #2563eb"
-                                  : "1px solid rgba(0,0,0,0.1)",
-                                background: isSel
-                                  ? "rgba(37,99,235,0.12)"
-                                  : "rgba(255,255,255,0.9)",
-                                color: isSel ? "#2563eb" : "#374151",
-                                fontSize: "12px",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                whiteSpace: "nowrap",
-                                boxShadow: isSel
-                                  ? "0 2px 8px rgba(37,99,235,0.2)"
-                                  : "0 1px 3px rgba(0,0,0,0.05)",
-                                transition: "all 0.15s ease",
-                              }}
-                            >
-                              <span>
-                                {sa.type === "home"
-                                  ? "🏠"
-                                  : sa.type === "work"
-                                    ? "🏢"
-                                    : "📍"}
-                              </span>
-                              <span>
-                                {sa.name ||
-                                  (sa.type === "home"
-                                    ? "Nhà"
-                                    : sa.type === "work"
-                                      ? "Công ty"
-                                      : "Kho hàng")}
-                              </span>
-                            </button>
-                          )
-                        })}
+                            if (value.trim()) setDestinationError(false)
+                          }}
+                          placeholder="Nhập địa chỉ giao hàng"
+                          value={destination}
+                        />
                       </div>
-                    )}
+                      {pickupError && (
+                        <p
+                          id="pickup-error"
+                          className="field-error"
+                          role="alert"
+                        >
+                          Vui lòng nhập điểm lấy hàng
+                        </p>
+                      )}
+                      {(bookingError || estimateError) && (
+                        <p className="field-error" role="alert">
+                          {bookingError || estimateError}
+                        </p>
+                      )}
+                      {destinationError && (
+                        <p
+                          className="field-error"
+                          id="destination-error"
+                          role="alert"
+                        >
+                          Vui lòng nhập điểm giao hàng
+                        </p>
+                      )}
 
-                    <div className="section-title-row">
-                      <h2>Chọn loại xe</h2>
-                      <button className="text-button" type="button">
-                        Xem chi tiết
-                      </button>
-                    </div>
-                    <VehicleSelector
-                      onSelect={handleVehicleSelect}
-                      selected={selected}
-                      vehicleList={vehicleList}
-                    />
+                      {savedAddresses.length > 0 && (
+                        <div
+                          style={{
+                            display: "flex",
 
-                    <SurchargeServicesSelector
-                      onToggleService={handleToggleService}
-                      selectedServices={selectedServices}
-                      services={surchargeServices}
-                    />
+                            gap: "8px",
 
-                    <div className="price-row">
-                      <span>
-                        <small>
-                          {isEstimating
-                            ? "Đang tính giá Goong…"
-                            : estimateData
-                              ? `${estimateData.distanceKm} km · ~${estimateData.durationMinutes} phút`
-                              : "Giá ước tính"}
-                        </small>
-                        <strong key={price}>{price}</strong>
-                      </span>
-                      <span className="price-note">
-                        {estimateData?.surchargesTotal
-                          ? `Đã gồm phụ phí +${estimateData.surchargesTotal.toLocaleString("vi-VN")}đ`
-                          : "Đã gồm phí dịch vụ"}
-                      </span>
-                    </div>
+                            overflowX: "auto",
 
-                    <div style={{ margin: "14px 0 10px" }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: "#475569",
-                          marginBottom: 6,
-                          display: "flex",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <span>Phương thức thanh toán</span>
-                        <span style={{ color: "#2563eb", fontWeight: 700 }}>
-                          {paymentMethod === "CASH"
-                            ? "💵 Tiền mặt"
-                            : paymentMethod === "VNPAY"
-                              ? "💳 Cổng VNPay"
-                              : paymentMethod === "MOMO"
-                                ? "👛 Ví MoMo"
-                                : "💼 Ví FAST"}
+                            padding: "6px 2px 10px",
+
+                            margin: "2px 0 6px",
+
+                            scrollbarWidth: "none",
+                          }}
+                        >
+                          {savedAddresses.map((sa) => {
+                            const isSel = destination === sa.address
+
+                            return (
+                              <button
+                                key={sa.id}
+                                type="button"
+                                onClick={() => {
+                                  setDestination(sa.address)
+
+                                  setDestinationError(false)
+                                }}
+                                style={{
+                                  display: "inline-flex",
+
+                                  alignItems: "center",
+
+                                  gap: "6px",
+
+                                  padding: "6px 12px",
+
+                                  borderRadius: "16px",
+
+                                  border: isSel
+                                    ? "1px solid #2563eb"
+                                    : "1px solid rgba(0,0,0,0.1)",
+
+                                  background: isSel
+                                    ? "rgba(37,99,235,0.12)"
+                                    : "rgba(255,255,255,0.9)",
+
+                                  color: isSel ? "#2563eb" : "#374151",
+
+                                  fontSize: "12px",
+
+                                  fontWeight: 600,
+
+                                  cursor: "pointer",
+
+                                  whiteSpace: "nowrap",
+
+                                  boxShadow: isSel
+                                    ? "0 2px 8px rgba(37,99,235,0.2)"
+                                    : "0 1px 3px rgba(0,0,0,0.05)",
+
+                                  transition: "all 0.15s ease",
+                                }}
+                              >
+                                <span>
+                                  {sa.type === "home"
+                                    ? "🏠"
+                                    : sa.type === "work"
+                                      ? "🏢"
+                                      : "📍"}
+                                </span>
+                                <span>
+                                  {sa.name ||
+                                    (sa.type === "home"
+                                      ? "Nhà"
+                                      : sa.type === "work"
+                                        ? "Công ty"
+                                        : "Kho hàng")}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      <div className="section-title-row">
+                        <h2>Chọn loại xe</h2>
+                        <button
+                          className="text-button"
+                          type="button"
+                          onClick={() => setShowVehicleDetails(true)}
+                        >
+                          Xem chi tiết
+                        </button>
+                      </div>
+                      <VehicleSelector
+                        onSelect={handleVehicleSelect}
+                        selected={selected}
+                        vehicleList={vehicleList}
+                      />
+
+                      <SurchargeServicesSelector
+                        onToggleService={handleToggleService}
+                        selectedServices={selectedServices}
+                        services={surchargeServices}
+                      />
+
+                      <div className="price-row">
+                        <span>
+                          <small>
+                            {isEstimating
+                              ? "Đang tính giá…"
+                              : estimateData
+                                ? `${estimateData.distanceKm} km · ~${estimateData.durationMinutes} phút`
+                                : "Chưa xác định cước chuyến"}
+                          </small>
+                          <strong key={price}>{price}</strong>
+                        </span>
+                        <span className="price-note">
+                          {estimateData?.surchargesTotal
+                            ? `Đã gồm phụ phí +${estimateData.surchargesTotal.toLocaleString("vi-VN")}đ`
+                            : "Vui lòng chọn điểm đón & điểm đến"}
                         </span>
                       </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(4, 1fr)",
-                          gap: 6,
-                        }}
-                      >
-                        {(
-                          [
-                            { id: "CASH", label: "Tiền mặt", icon: "💵" },
-                            { id: "VNPAY", label: "VNPay-QR", icon: "💳" },
-                            { id: "MOMO", label: "Ví MoMo", icon: "👛" },
-                            { id: "WALLET", label: "Ví FAST", icon: "💼" },
-                          ] as const
-                        ).map((pm) => (
-                          <button
-                            key={pm.id}
-                            type="button"
-                            onClick={() => setPaymentMethod(pm.id)}
-                            style={{
-                              padding: "6px 2px",
-                              borderRadius: 8,
-                              border:
-                                paymentMethod === pm.id
-                                  ? "1.5px solid #2563eb"
-                                  : "1px solid #e2e8f0",
-                              backgroundColor:
-                                paymentMethod === pm.id ? "#eff6ff" : "#fff",
-                              color:
-                                paymentMethod === pm.id ? "#1d4ed8" : "#475569",
-                              fontSize: 11,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              gap: 2,
-                            }}
-                          >
-                            <span>{pm.icon}</span>
-                            <span>{pm.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
 
-                    <button
-                      className="primary-button"
-                      onClick={handleBook}
-                      type="button"
-                    >
-                      <span>Tìm tài xế</span>
-                      <span className="button-icon">
-                        <Icon name="chevron" size={20} />
-                      </span>
-                    </button>
+                      <div style={{ margin: "14px 0 10px" }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+
+                            fontWeight: 600,
+
+                            color: "#475569",
+
+                            marginBottom: 6,
+
+                            display: "flex",
+
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <span>Phương thức thanh toán</span>
+                          <span style={{ color: "#2563eb", fontWeight: 700 }}>
+                            {paymentMethod === "CASH"
+                              ? "💵 Tiền mặt"
+                              : paymentMethod === "VNPAY"
+                                ? "💳 Cổng VNPay"
+                                : paymentMethod === "MOMO"
+                                  ? "👛 Ví MoMo"
+                                  : "💼 Ví FAST"}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "grid",
+
+                            gridTemplateColumns: "repeat(4, 1fr)",
+
+                            gap: 6,
+                          }}
+                        >
+                          {([
+                            { id: "CASH", label: "Tiền mặt", icon: "💵" },
+
+                            { id: "VNPAY", label: "VNPay-QR", icon: "💳" },
+
+                            { id: "MOMO", label: "Ví MoMo", icon: "👛" },
+
+                            { id: "WALLET", label: "Ví FAST", icon: "💼" },
+                          ] as const)
+
+                            .map((pm) => (
+                              <button
+                                key={pm.id}
+                                type="button"
+                                className="customer-pm-btn"
+                                onClick={() => setPaymentMethod(pm.id)}
+                                style={{
+                                  border:
+                                    paymentMethod === pm.id
+                                      ? "1.5px solid #2563eb"
+                                      : "1px solid #e2e8f0",
+
+                                  backgroundColor:
+                                    paymentMethod === pm.id
+                                      ? "#eff6ff"
+                                      : "#fff",
+
+                                  color:
+                                    paymentMethod === pm.id
+                                      ? "#1d4ed8"
+                                      : "#475569",
+
+                                  boxShadow:
+                                    paymentMethod === pm.id
+                                      ? "0 2px 8px rgba(37,99,235,0.18)"
+                                      : "none",
+                                }}
+                              >
+                                <span style={{ fontSize: 18 }}>{pm.icon}</span>
+                                <span>{pm.label}</span>
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+
+                      <button
+                        className="primary-button"
+                        onClick={handleBook}
+                        disabled={
+                          isBookingLoading ||
+                          isEstimating ||
+                          Boolean(estimateError)
+                        }
+                        type="button"
+                      >
+                        <span>
+                          {isBookingLoading
+                            ? "Đang đặt xe..."
+                            : isEstimating
+                              ? "Đang tính giá..."
+                              : "Tìm tài xế"}
+                        </span>
+                        <span className="button-icon">
+                          <Icon name="chevron" size={20} />
+                        </span>
+                      </button>
+                    </fieldset>
                   </section>
                 ))}
 
-              {phase === "searching" && (
-                <SearchingSheet
-                  destination={summaryDestination}
-                  key="searching"
+              {phase !== "booking" && (
+                <CustomerTripSheet
+                  collapsed={tripSheetCollapsed}
+                  onCollapsedChange={setTripSheetCollapsed}
+                  title={
+                    phase === "searching"
+                      ? "Đang tìm tài xế"
+                      : phase === "found"
+                        ? "Tài xế đã nhận chuyến"
+                        : trackInfo[(phase as TrackPhase)].title
+                  }
                   bookingCode={currentBookingCode}
-                  escalated={hasEscalated}
-                  isEscalating={isEscalating}
-                  onEscalate={handleEscalateDispatch}
-                  onCancel={handleCancel}
-                  pickup={pickup}
-                  vehicle={vehicle}
-                />
-              )}
+                  icon={<Icon name="truck" size={22} />}
+                >
+                  {phase === "searching" && (
+                    <SearchingSheet
+                      destination={summaryDestination}
+                      key="searching"
+                      bookingCode={currentBookingCode}
+                      escalated={hasEscalated}
+                      isEscalating={isEscalating}
+                      onEscalate={handleEscalateDispatch}
+                      onCancel={handleCancel}
+                      pickup={pickup}
+                      vehicle={vehicle}
+                    />
+                  )}
 
-              {phase === "found" && (
-                <FoundSheet
-                  destination={summaryDestination}
-                  key="found"
-                  driver={activeDriver}
-                  onAdvance={advance}
-                  onCancel={handleCancel}
-                  onMessage={() => setChatId(CURRENT_CONV)}
-                  onCall={() => setCallModalOpen(true)}
-                  pickup={pickup}
-                  vehicle={vehicle}
-                />
-              )}
+                  {phase === "found" && (
+                    <FoundSheet
+                      destination={summaryDestination}
+                      key="found"
+                      driver={activeDriver}
+                      onAdvance={advance}
+                      onCancel={handleCancel}
+                      onMessage={() => setChatId(CURRENT_CONV)}
+                      onCall={() => setCallModalOpen(true)}
+                      pickup={pickup}
+                      vehicle={vehicle}
+                    />
+                  )}
 
-              {trackPhases.includes(phase) && (
-                <TrackingSheet
-                  destination={summaryDestination}
-                  key="tracking"
-                  driver={activeDriver}
-                  bookingId={currentBookingId}
-                  onAdvance={advance}
-                  onHome={returnHome}
-                  onMessage={() => setChatId(CURRENT_CONV)}
-                  onCall={() => setCallModalOpen(true)}
-                  onViewOrders={viewCompletedOrder}
-                  onCancelTrip={handleCancel}
-                  onRate={async (stars, comment, tags) => {
-                    if (currentBookingId) {
-                      await handleRateBooking(
-                        currentBookingId,
-                        stars,
-                        comment,
-                        tags,
-                      )
-                      setRatings((r) => ({ ...r, [currentBookingId]: stars }))
-                    }
-                  }}
-                  phase={phase as TrackPhase}
-                  pickup={pickup}
-                  vehicle={vehicle}
-                />
+                  {trackPhases.includes(phase) && (
+                    <TrackingSheet
+                      destination={summaryDestination}
+                      key="tracking"
+                      driver={activeDriver}
+                      bookingId={currentBookingId}
+                      isPaid={Boolean(
+                        currentBookingId && paidBookings[currentBookingId],
+                      )}
+                      onAdvance={advance}
+                      onHome={returnHome}
+                      onMessage={() => setChatId(CURRENT_CONV)}
+                      onCall={() => setCallModalOpen(true)}
+                      onViewOrders={viewCompletedOrder}
+                      onCancelTrip={handleCancel}
+                      onRate={async (stars, comment, tags) => {
+                        if (currentBookingId) {
+                          await handleRateBooking(
+                            currentBookingId,
+                            stars,
+                            comment,
+                            tags,
+                          )
+                          setRatings((r) => ({
+                            ...r,
+                            [currentBookingId]: stars,
+                          }))
+                        }
+                      }}
+                      phase={phase as TrackPhase}
+                      pickup={pickup}
+                      vehicle={vehicle}
+                    />
+                  )}
+                </CustomerTripSheet>
               )}
             </div>
           )}
@@ -3894,13 +5202,14 @@ export default function App() {
                   key={openOrder.id}
                   onBack={() => setOpenOrder(null)}
                   onRate={async (n, comment, tags) => {
-                    setRatings((r) => ({ ...r, [openOrder.id]: n }))
                     const targetBookingId =
                       openOrder.rawBookingId ||
                       (openOrder.id?.startsWith("BK-") ? openOrder.id : null)
-                    if (targetBookingId) {
-                      await handleRateBooking(targetBookingId, n, comment, tags)
-                    }
+
+                    if (!targetBookingId)
+                      throw new Error("Thiếu mã đơn để đánh giá")
+                    await handleRateBooking(targetBookingId, n, comment, tags)
+                    setRatings((r) => ({ ...r, [openOrder.id]: n }))
                   }}
                   onSupport={openSupport}
                   onReorder={reorder}
@@ -3910,6 +5219,9 @@ export default function App() {
                 />
               ) : (
                 <OrderHistory
+                  key={authToken || "guest"}
+                  onLoaded={setCustomerOrders}
+                  onNotifications={() => setShowNotifications(true)}
                   onOpen={setOpenOrder}
                   onReorder={reorder}
                   onTrack={trackActive}
@@ -3920,7 +5232,7 @@ export default function App() {
 
           {tab === "Tin nhắn" && (
             <div className="tab-screen" key="messages">
-              <MessagesScreen onOpen={setChatId} />
+              <MessagesScreen key={authToken || "guest"} onOpen={setChatId} />
             </div>
           )}
 
@@ -3932,7 +5244,7 @@ export default function App() {
                 onBackToOrder={backToOrder}
                 onNavHidden={setNavHidden}
                 onUseAddress={useAddress}
-                orderOptions={orders.map((o) => ({
+                orderOptions={customerOrders.map((o) => ({
                   id: o.id,
 
                   label: `${o.id} · ${o.created}`,
@@ -3948,13 +5260,33 @@ export default function App() {
             <option key={a.id} value={a.address} />
           ))}
         </datalist>
+        {bookingError && phase !== "booking" && (
+          <div className="acc-toast" role="alert">
+            {bookingError}
+          </div>
+        )}
+
+        {customerToast && (
+          <div className="acc-toast" role="status">
+            {customerToast}
+          </div>
+        )}
 
         {!(tab === "Tài khoản" && navHidden) && (
-          <BottomNavigation active={tab} onChange={navigateTab} />
+          <BottomNavigation
+            active={tab}
+            onChange={navigateTab}
+            authToken={authToken}
+            chatOpen={Boolean(chatId)}
+            bookingId={currentBookingId}
+          />
         )}
 
         {chatId && (
           <ChatScreen
+            bookingId={
+              chatId === CURRENT_CONV ? currentBookingId || undefined : chatId
+            }
             convId={chatId}
             key={chatId}
             onBack={() => setChatId(null)}
@@ -3967,33 +5299,55 @@ export default function App() {
 
         {showCustomerCancelModal && (
           <div
+            ref={cancelDialogRef}
+            className="customer-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Hủy chuyến xe"
+            tabIndex={-1}
             style={{
               position: "absolute",
+
               inset: 0,
+
               background: "rgba(0,0,0,0.65)",
+
               backdropFilter: "blur(4px)",
+
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
+
               padding: "20px",
+
               zIndex: 9999,
             }}
           >
             <div
               style={{
                 background: "#ffffff",
+
                 borderRadius: "20px",
+
                 padding: "22px",
+
                 width: "100%",
+
                 maxWidth: "340px",
+
                 boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
               }}
             >
               <h3
                 style={{
                   margin: "0 0 8px",
+
                   fontSize: "17px",
+
                   fontWeight: 700,
+
                   color: "#1e293b",
                 }}
               >
@@ -4002,8 +5356,11 @@ export default function App() {
               <p
                 style={{
                   margin: "0 0 14px",
+
                   fontSize: "13px",
+
                   color: "#64748b",
+
                   lineHeight: 1.4,
                 }}
               >
@@ -4014,8 +5371,11 @@ export default function App() {
               <div
                 style={{
                   display: "flex",
+
                   flexDirection: "column",
+
                   gap: "8px",
+
                   marginBottom: "16px",
                 }}
               >
@@ -4027,20 +5387,8 @@ export default function App() {
                 ].map((reason) => (
                   <label
                     key={reason}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      fontSize: "13px",
-                      color: "#334155",
-                      cursor: "pointer",
-                      padding: "6px 8px",
-                      borderRadius: "6px",
-                      background:
-                        customerCancelReason === reason
-                          ? "#eff6ff"
-                          : "transparent",
-                    }}
+                    className={`customer-radio-option ${customerCancelReason === reason ? "selected" : ""}`}
+                    onClick={() => setCustomerCancelReason(reason)}
                   >
                     <input
                       type="radio"
@@ -4068,12 +5416,19 @@ export default function App() {
                   disabled={isCancellingCustomer}
                   style={{
                     flex: 1.2,
+
                     padding: "10px",
+
                     borderRadius: "12px",
+
                     background: "#ef4444",
+
                     color: "#fff",
+
                     border: "none",
+
                     fontWeight: 700,
+
                     cursor: "pointer",
                   }}
                 >
@@ -4089,6 +5444,128 @@ export default function App() {
           onClose={() => setShowAuthModal(false)}
           onSuccess={handleAuthSuccess}
         />
+        {showVehicleDetails && (
+          <div
+            ref={vehicleDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Thông tin loại xe"
+            tabIndex={-1}
+            className="customer-modal fixed inset-0 flex items-center justify-center"
+            style={{ background: "rgba(15,23,42,.48)", padding: 16 }}
+            onClick={(event) => {
+              if (event.currentTarget === event.target)
+                setShowVehicleDetails(false)
+            }}
+          >
+            <div
+              style={{
+                background: "var(--canvas)",
+                borderRadius: 20,
+                padding: 20,
+                width: "100%",
+                maxWidth: 390,
+              }}
+            >
+              <div className="section-title-row">
+                <h2>Thông tin loại xe</h2>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Đóng thông tin loại xe"
+                  onClick={() => setShowVehicleDetails(false)}
+                >
+                  <Icon name="close" />
+                </button>
+              </div>
+              {vehicleList.map((vehicle) => {
+                const isCurrent = vehicle.id === selected
+                return (
+                  <div
+                    key={vehicle.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      padding: "14px 12px",
+                      borderRadius: 14,
+                      marginBottom: 8,
+                      border: isCurrent
+                        ? "1.5px solid #2563eb"
+                        : "1px solid var(--line)",
+                      backgroundColor: isCurrent ? "#eff6ff" : "#fff",
+                      transition: "all 160ms ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        minWidth: 0,
+                      }}
+                    >
+                      <VehicleGlyph type={vehicle.type} />
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 14,
+                            color: "#1e293b",
+                          }}
+                        >
+                          {vehicle.name}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "#64748b",
+                            marginTop: 2,
+                          }}
+                        >
+                          {vehicle.detail} · Mở cửa: {vehicle.price}
+                        </div>
+                      </div>
+                    </div>
+                    {isCurrent ? (
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#2563eb",
+                          backgroundColor: "#dbeafe",
+                          padding: "4px 8px",
+                          borderRadius: 8,
+                          flexShrink: 0,
+                        }}
+                      >
+                        Đang chọn
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        style={{
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          minHeight: 32,
+                          flexShrink: 0,
+                        }}
+                        onClick={() => {
+                          handleVehicleSelect(vehicle)
+                          setShowVehicleDetails(false)
+                        }}
+                      >
+                        Chọn
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <NotificationModal
           isOpen={showNotifications}
@@ -4100,13 +5577,19 @@ export default function App() {
           onClose={() => setCallModalOpen(false)}
           bookingId={currentBookingId || undefined}
           partnerName={activeDriver?.name || "Anh Minh (Tài xế)"}
-          partnerRole="Tài xế"
-          partnerAvatar={activeDriver?.avatarUrl}
+          partnerRole="DRIVER"
+          authToken={authToken || undefined}
           licensePlate={activeDriver?.licensePlate || "51D-482.15"}
         />
 
         {paymentQrOpen && paymentQrData && (
           <div
+            ref={paymentDialogRef}
+            className="customer-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Thanh toán cước xe"
+            tabIndex={-1}
             style={{
               position: "fixed",
               inset: 0,
@@ -4156,7 +5639,7 @@ export default function App() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setPaymentQrOpen(false)}
+                  onClick={closeCustomerPayment}
                   style={{
                     border: "none",
                     background: "none",
@@ -4211,11 +5694,18 @@ export default function App() {
                   >
                     ✓
                   </div>
-                  <h4 style={{ fontSize: 18, fontWeight: 700, color: "#059669", margin: "0 0 6px" }}>
+                  <h4
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                      color: "#059669",
+                      margin: "0 0 6px",
+                    }}
+                  >
                     Thanh Toán Thành Công!
                   </h4>
                   <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>
-                    Đã xác nhận giao dịch qua {paymentQrData.gateway || "cổng điện tử"}. Đang điều phối tài xế...
+                    {`Đã xác nhận giao dịch qua ${paymentQrData.gateway || "cổng điện tử"}. Đang điều phối tài xế...`}
                   </p>
                 </div>
               ) : (
@@ -4253,7 +5743,8 @@ export default function App() {
                       marginBottom: 10,
                     }}
                   >
-                    {Number(paymentQrData.amount || 0).toLocaleString("vi-VN")} đ
+                    {Number(paymentQrData.amount || 0).toLocaleString("vi-VN")}{" "}
+                    đ
                   </div>
 
                   <div
@@ -4272,13 +5763,15 @@ export default function App() {
                     }}
                   >
                     <span>⏳</span>
-                    <span>Đang chờ bạn quét mã (Tự động nhận diện khi xong)</span>
+                    <span>
+                      Đang chờ bạn quét mã (Tự động nhận diện khi xong)
+                    </span>
                   </div>
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      onClick={() => setPaymentQrOpen(false)}
+                      onClick={closeCustomerPayment}
                       style={{
                         flex: 1,
                         padding: "10px",
@@ -4321,7 +5814,9 @@ export default function App() {
                         borderRadius: 10,
                         border: "none",
                         backgroundColor:
-                          paymentQrData.gateway === "VNPAY" ? "#2563eb" : "#d946ef",
+                          paymentQrData.gateway === "VNPAY"
+                            ? "#2563eb"
+                            : "#d946ef",
                         color: "#fff",
                         fontSize: 13,
                         fontWeight: 700,
