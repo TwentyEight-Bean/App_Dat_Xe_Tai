@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { sanitizePhoneInput, validateVietnamesePhone } from "./lib/phoneValidation"
 
 type DriverAuthGateProps = {
   onSuccess: (token: string, user: any) => void
@@ -120,11 +121,12 @@ export default function DriverAuthGate({
   }
 
   const handleLogin = async () => {
-    const cleanPhone = phone.trim().replace(/\s+/g, "")
-    if (!cleanPhone || cleanPhone.length < 9) {
-      setError("Vui lòng nhập số điện thoại đối tác hợp lệ (tối thiểu 9 số)")
+    const phoneCheck = validateVietnamesePhone(phone)
+    if (!phoneCheck.valid) {
+      setError(phoneCheck.error || "Số điện thoại đối tác không hợp lệ")
       return
     }
+    const cleanPhone = phoneCheck.phone
 
     if (!password || password.trim().length < 6) {
       setError("Vui lòng nhập mật khẩu hoặc mã PIN (tối thiểu 6 ký tự)")
@@ -169,11 +171,12 @@ export default function DriverAuthGate({
   }
 
   const handleRegister = async () => {
-    const cleanPhone = phone.trim().replace(/\s+/g, "")
-    if (!cleanPhone || cleanPhone.length < 9) {
-      setError("Vui lòng nhập số điện thoại đối tác hợp lệ (tối thiểu 9 số)")
+    const phoneCheck = validateVietnamesePhone(phone)
+    if (!phoneCheck.valid) {
+      setError(phoneCheck.error || "Số điện thoại đối tác không hợp lệ")
       return
     }
+    const cleanPhone = phoneCheck.phone
 
     if (!password || password.trim().length < 6) {
       setError("Vui lòng tạo mật khẩu hoặc mã PIN tối thiểu 6 ký tự")
@@ -568,7 +571,8 @@ export default function DriverAuthGate({
                 type="tel"
                 disabled={loading}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                maxLength={12}
+                onChange={(e) => setPhone(sanitizePhoneInput(e.target.value))}
                 placeholder="09xx xxx xxx"
                 style={{
                   width: "100%",

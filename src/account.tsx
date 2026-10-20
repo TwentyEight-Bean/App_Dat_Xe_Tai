@@ -12,6 +12,7 @@ import {
 } from "./lib/deviceTokenClient"
 import TopUpModal from "./TopUpModal"
 import useCustomerDialog from "./customerDialog"
+import { sanitizePhoneInput, validateVietnamesePhone } from "./lib/phoneValidation"
 
 /* ---------- tiny shared store ---------- */
 
@@ -1275,11 +1276,12 @@ function LoginOtpPage({
   const handleLogin = async () => {
     if (pending.current) return
 
-    const cleanPhone = phone.trim().replace(/\s+/g, "")
-    if (!cleanPhone || cleanPhone.length < 9) {
-      setError("Vui lòng nhập số điện thoại hợp lệ (tối thiểu 9 số)")
+    const phoneCheck = validateVietnamesePhone(phone)
+    if (!phoneCheck.valid) {
+      setError(phoneCheck.error || "Số điện thoại không hợp lệ")
       return
     }
+    const cleanPhone = phoneCheck.phone
 
     if (!password || password.trim().length < 6) {
       setError("Vui lòng nhập mật khẩu hoặc mã PIN (tối thiểu 6 ký tự)")
@@ -1335,11 +1337,12 @@ function LoginOtpPage({
   const handleRegister = async () => {
     if (pending.current) return
 
-    const cleanPhone = phone.trim().replace(/\s+/g, "")
-    if (!cleanPhone || cleanPhone.length < 9) {
-      setError("Vui lòng nhập số điện thoại hợp lệ (tối thiểu 9 số)")
+    const phoneCheck = validateVietnamesePhone(phone)
+    if (!phoneCheck.valid) {
+      setError(phoneCheck.error || "Số điện thoại không hợp lệ")
       return
     }
+    const cleanPhone = phoneCheck.phone
 
     if (!password || password.trim().length < 6) {
       setError("Vui lòng tạo mật khẩu hoặc mã PIN tối thiểu 6 ký tự")
@@ -1553,7 +1556,8 @@ function LoginOtpPage({
               inputMode="tel"
               disabled={loading}
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              maxLength={12}
+              onChange={(e) => setPhone(sanitizePhoneInput(e.target.value))}
               placeholder="Ví dụ: 0988888888"
               style={{
                 width: "100%",

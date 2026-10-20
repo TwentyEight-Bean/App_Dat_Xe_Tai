@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { syncUserProfileFromApi } from "./account"
 import useCustomerDialog from "./customerDialog"
+import { sanitizePhoneInput, validateVietnamesePhone } from "./lib/phoneValidation"
 
 type AuthOtpBottomSheetProps = {
   isOpen: boolean
@@ -58,11 +59,12 @@ export default function AuthOtpBottomSheet({
   const handleLogin = async () => {
     if (pending.current) return
 
-    const cleanPhone = phone.trim().replace(/\s+/g, "")
-    if (!cleanPhone || cleanPhone.length < 9) {
-      setError("Vui lòng nhập số điện thoại hợp lệ (tối thiểu 9 số)")
+    const phoneCheck = validateVietnamesePhone(phone)
+    if (!phoneCheck.valid) {
+      setError(phoneCheck.error || "Số điện thoại không hợp lệ")
       return
     }
+    const cleanPhone = phoneCheck.phone
 
     if (!password || password.trim().length < 6) {
       setError("Vui lòng nhập mật khẩu hoặc mã PIN (tối thiểu 6 ký tự)")
@@ -126,11 +128,12 @@ export default function AuthOtpBottomSheet({
   const handleRegister = async () => {
     if (pending.current) return
 
-    const cleanPhone = phone.trim().replace(/\s+/g, "")
-    if (!cleanPhone || cleanPhone.length < 9) {
-      setError("Vui lòng nhập số điện thoại hợp lệ (tối thiểu 9 số)")
+    const phoneCheck = validateVietnamesePhone(phone)
+    if (!phoneCheck.valid) {
+      setError(phoneCheck.error || "Số điện thoại không hợp lệ")
       return
     }
+    const cleanPhone = phoneCheck.phone
 
     if (!password || password.trim().length < 6) {
       setError("Vui lòng tạo mật khẩu hoặc mã PIN tối thiểu 6 ký tự")
@@ -551,8 +554,9 @@ export default function AuthOtpBottomSheet({
                 inputMode="tel"
                 disabled={loading}
                 type="tel"
+                maxLength={12}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(sanitizePhoneInput(e.target.value))}
                 placeholder="0988 888 888"
                 style={{
                   width: "100%",

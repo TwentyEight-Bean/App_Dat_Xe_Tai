@@ -6,6 +6,7 @@ import { comparePassword, hashPassword } from "../../lib/hash"
 import { generateToken } from "../../lib/auth"
 import { requestOtp, verifyOtp } from "../../lib/otpService"
 import { validateAndNormalizePhone } from "../../lib/sms/types"
+import { validateVietnamesePhone } from "../../lib/phoneValidation"
 import { getOrCreateWallet } from "../../lib/walletService"
 import { getClientIp } from "../../lib/ipUtils"
 import {
@@ -156,14 +157,14 @@ router.post("/register", async (req, res, next) => {
       })
     }
 
-    const phoneValidation = validateAndNormalizePhone(rawPhone)
+    const phoneValidation = validateVietnamesePhone(rawPhone)
     if (!phoneValidation.valid) {
       return res.status(400).json({
         success: false,
         message: phoneValidation.error || "Số điện thoại không hợp lệ",
       })
     }
-    const phone = phoneValidation.standardPhone
+    const phone = phoneValidation.phone
 
     if (typeof password !== "string" || password.trim().length < 6) {
       return res.status(400).json({
@@ -273,14 +274,14 @@ router.post("/login", async (req, res, next) => {
       })
     }
 
-    const phoneValidation = validateAndNormalizePhone(rawPhone)
+    const phoneValidation = validateVietnamesePhone(rawPhone)
     if (!phoneValidation.valid) {
       return res.status(400).json({
         success: false,
         message: phoneValidation.error || "Số điện thoại không hợp lệ",
       })
     }
-    const phone = phoneValidation.standardPhone
+    const phone = phoneValidation.phone
 
     const [foundUser] = await db
       .select()
