@@ -1,0 +1,326 @@
+/* Customer overrides are scoped so driver and admin layouts stay unchanged. */
+.customer-demo-tools {
+  position: fixed;
+  right: 12px;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 9990;
+  max-width: min(290px, calc(100vw - 24px));
+  padding: 5px 12px;
+  border: 1px solid #e2d398;
+  border-radius: 12px;
+  background: rgba(255, 250, 235, 0.94);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #594715;
+  font-size: 11px;
+  font-weight: 500;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  transition: all 180ms ease;
+}
+.customer-demo-tools summary {
+  cursor: pointer;
+  font-weight: 700;
+  user-select: none;
+}
+.customer-demo-tools summary:hover {
+  color: #2e2406;
+}
+.customer-demo-tools select {
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid #d4c180;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  margin-top: 4px;
+  outline: none;
+}
+.customer-demo-tools select, .customer-modal select { max-width: 100%; min-height: 36px; }
+.customer-frame .top-bar {
+  padding-top: max(48px, env(safe-area-inset-top));
+}
+.customer-frame .vector-map-bg { inset: 0; }
+/* The pickup callout already explains the drag gesture. Avoid duplicate hints. */
+.customer-frame .drag-hint-pill { display: none; }
+.customer-frame .location-pill { top: 112px; max-width: calc(100% - 90px); }
+.customer-frame .location-pill > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.customer-frame .location-pill strong { flex-shrink: 0; }
+.customer-frame .pin-callout-bubble { max-width: 250px; }
+.customer-frame .pin-callout-text { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.customer-frame .greeting { min-width: 0; }
+.customer-frame .greeting > span:last-child { min-width: 0; }
+.customer-frame .greeting strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.customer-frame .vehicle-option { min-width: 0; height: auto; min-height: 104px; }
+.customer-frame .vehicle-name { white-space: normal; overflow-wrap: anywhere; }
+.customer-frame .vehicle-detail { max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.customer-frame .vehicle-glyph { max-width: 100%; }
+.customer-frame .field-copy, .customer-frame .acc-row-label, .customer-frame .addr-copy { min-width: 0; }
+.customer-frame .addr-copy small, .customer-frame .acc-row-value { overflow-wrap: anywhere; }
+.customer-frame .bottom-nav { bottom: max(14px, env(safe-area-inset-bottom)); }
+.customer-frame .booking-sheet,
+.customer-frame .orders-screen,
+.customer-frame .account-screen {
+  padding-bottom: calc(140px + env(safe-area-inset-bottom));
+}
+.customer-frame .orders-screen,
+.customer-frame .account-screen {
+  padding-top: max(60px, calc(env(safe-area-inset-top) + 48px));
+}
+.customer-frame .chat-screen { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+.customer-frame button:disabled, .customer-modal button:disabled { opacity: .6; cursor: not-allowed; }
+.customer-frame :focus-visible, .customer-modal :focus-visible { outline: 2px solid var(--brand-600); outline-offset: 3px; }
+.customer-modal {
+  z-index: 10000;
+  overscroll-behavior: contain;
+  animation: customerFadeIn 200ms ease-out forwards;
+}
+.customer-modal > div {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  animation: customerScaleUp 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+}
+.customer-modal input { min-width: 0; }
+.customer-frame .field-error { overflow-wrap: anywhere; }
+.customer-frame .booking-peek-card, .customer-frame .sheet-handle { touch-action: none; }
+.customer-frame .floating-map-controls { z-index: 5; }
+.customer-frame .booking-sheet.expanded {
+  z-index: 8;
+  max-height: min(84%, calc(100% - 110px));
+  padding-bottom: calc(130px + env(safe-area-inset-bottom));
+}
+.customer-frame .booking-sheet > .sheet-handle { position: relative; width: 48px; height: 24px; margin-bottom: 0; background: transparent; }
+.customer-frame .booking-sheet > .sheet-handle::after { content: ""; position: absolute; width: 36px; height: 4px; left: 6px; top: 6px; border-radius: 99px; background: var(--ink-300, #b8c1c4); }
+.customer-frame .customer-trip-sheet {
+  position: absolute;
+  top: max(120px, 38%);
+  bottom: 0;
+  height: auto;
+  margin-top: 0;
+  z-index: 8;
+  left: 0;
+  right: 0;
+  transition: transform 180ms ease-out;
+}
+.customer-frame .customer-trip-sheet[hidden] { display: none; }
+.customer-frame .customer-trip-sheet.is-dragging { transition: none; }
+.customer-frame .customer-trip-sheet > .booking-sheet {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  margin: 0;
+  padding-top: 48px;
+  padding-bottom: calc(140px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.customer-frame .trip-sheet-toolbar { position: absolute; z-index: 8; inset: 0 0 auto; height: 44px; display: flex; }
+.customer-frame .trip-sheet-drag { flex: 1; min-width: 0; height: 44px; border: 0; border-radius: 26px 0 0 0; background: transparent; touch-action: none; cursor: grab; display: grid; place-items: center; }
+.customer-frame .trip-sheet-drag:active { cursor: grabbing; }
+.customer-frame .trip-sheet-drag > span { width: 40px; height: 4px; border-radius: 99px; background: var(--ink-300, #b8c1c4); margin-left: 44px; }
+.customer-frame .trip-sheet-close { width: 44px; height: 44px; border: 0; border-radius: 0 26px 0 0; background: transparent; color: var(--ink-500); font-size: 25px; cursor: pointer; }
+.customer-frame .searching-sheet .phase-heading { align-items: flex-start; gap: 12px; }
+.customer-frame .searching-sheet .phase-heading > div { flex: 1; min-width: 0; }
+.customer-frame .searching-sheet h1 { font-size: clamp(19px, 5.5vw, 23px); overflow-wrap: anywhere; }
+.customer-frame .searching-peek {
+  position: absolute;
+  z-index: 6;
+  left: 14px;
+  right: 14px;
+  bottom: calc(104px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  color: var(--ink-900);
+  text-align: left;
+  cursor: pointer;
+  touch-action: none;
+}
+.customer-frame .searching-peek .search-badge { flex-shrink: 0; width: 42px; height: 42px; }
+.customer-frame .searching-peek-copy { flex: 1; min-width: 0; }
+.customer-frame .searching-peek-copy strong, .customer-frame .searching-peek-copy small { display: block; }
+.customer-frame .searching-peek-copy strong { font-size: 14px; }
+.customer-frame .searching-peek-copy small { margin-top: 3px; font-size: 11px; color: var(--ink-500); overflow-wrap: anywhere; }
+@media (max-height: 600px) {
+  .customer-frame .booking-sheet { margin-top: 120px; height: calc(100% - 120px); }
+  .customer-frame .customer-trip-sheet > .booking-sheet { margin-top: 0; height: 100%; }
+}
+@media (max-width: 360px) {
+  .customer-frame .booking-sheet { padding-left: 12px; padding-right: 12px; }
+  .customer-frame .vehicle-list { gap: 6px; }
+  .customer-frame .vehicle-name { font-size: 11px; }
+  .customer-frame .vehicle-detail { font-size: 10px; }
+}
+.customer-frame .acc-toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  width: max-content;
+  text-align: center;
+  justify-content: center;
+  z-index: 1000;
+  pointer-events: auto;
+}
+/* Animations */
+@keyframes customerFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes customerScaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Styled Form Controls in Customer Modals */
+.customer-modal select,
+.customer-form-select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1.5px solid #cbd5e1;
+  background-color: #fff;
+  color: #1e293b;
+  font-size: 13.5px;
+  font-weight: 500;
+  outline: none;
+  transition: all 180ms ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 38px;
+}
+
+.customer-modal select:focus,
+.customer-form-select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.customer-radio-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1.5px solid #e2e8f0;
+  background: #fff;
+  cursor: pointer;
+  transition: all 160ms ease;
+  font-size: 13px;
+  color: #334155;
+  min-height: 46px;
+  user-select: none;
+}
+
+.customer-radio-option:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.customer-radio-option.selected {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.customer-radio-option input[type="radio"] {
+  accent-color: #2563eb;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Touch targets and mobile usability */
+.rate-stars button {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms ease;
+}
+
+.rate-stars button:hover {
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+.rate-stars button:active {
+  transform: scale(0.92);
+}
+
+.customer-pm-btn {
+  padding: 10px 4px;
+  border-radius: 12px;
+  min-height: 52px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.customer-pm-btn:active {
+  transform: scale(0.95);
+}
+
+.customer-rating-tag {
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  transition: all 160ms ease;
+  user-select: none;
+}
+.customer-rating-tag:active {
+  transform: scale(0.95);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .customer-frame *, .customer-modal * { animation: none; transition: none; scroll-behavior: auto; }
+}
+

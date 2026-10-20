@@ -5,6 +5,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react"
+
 import { subscribeRealtime } from "./lib/pusherClient"
 
 /* ---------- types & store ---------- */
@@ -419,44 +420,142 @@ function CIcon({
 
 export function MessagesScreen({ onOpen }: { onOpen: (id: string) => void }) {
   const localConvs = useConvs()
+
   const [serverConvs, setServerConvs] = useState<any[]>([])
+
   const [loading, setLoading] = useState(false)
 
+  const [error, setError] = useState("")
+
+  const [retry, setRetry] = useState(0)
+
   useEffect(() => {
-    const token = localStorage.getItem("auth_token") || localStorage.getItem("token")
+    const token = localStorage.getItem("auth_token")
+
     if (!token) return
 
     setLoading(true)
+
+    setError("")
+
+    const controller = new AbortController()
+
     fetch("/api/v1/chat/conversations", {
+      signal: controller.signal,
+
       headers: {
         Authorization: `Bearer ${token}`,
       },
     })
+
       .then((r) => r.json())
+
       .then((res) => {
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (controller.signal.aborted) return
+        if (!res.success || !Array.isArray(res.data))
+          throw new Error(res.message || "Không thể tải tin nhắn")
+
+        if (Array.isArray(res.data)) {
           setServerConvs(res.data)
         }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+
+      .catch((err) => {
+        if (!controller.signal.aborted)
+          setError(err.message || "Không thể tải tin nhắn")
+      })
+
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [retry])
+
+  if (loading || error || serverConvs.length === 0) {
+    return (
+      <section className="orders-screen messages-screen">
+        <header className="orders-head">
+          <h1>Tin nhắn</h1>
+        </header>
+        {loading ? (
+          <div className="orders-empty" role="status">
+            Đang tải tin nhắn...
+          </div>
+        ) : error ? (
+          <div
+            className="acc-empty"
+            role="alert"
+            style={{ paddingTop: "60px" }}
+          >
+            <span
+              className="acc-empty-icon"
+              style={{ color: "#ef4444", background: "#fef2f2" }}
+            >
+              <CIcon name="lock" size={26} />
+            </span>
+            <strong>Không thể tải tin nhắn</strong>
+            <p>{error}</p>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setRetry((n) => n + 1)}
+            >
+              Thử lại
+            </button>
+          </div>
+        ) : (
+          <div
+            className="acc-empty"
+            role="status"
+            style={{ paddingTop: "60px" }}
+          >
+            <span className="acc-empty-icon">
+              <svg
+                aria-hidden="true"
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+              </svg>
+            </span>
+            <strong>Chưa có cuộc trò chuyện</strong>
+            <p>
+              Tin nhắn trao đổi với tài xế sẽ xuất hiện tại đây sau khi bạn đặt
+              xe.
+            </p>
+          </div>
+        )}
+      </section>
+    )
+  }
 
   // Nếu có dữ liệu từ server thì ưu tiên hiển thị
+
   if (serverConvs.length > 0) {
     const activeServer = serverConvs.filter(
       (c) => c.bookingStatus !== "COMPLETED" && c.bookingStatus !== "CANCELLED",
     )
+
     const recentServer = serverConvs.filter(
       (c) => c.bookingStatus === "COMPLETED" || c.bookingStatus === "CANCELLED",
     )
 
     const serverRow = (c: any) => {
       const partnerName = c.partner?.name || "Đối tác"
+
       const initials = partnerName.slice(0, 2).toUpperCase()
+
       const timeStr = c.lastMessage?.time
         ? new Date(c.lastMessage.time).toLocaleTimeString("vi-VN", {
             hour: "2-digit",
+
             minute: "2-digit",
           })
         : ""
@@ -525,11 +624,14 @@ export function MessagesScreen({ onOpen }: { onOpen: (id: string) => void }) {
   }
 
   // Fallback danh sách local demo
+
   const active = localConvs.filter((c) => c.status === "active")
+
   const recent = localConvs.filter((c) => c.status === "completed")
 
   const row = (c: Conv) => {
     const last = c.messages[c.messages.length - 1]
+
     const unread = c.unread.customer
 
     return (
@@ -646,110 +748,311 @@ export function ChatScreen({
   moving = false,
 
   onBack,
+
   onTrip,
+
   onOpenMap,
+
   bookingId,
+
   onCall,
 }: {
   convId: string
+
   side: Side
+
   moving?: boolean
+
   onBack: () => void
+
   onTrip?: () => void
+
   onOpenMap: () => void
+
   bookingId?: string
+
   onCall?: () => void
 }) {
-  const conv = useConvs().find((c) => c.id === convId)
+  const localConv = useConvs().find((c) => c.id === convId)
+
+  const [customerConv, setCustomerConv] = useState<Conv | null>(null)
+
+  const [customerLoading, setCustomerLoading] = useState(false)
+
+  const [customerError, setCustomerError] = useState("")
+
+  const customerSending = useRef(false)
+  const customerSendRequest = useRef<AbortController | null>(null)
+
+  const [customerSendingUi, setCustomerSendingUi] = useState(false)
+
   useViewing(side, convId)
 
   const [draft, setDraft] = useState("")
+
   const [menu, setMenu] = useState(false)
+
   const [typing, setTyping] = useState(false)
+
   const endRef = useRef<HTMLDivElement>(null)
+
+  // 1. Tải lịch sử tin nhắn thực tế từ Server DB nếu có bookingId
+
+  const activeBookingId =
+    bookingId ||
+    (convId !== "c1" && convId !== "c2" && convId !== "c3" ? convId : undefined)
+
+  const customerReal = side === "customer" && Boolean(activeBookingId)
+
+  const conv = side === "customer" ? customerConv : localConv
 
   const count = conv?.messages.length ?? 0
 
-  // 1. Tải lịch sử tin nhắn thực tế từ Server DB nếu có bookingId
-  const activeBookingId = bookingId || (convId !== "c1" && convId !== "c2" && convId !== "c3" ? convId : undefined)
+  useEffect(() => {
+    if (!customerReal || !activeBookingId) return
+
+    const controller = new AbortController()
+
+    const token = localStorage.getItem("auth_token")
+    if (!token) {
+      setCustomerError("Vui lòng đăng nhập lại")
+      return
+    }
+    const buffered: Msg[] = []
+    customerSending.current = false
+    setCustomerSendingUi(false)
+
+    setCustomerConv(null)
+
+    setCustomerError("")
+
+    setCustomerLoading(true)
+
+    const toMessage = (item: any): Msg => ({
+      id: item.messageId || item.id,
+
+      from: item.senderRole === "DRIVER" ? "driver" : "customer",
+
+      kind: item.messageType === "LOCATION" ? "location" : "text",
+
+      text: item.content || (item.messageType === "IMAGE" ? "[Hình ảnh]" : ""),
+
+      time: new Date(item.createdAt).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    })
+
+    const add = (item: any) => {
+      if (controller.signal.aborted || !item || !(item.messageId || item.id))
+        return
+      const message = toMessage(item)
+      if (!buffered.some((m) => m.id === message.id)) buffered.push(message)
+      setCustomerConv((current) =>
+        current &&
+        !current.messages.some((m) => m.id === (item.messageId || item.id))
+          ? { ...current, messages: [...current.messages, toMessage(item)] }
+          : current,
+      )
+    }
+
+    fetch(`/api/v1/chat/${activeBookingId}/messages`, {
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+      .then((res) => res.json())
+
+      .then((data) => {
+        if (
+          !data.success ||
+          !data.data?.booking ||
+          !Array.isArray(data.data.messages)
+        )
+          throw new Error(data.message || "Không thể tải cuộc trò chuyện")
+
+        if (controller.signal.aborted) return
+
+        const booking = data.data.booking
+
+        setCustomerConv({
+          id: convId,
+          driverName: booking.driver?.name || "Tài xế",
+          driverInitials: (booking.driver?.name || "TX").slice(0, 2),
+          customerName: booking.customer?.name || "Khách hàng",
+          order: booking.bookingCode,
+          vehicle: "Xe tải",
+          status: ["COMPLETED", "CANCELLED"].includes(booking.status)
+            ? "completed"
+            : "active",
+          unread: { customer: 0, driver: 0 },
+          messages: [
+            ...new Map<Msg["id"], Msg>(
+              [...data.data.messages.map(toMessage), ...buffered].map(
+                (m: Msg) => [m.id, m],
+              ),
+            ).values(),
+          ],
+        })
+      })
+
+      .catch((err) => {
+        if (!controller.signal.aborted)
+          setCustomerError(err.message || "Không thể tải cuộc trò chuyện")
+      })
+
+      .finally(() => {
+        if (!controller.signal.aborted) setCustomerLoading(false)
+      })
+
+    const unsubscribe = subscribeRealtime(
+      `chat-${activeBookingId}`,
+      "chat:new-message",
+      add,
+    )
+
+    return () => {
+      controller.abort()
+      customerSendRequest.current?.abort()
+      unsubscribe()
+    }
+  }, [customerReal, activeBookingId, convId])
 
   useEffect(() => {
+    if (side === "customer") return
+
     if (!activeBookingId) return
-    const token = typeof window !== "undefined"
-      ? (localStorage.getItem("token") || localStorage.getItem("driver_auth_token"))
-      : ""
+
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("token") ||
+          localStorage.getItem("driver_auth_token")
+        : ""
+
     if (!token) return
 
     // Tải tin nhắn từ API GET /api/v1/chat/:bookingId/messages
+
     fetch(`/api/v1/chat/${activeBookingId}/messages`, {
       headers: { Authorization: `Bearer ${token}` },
     })
+
       .then((r) => r.json())
+
       .then((data) => {
         if (data.success && data.data?.messages) {
           // Đồng bộ tin nhắn DB vào store
+
           data.data.messages.forEach((mItem: any) => {
-            const fromRole: Side = mItem.senderRole === "DRIVER" ? "driver" : "customer"
+            const fromRole: Side =
+              mItem.senderRole === "DRIVER" ? "driver" : "customer"
+
             const exists = conv?.messages.some((m) => m.text === mItem.content)
+
             if (!exists) {
-              sendMessage(convId, fromRole, mItem.content, mItem.messageType === "LOCATION" ? "location" : "text")
+              sendMessage(
+                convId,
+                fromRole,
+                mItem.content,
+                mItem.messageType === "LOCATION" ? "location" : "text",
+              )
             }
           })
         }
       })
+
       .catch((err) => console.warn("Lỗi tải tin nhắn từ server:", err))
 
     // Đánh dấu đã đọc qua API PATCH /api/v1/chat/:bookingId/read
+
     fetch(`/api/v1/chat/${activeBookingId}/read`, {
       method: "PATCH",
+
       headers: { Authorization: `Bearer ${token}` },
     }).catch(() => {})
 
     // Lắng nghe tin nhắn mới Realtime qua Pusher
-    const unsubscribe = subscribeRealtime(`chat-${activeBookingId}`, "chat:new-message", (newMsg: any) => {
-      if (newMsg && newMsg.content) {
-        const fromRole: Side = newMsg.senderRole === "DRIVER" ? "driver" : "customer"
-        sendMessage(convId, fromRole, newMsg.content, newMsg.messageType === "LOCATION" ? "location" : "text")
-      }
-    })
+
+    const unsubscribe = subscribeRealtime(
+      `chat-${activeBookingId}`,
+      "chat:new-message",
+      (newMsg: any) => {
+        if (newMsg && newMsg.content) {
+          const fromRole: Side =
+            newMsg.senderRole === "DRIVER" ? "driver" : "customer"
+
+          sendMessage(
+            convId,
+            fromRole,
+            newMsg.content,
+            newMsg.messageType === "LOCATION" ? "location" : "text",
+          )
+        }
+      },
+    )
 
     return () => {
       unsubscribe()
     }
-  }, [activeBookingId, convId])
+  }, [activeBookingId, convId, side])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" })
   }, [count])
 
-  if (!conv) return null
+  if (!conv)
+    return side === "customer" ? (
+      <section className="chat-screen">
+        <header className="chat-head">
+          <button
+            type="button"
+            className="chat-icon-btn"
+            aria-label="Quay lại"
+            onClick={onBack}
+          >
+            <CIcon name="back" />
+          </button>
+          <strong>Trò chuyện</strong>
+        </header>
+        <p role={customerError ? "alert" : "status"}>
+          {customerLoading
+            ? "Đang tải cuộc trò chuyện..."
+            : customerError || "Không tìm thấy cuộc trò chuyện"}
+        </p>
+      </section>
+    ) : null
 
   const done = conv.status === "completed"
+
   const isDriver = side === "driver"
+
   const name = isDriver ? conv.customerName : conv.driverName
+
   const initials = isDriver ? "LA" : conv.driverInitials
+
   const quickOnly = isDriver && moving && !typing
 
-  const send = (text: string, kind: Msg["kind"] = "text") => {
+  const send = async (text: string, kind: Msg["kind"] = "text") => {
     const t = text.trim()
+
     if (!t || done) return
 
-    // 1. Cập nhật giao diện ngay lập tức (Optimistic UI)
-    sendMessage(convId, side, t, kind)
-    if (!activeBookingId) {
-      scheduleReply(convId, side, t, kind)
-    }
+    if (customerReal) {
+      if (customerSending.current) return
 
-    setDraft("")
-    setMenu(false)
+      customerSending.current = true
+      const request = new AbortController()
+      customerSendRequest.current = request
+      const token = localStorage.getItem("auth_token")
 
-    // 2. Gửi API lên Server POST /api/v1/chat/send
-    if (activeBookingId) {
-      const token = typeof window !== "undefined"
-        ? (localStorage.getItem("token") || localStorage.getItem("driver_auth_token"))
-        : ""
-      if (token) {
-        fetch("/api/v1/chat/send", {
+      setCustomerSendingUi(true)
+
+      setCustomerError("")
+
+      try {
+        if (!token) throw new Error("Vui lòng đăng nhập lại")
+        const res = await fetch("/api/v1/chat/send", {
+          signal: request.signal,
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -758,6 +1061,101 @@ export function ChatScreen({
           body: JSON.stringify({
             bookingId: activeBookingId,
             content: t,
+            messageType: kind === "location" ? "LOCATION" : "TEXT",
+          }),
+        })
+
+        const data = await res.json()
+
+        if (
+          request.signal.aborted ||
+          localStorage.getItem("auth_token") !== token
+        )
+          return
+        if (
+          !res.ok ||
+          !data.success ||
+          !(data.data?.id || data.data?.messageId)
+        )
+          throw new Error(data.message || "Không thể gửi tin nhắn")
+
+        const id = data.data.id || data.data.messageId
+
+        setCustomerConv((current) =>
+          current && !current.messages.some((m) => m.id === id)
+            ? {
+                ...current,
+                messages: [
+                  ...current.messages,
+                  {
+                    id,
+                    from: side,
+                    text: t,
+                    kind,
+                    time: new Date().toLocaleTimeString("vi-VN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }),
+                  },
+                ],
+              }
+            : current,
+        )
+
+        setDraft((current) => (current.trim() === t ? "" : current))
+
+        setMenu(false)
+      } catch (error) {
+        if (request.signal.aborted) return
+        setCustomerError(
+          error instanceof Error ? error.message : "Không thể gửi tin nhắn",
+        )
+      } finally {
+        if (customerSendRequest.current === request) {
+          customerSending.current = false
+          if (!request.signal.aborted) setCustomerSendingUi(false)
+        }
+      }
+
+      return
+    }
+
+    // 1. Cập nhật giao diện ngay lập tức (Optimistic UI)
+
+    sendMessage(convId, side, t, kind)
+
+    if (!activeBookingId) {
+      scheduleReply(convId, side, t, kind)
+    }
+
+    setDraft("")
+
+    setMenu(false)
+
+    // 2. Gửi API lên Server POST /api/v1/chat/send
+
+    if (activeBookingId) {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("token") ||
+            localStorage.getItem("driver_auth_token")
+          : ""
+
+      if (token) {
+        fetch("/api/v1/chat/send", {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+
+            Authorization: `Bearer ${token}`,
+          },
+
+          body: JSON.stringify({
+            bookingId: activeBookingId,
+
+            content: t,
+
             messageType: kind === "location" ? "LOCATION" : "TEXT",
           }),
         }).catch((err) => console.warn("Lỗi gửi tin nhắn lên server:", err))
@@ -798,7 +1196,14 @@ export function ChatScreen({
           className="chat-icon-btn call"
           onClick={onCall || ((e) => e.preventDefault())}
           type="button"
-          style={{ background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          style={{
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
         >
           <CIcon name="phone" size={20} />
         </button>
@@ -870,6 +1275,11 @@ export function ChatScreen({
 
       {!done && (
         <footer className="chat-foot">
+          {side === "customer" && customerError && (
+            <p role="alert" className="field-error">
+              {customerError}
+            </p>
+          )}
           {menu && (
             <div className="chat-menu" role="menu">
               <button
@@ -889,7 +1299,12 @@ export function ChatScreen({
           )}
           <div className="quick-replies">
             {quickReplies[side].map((q) => (
-              <button key={q} onClick={() => send(q)} type="button">
+              <button
+                key={q}
+                onClick={() => send(q)}
+                disabled={side === "customer" && customerSendingUi}
+                type="button"
+              >
                 {q}
               </button>
             ))}
@@ -942,7 +1357,9 @@ export function ChatScreen({
               <button
                 aria-label="Gửi"
                 className="chat-send"
-                disabled={!draft.trim()}
+                disabled={
+                  !draft.trim() || (side === "customer" && customerSendingUi)
+                }
                 type="submit"
               >
                 <CIcon name="send" size={20} strokeWidth={2.4} />

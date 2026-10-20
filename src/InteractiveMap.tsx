@@ -15,6 +15,7 @@ export type MapMode = "customer" | "driver"
 export type MapLayer = "standard" | "traffic" | "satellite"
 
 export interface InteractiveMapProps {
+  loadNearby?: boolean
   mode?: MapMode
 
   phase?: string // booking, searching, found, arriving, arrived, pickedup, delivering, delivered
@@ -67,6 +68,7 @@ const ROUTE_DEST = { x: 290, y: 110 }
 const ROUTE_DRIVER_START = { x: 45, y: 155 }
 
 export default function InteractiveMap({
+  loadNearby = true,
   mode = "customer",
 
   phase = "booking",
@@ -127,7 +129,7 @@ export default function InteractiveMap({
   ])
 
   useEffect(() => {
-    if (phase !== "searching") return
+    if (phase !== "searching" || !loadNearby) return
     let isMounted = true
     fetch("/api/v1/driver/nearby?lat=10.7769&lng=106.7009&radiusKm=5&limit=6")
       .then((r) => r.json())
@@ -155,7 +157,7 @@ export default function InteractiveMap({
     return () => {
       isMounted = false
     }
-  }, [phase])
+  }, [phase, loadNearby])
 
   // Determine active route state
 
