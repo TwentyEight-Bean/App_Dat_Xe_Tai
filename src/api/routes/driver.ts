@@ -13,6 +13,7 @@ import {
   findNearbyDrivers,
   updateDriverLocation,
   getDriverLocation,
+  getDemandHotspots,
 } from "../../lib/dispatchService"
 
 import {
@@ -20,6 +21,7 @@ import {
   updateBookingStatus,
   cancelBooking,
   getDriverActiveBooking,
+  getDriverBookings,
 } from "../../lib/bookingService"
 
 import {
@@ -86,6 +88,27 @@ router.get("/nearby", async (req, res, next) => {
       count: drivers.length,
 
       data: drivers,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * GET /driver/demand-zones
+ * Phân tích các khu vực có nhu cầu đặt xe cao dựa trên dữ liệu đơn hàng bookings thực tế
+ */
+router.get("/demand-zones", async (req, res, next) => {
+  try {
+    const lat = req.query.lat ? Number(req.query.lat) : undefined
+    const lng = req.query.lng ? Number(req.query.lng) : undefined
+    const radiusKm = req.query.radiusKm ? Number(req.query.radiusKm) : undefined
+
+    const result = await getDemandHotspots({ lat, lng, radiusKm })
+
+    res.json({
+      success: true,
+      data: result,
     })
   } catch (err) {
     next(err)
@@ -254,6 +277,26 @@ router.get("/bookings/active", async (req: AuthRequest, res, next) => {
     next(err)
   }
 })
+
+/**
+ * GET /driver/bookings
+ * Lấy lịch sử tất cả các cuốc xe của tài xế và thống kê doanh thu thực tế
+ */
+router.get("/bookings", async (req: AuthRequest, res, next) => {
+  try {
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50
+    const result = await getDriverBookings(req.user!.userId, limit)
+    res.json({
+      success: true,
+      count: result.bookings.length,
+      data: result.bookings,
+      summary: result.summary,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 
 /**
  * PATCH /driver/bookings/:bookingId/status

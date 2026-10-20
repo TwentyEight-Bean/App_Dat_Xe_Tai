@@ -3,175 +3,148 @@ import {
   useRef,
   useState,
   useCallback,
-  type MouseEvent as ReactMouseEvent,
-  type TouchEvent as ReactTouchEvent,
   type ReactNode,
 } from "react"
-
+import L from "leaflet"
 import "./interactiveMap.css"
 
 export type MapMode = "customer" | "driver"
-
 export type MapLayer = "standard" | "traffic" | "satellite"
+
+export interface DemandHotspot {
+  district: string
+  count: number
+  lat: number
+  lng: number
+  radiusMeters: number
+}
 
 export interface InteractiveMapProps {
   loadNearby?: boolean
   mode?: MapMode
-
   phase?: string // booking, searching, found, arriving, arrived, pickedup, delivering, delivered
-
   pickupAddr?: string
-
   destAddr?: string
-
   onPickupChange?: (addr: string) => void
-
+  onDestChange?: (addr: string) => void
+  onRouteCoordinatesChange?: (coords: {
+    originLat: number
+    originLng: number
+    destLat: number
+    destLng: number
+  }) => void
   online?: boolean
-
   jobState?: string // none, incoming, toPickup, atPickup, delivering, complete
-
+  demandHotspots?: DemandHotspot[]
+  driverName?: string
+  driverPlate?: string
   children?: ReactNode
 }
 
-// Saigon landmarks and coordinates
-
-const STREET_NAMES = [
-  "21 Nguyễn Đình Chiểu, Đa Kao, Q.1",
-
-  "145 Hai Bà Trưng, P.6, Q.3",
-
-  "88 Điện Biên Phủ, P. Đa Kao, Q.1",
-
-  "56 Nam Kỳ Khởi Nghĩa, Bến Nghé, Q.1",
-
-  "128 Hoàng Diệu, P.12, Q.4",
-
-  "34 Võ Thị Sáu, P. Tân Định, Q.1",
-
-  "200 Nguyễn Thị Minh Khai, P.6, Q.3",
-
-  "15 Lê Duẩn, Bến Nghé, Q.1",
-
-  "92 Pasteur, Bến Nghé, Q.1",
-
-  "40 Tôn Đức Thắng, Bến Nghé, Q.1",
-
-  "12 Bến Vân Đồn, P.12, Q.4",
-
-  "175 Cách Mạng Tháng 8, P.4, Q.3",
+// 6 Thành Phố Trọng Điểm Toàn Quốc
+export const VIETNAM_CITIES = [
+  { id: "hcm", name: "TP. Hồ Chí Minh", shortName: "TP.HCM", lat: 10.7769, lng: 106.7009, zoom: 15 },
+  { id: "hn", name: "Hà Nội", shortName: "Hà Nội", lat: 21.0285, lng: 105.8542, zoom: 15 },
+  { id: "dn", name: "Đà Nẵng", shortName: "Đà Nẵng", lat: 16.0544, lng: 108.2022, zoom: 15 },
+  { id: "ct", name: "Cần Thơ", shortName: "Cần Thơ", lat: 10.0452, lng: 105.7469, zoom: 15 },
+  { id: "hp", name: "Hải Phòng", shortName: "Hải Phòng", lat: 20.8449, lng: 106.6881, zoom: 15 },
+  { id: "bd", name: "Bình Dương", shortName: "Bình Dương", lat: 10.9804, lng: 106.6745, zoom: 14 },
 ]
 
-const ROUTE_PICKUP = { x: 194, y: 220 }
-
-const ROUTE_DEST = { x: 290, y: 110 }
-
-const ROUTE_DRIVER_START = { x: 45, y: 155 }
+// 3 Lớp Bản Đồ Thật (0 VNĐ, Không Cần API Key)
+const TILE_SERVERS: Record<MapLayer, { url: string; maxZoom: number; subdomains?: string }> = {
+  standard: {
+    // OpenStreetMap tiêu chuẩn (tiếng Việt đầy đủ)
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    maxZoom: 19,
+    subdomains: "abc",
+  },
+  traffic: {
+    // Chế độ ban đêm bằng bộ lọc màu thông minh (Dark Mode), không lo watermark hay API key
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    maxZoom: 19,
+    subdomains: "abc",
+  },
+  satellite: {
+    // Ảnh vệ tinh toàn cầu Esri World Imagery (độ phân giải cao, 0 VNĐ)
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    maxZoom: 18,
+  },
+}
 
 export default function InteractiveMap({
   loadNearby = true,
   mode = "customer",
-
   phase = "booking",
-
   pickupAddr,
-
   destAddr,
-
   onPickupChange,
-
+  onDestChange,
+  onRouteCoordinatesChange,
   online = true,
-
   jobState = "none",
-
+  demandHotspots,
+  driverName,
+  driverPlate,
   children,
 }: InteractiveMapProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  // Map transform: pan offset (x, y) & zoom scale
-
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-
-  const [zoom, setZoom] = useState(1)
-
+  const mapContainerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  const tileLayerRef = useRef<L.TileLayer | null>(null)
+  const markersLayerRef = useRef<L.LayerGroup | null>(null)
+  const bookingLayerRef = useRef<L.LayerGroup | null>(null)
+  const routeLayerRef = useRef<L.Polyline | null>(null)
+  const movingTruckMarkerRef = useRef<L.Marker | null>(null)
+  const userLocationMarkerRef = useRef<L.Marker | null>(null)
+  const userAccuracyCircleRef = useRef<L.Circle | null>(null)
+  const cityWrapperRef = useRef<HTMLDivElement>(null)
+  const cityScrollRef = useRef<HTMLDivElement>(null)
+  const isDraggingCity = useRef(false)
+  const dragStartX = useRef(0)
+  const dragScrollLeft = useRef(0)
+  const hasDragged = useRef(false)
   const [layer, setLayer] = useState<MapLayer>("standard")
-
   const [layerMenuOpen, setLayerMenuOpen] = useState(false)
-
-  // Drag state
-
-  const isDragging = useRef(false)
-
-  const dragStart = useRef({ x: 0, y: 0 })
-
-  const panStart = useRef({ x: 0, y: 0 })
-
-  const [dragging, setDragging] = useState(false)
-
+  const [activeCityId, setActiveCityId] = useState<string>("hcm")
   const [pinLifted, setPinLifted] = useState(false)
+  const [isLocating, setIsLocating] = useState(false)
+  const [geocodingLoading, setGeocodingLoading] = useState(false)
+  const [currentDisplayAddr, setCurrentDisplayAddr] = useState<string>(pickupAddr || "Đang lấy địa chỉ...")
+  const [currentDestDisplayAddr, setCurrentDestDisplayAddr] = useState<string>(
+    destAddr || "Chọn điểm giao trên bản đồ"
+  )
+  const [pinMode, setPinMode] = useState<"pickup" | "destination">("pickup")
+  const pinModeRef = useRef<"pickup" | "destination">("pickup")
+  useEffect(() => {
+    pinModeRef.current = pinMode
+  }, [pinMode])
 
-  // Pinch zoom state
+  const [isResetting, setIsResetting] = useState(false)
+  const [resetToast, setResetToast] = useState<string | null>(null)
+  const resetToastTimerRef = useRef<number | null>(null)
+  const initialMapStateRef = useRef<{
+    center: [number, number]
+    zoom: number
+    pickup: { lat: number; lng: number }
+    dest: { lat: number; lng: number }
+    cityId: string
+  } | null>(null)
 
-  const touchDistance = useRef<number | null>(null)
-
-  const zoomStart = useRef(1)
+  const pickupCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
+  const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
+  const bookingFixedMarkerRef = useRef<L.Marker | null>(null)
+  const bookingRoutePolylineRef = useRef<L.Polyline | null>(null)
 
   // Driver animated progress (0 -> 1)
-
   const [driverProgress, setDriverProgress] = useState(0)
 
-  // Nearby trucks from DB
-  const [nearbyTrucks, setNearbyTrucks] = useState<
-    Array<{ x: number; y: number; delay: string; name?: string; plate?: string }>
-  >([
-    { x: 140, y: 180, delay: "0ms" },
-    { x: 260, y: 240, delay: "200ms" },
-    { x: 190, y: 290, delay: "400ms" },
-  ])
-
-  useEffect(() => {
-    if (phase !== "searching" || !loadNearby) return
-    let isMounted = true
-    fetch("/api/v1/driver/nearby?lat=10.7769&lng=106.7009&radiusKm=5&limit=6")
-      .then((r) => r.json())
-      .then((json) => {
-        if (!isMounted) return
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          const mapped = json.data.map((d: any, i: number) => {
-            const lngDiff = ((Number(d.lng || 106.7) - 106.69) * 3500) % 200
-            const latDiff = ((10.785 - Number(d.lat || 10.77)) * 3500) % 180
-            const x = Math.min(360, Math.max(90, 200 + (i % 2 === 0 ? lngDiff : -lngDiff)))
-            const y = Math.min(320, Math.max(120, 220 + (i % 2 === 0 ? latDiff : -latDiff)))
-            return {
-              x: Math.round(x),
-              y: Math.round(y),
-              delay: `${i * 200}ms`,
-              name: d.name,
-              plate: d.licensePlate,
-            }
-          })
-          setNearbyTrucks(mapped)
-        }
-      })
-      .catch((err) => console.warn("Lỗi tải radar InteractiveMap:", err))
-
-    return () => {
-      isMounted = false
-    }
-  }, [phase, loadNearby])
-
-  // Determine active route state
-
+  // Tracking states
   const isCustomerTracking = [
     "found",
-
     "arriving",
-
     "arrived",
-
     "pickedup",
-
     "delivering",
-
     "delivered",
   ].includes(phase)
 
@@ -181,488 +154,1063 @@ export default function InteractiveMap({
     jobState === "delivering"
 
   const isSearching = phase === "searching"
+  const isBooking = mode === "customer" && phase === "booking" && jobState === "none"
 
-  const isBooking = phase === "booking" && jobState === "none"
-
-  // Simulate smooth truck movement along the route
-
+  // Ref to track onPickupChange without re-creating listeners
+  const onPickupChangeRef = useRef(onPickupChange)
   useEffect(() => {
-    if (
-      phase === "arriving" ||
-      phase === "delivering" ||
-      jobState === "toPickup" ||
-      jobState === "delivering"
-    ) {
-      const interval = window.setInterval(() => {
-        setDriverProgress((p) => {
-          if (p >= 1) return 0
+    onPickupChangeRef.current = onPickupChange
+  }, [onPickupChange])
 
-          return p + 0.008
-        })
-      }, 50)
+  const onDestChangeRef = useRef(onDestChange)
+  useEffect(() => {
+    onDestChangeRef.current = onDestChange
+  }, [onDestChange])
 
-      return () => window.clearInterval(interval)
-    } else if (phase === "arrived" || jobState === "atPickup") {
-      setDriverProgress(1)
-    } else {
-      setDriverProgress(0.2)
+  const onRouteCoordinatesChangeRef = useRef(onRouteCoordinatesChange)
+  useEffect(() => {
+    onRouteCoordinatesChangeRef.current = onRouteCoordinatesChange
+  }, [onRouteCoordinatesChange])
+
+  const emitRouteCoordinates = useCallback(() => {
+    if (pickupCoordsRef.current && destCoordsRef.current) {
+      onRouteCoordinatesChangeRef.current?.({
+        originLat: pickupCoordsRef.current.lat,
+        originLng: pickupCoordsRef.current.lng,
+        destLat: destCoordsRef.current.lat,
+        destLng: destCoordsRef.current.lng,
+      })
     }
-  }, [phase, jobState])
-
-  // Recenter map smoothly to focal point
-
-  const recenter = useCallback(() => {
-    setPan({ x: 0, y: 0 })
-
-    setZoom(1)
   }, [])
 
-  // Zoom handlers
+  // Synchronize incoming pickupAddr & destAddr to local display
+  useEffect(() => {
+    if (pickupAddr && !pinLifted) {
+      setCurrentDisplayAddr(pickupAddr)
+    }
+  }, [pickupAddr, pinLifted])
 
-  const handleZoomIn = () =>
-    setZoom((z) => Math.min(2.4, Number((z + 0.25).toFixed(2))))
+  useEffect(() => {
+    if (destAddr) {
+      setCurrentDestDisplayAddr(destAddr)
+    }
+  }, [destAddr])
 
-  const handleZoomOut = () =>
-    setZoom((z) => Math.max(0.75, Number((z - 0.25).toFixed(2))))
+  // Reverse Geocoding with Debounce via OSM Nominatim (Tiếng Việt)
+  const reverseGeocodeTimeoutRef = useRef<number | null>(null)
+  const reverseGeocode = useCallback(
+    (lat: number, lng: number, targetMode: "pickup" | "destination" = pinModeRef.current) => {
+      if (reverseGeocodeTimeoutRef.current) {
+        window.clearTimeout(reverseGeocodeTimeoutRef.current)
+      }
 
-  // Mouse Drag Events
+      setGeocodingLoading(true)
+      reverseGeocodeTimeoutRef.current = window.setTimeout(async () => {
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=vi`,
+            {
+              headers: {
+                "Accept-Language": "vi,en",
+              },
+            }
+          )
+          if (!res.ok) throw new Error("Geocoding network error")
+          const data = await res.json()
 
-  const onMouseDown = (e: ReactMouseEvent) => {
-    if (e.button !== 0) return
+          if (data && data.address) {
+            const addr = data.address
+            const house = addr.house_number ? `${addr.house_number} ` : ""
+            const road = addr.road || addr.street || addr.pedestrian || ""
+            const quarter =
+              addr.quarter || addr.suburb || addr.neighbourhood || addr.city_district || ""
+            const city = addr.city || addr.town || addr.county || addr.state || ""
 
-    isDragging.current = true
+            let formatted = ""
+            if (road) {
+              formatted = `${house}${road}, ${quarter ? quarter + ", " : ""}${city}`
+            } else if (data.display_name) {
+              formatted = data.display_name.split(",").slice(0, 3).join(",").trim()
+            } else {
+              formatted = `Tọa độ: ${lat.toFixed(4)}, ${lng.toFixed(4)}`
+            }
 
-    dragStart.current = { x: e.clientX, y: e.clientY }
+            if (targetMode === "pickup") {
+              setCurrentDisplayAddr(formatted)
+              onPickupChangeRef.current?.(formatted)
+            } else {
+              setCurrentDestDisplayAddr(formatted)
+              onDestChangeRef.current?.(formatted)
+            }
+          }
+        } catch (err) {
+          console.warn("Lỗi đọc địa chỉ Nominatim:", err)
+          const fallback =
+            targetMode === "pickup"
+              ? `Điểm đón (${lat.toFixed(4)}, ${lng.toFixed(4)})`
+              : `Điểm giao (${lat.toFixed(4)}, ${lng.toFixed(4)})`
+          if (targetMode === "pickup") {
+            setCurrentDisplayAddr(fallback)
+            onPickupChangeRef.current?.(fallback)
+          } else {
+            setCurrentDestDisplayAddr(fallback)
+            onDestChangeRef.current?.(fallback)
+          }
+        } finally {
+          setGeocodingLoading(false)
+        }
+      }, 450)
+    },
+    []
+  )
 
-    panStart.current = { ...pan }
+  // Create or update real-time user GPS pulsing dot on the map
+  const updateUserLocationMarker = useCallback(
+    (lat: number, lng: number, accuracy?: number) => {
+      if (!mapRef.current) return
+      const map = mapRef.current
 
-    setDragging(true)
+      const userIcon = L.divIcon({
+        className: "user-gps-marker-container",
+        html: `
+          <div class="user-gps-pulse"></div>
+          <div class="user-gps-dot">
+            <div class="user-gps-center"></div>
+          </div>
+        `,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      })
 
-    if (isBooking) setPinLifted(true)
+      if (!userLocationMarkerRef.current) {
+        userLocationMarkerRef.current = L.marker([lat, lng], {
+          icon: userIcon,
+          zIndexOffset: 1000,
+        }).addTo(map)
+        userLocationMarkerRef.current.bindTooltip("Vị trí của bạn", {
+          direction: "top",
+          offset: [0, -12],
+          className: "user-gps-tooltip",
+        })
+      } else {
+        userLocationMarkerRef.current.setLatLng([lat, lng])
+      }
+
+      if (accuracy && accuracy > 0 && accuracy < 2000) {
+        if (!userAccuracyCircleRef.current) {
+          userAccuracyCircleRef.current = L.circle([lat, lng], {
+            radius: Math.min(accuracy, 250),
+            color: "#2563eb",
+            fillColor: "#3b82f6",
+            fillOpacity: 0.12,
+            weight: 1.5,
+          }).addTo(map)
+        } else {
+          userAccuracyCircleRef.current.setLatLng([lat, lng])
+          userAccuracyCircleRef.current.setRadius(Math.min(accuracy, 250))
+        }
+      }
+    },
+    []
+  )
+
+  const handleSwitchPinModeRef = useRef<(mode: "pickup" | "destination") => void>(() => {})
+
+  // Dual-Pin logic: Render fixed other point and connecting dashed route line
+  const updateBookingVisuals = useCallback(
+    (targetPinMode: "pickup" | "destination" = pinModeRef.current) => {
+      if (!mapRef.current || !bookingLayerRef.current) return
+      if (mode !== "customer" || phase !== "booking") {
+        bookingLayerRef.current.clearLayers()
+        return
+      }
+
+      const bookingLayer = bookingLayerRef.current
+      bookingLayer.clearLayers()
+
+      const center = mapRef.current.getCenter()
+      if (targetPinMode === "pickup") {
+        pickupCoordsRef.current = { lat: center.lat, lng: center.lng }
+        if (!destCoordsRef.current) {
+          destCoordsRef.current = { lat: center.lat - 0.0035, lng: center.lng + 0.0035 }
+        }
+      } else {
+        destCoordsRef.current = { lat: center.lat, lng: center.lng }
+        if (!pickupCoordsRef.current) {
+          pickupCoordsRef.current = { lat: center.lat + 0.0035, lng: center.lng - 0.0035 }
+        }
+      }
+
+      const pickupCoords = pickupCoordsRef.current
+      const destCoords = destCoordsRef.current
+
+      emitRouteCoordinates()
+
+      // Fixed Point B (Destination) when user is setting Pickup (A)
+      if (targetPinMode === "pickup" && destCoords) {
+        const destFixedIcon = L.divIcon({
+          className: "fixed-map-pin pin-dest-fixed",
+          html: `
+            <div class="fixed-pin-bubble">
+              <span class="fixed-pin-tag">🔴 Điểm đến (B)</span>
+            </div>
+            <div class="fixed-pin-marker fixed-pin-red">
+              <span class="fixed-pin-badge">B</span>
+              <span class="fixed-pin-point"></span>
+            </div>
+            <div class="fixed-pin-shadow"></div>
+          `,
+          iconSize: [44, 58],
+          iconAnchor: [22, 54],
+        })
+
+        const marker = L.marker([destCoords.lat, destCoords.lng], {
+          icon: destFixedIcon,
+          zIndexOffset: 600,
+        }).addTo(bookingLayer)
+
+        marker.on("click", (e) => {
+          L.DomEvent.stopPropagation(e)
+          handleSwitchPinModeRef.current("destination")
+        })
+
+        marker.bindTooltip("Chạm để chỉnh Điểm đến (B)", {
+          direction: "top",
+          offset: [0, -48],
+          className: "pin-interactive-tooltip",
+        })
+        bookingFixedMarkerRef.current = marker
+      }
+
+      // Fixed Point A (Pickup) when user is setting Destination (B)
+      if (targetPinMode === "destination" && pickupCoords) {
+        const pickupFixedIcon = L.divIcon({
+          className: "fixed-map-pin pin-pickup-fixed",
+          html: `
+            <div class="fixed-pin-bubble">
+              <span class="fixed-pin-tag">🟢 Điểm đón (A)</span>
+            </div>
+            <div class="fixed-pin-marker fixed-pin-green">
+              <span class="fixed-pin-badge">A</span>
+              <span class="fixed-pin-point"></span>
+            </div>
+            <div class="fixed-pin-shadow"></div>
+          `,
+          iconSize: [44, 58],
+          iconAnchor: [22, 54],
+        })
+
+        const marker = L.marker([pickupCoords.lat, pickupCoords.lng], {
+          icon: pickupFixedIcon,
+          zIndexOffset: 600,
+        }).addTo(bookingLayer)
+
+        marker.on("click", (e) => {
+          L.DomEvent.stopPropagation(e)
+          handleSwitchPinModeRef.current("pickup")
+        })
+
+        marker.bindTooltip("Chạm để chỉnh Điểm đón (A)", {
+          direction: "top",
+          offset: [0, -48],
+          className: "pin-interactive-tooltip",
+        })
+        bookingFixedMarkerRef.current = marker
+      }
+
+      // Connecting Dashed Route Line between A and B
+      if (pickupCoords && destCoords) {
+        const line = L.polyline(
+          [
+            [pickupCoords.lat, pickupCoords.lng],
+            [destCoords.lat, destCoords.lng],
+          ],
+          {
+            color: targetPinMode === "pickup" ? "#10b981" : "#ef4444",
+            weight: 3.5,
+            opacity: 0.85,
+            dashArray: "8, 8",
+          }
+        ).addTo(bookingLayer)
+        bookingRoutePolylineRef.current = line
+      }
+    },
+    [mode, phase]
+  )
+
+  const updateBookingVisualsRef = useRef(updateBookingVisuals)
+  useEffect(() => {
+    updateBookingVisualsRef.current = updateBookingVisuals
+  }, [updateBookingVisuals])
+
+  const handleSwitchPinMode = useCallback(
+    (target: "pickup" | "destination") => {
+      setPinMode(target)
+      pinModeRef.current = target
+      const map = mapRef.current
+      if (!map) return
+
+      if (target === "pickup") {
+        if (pickupCoordsRef.current) {
+          map.flyTo([pickupCoordsRef.current.lat, pickupCoordsRef.current.lng], map.getZoom(), {
+            duration: 0.8,
+          })
+          reverseGeocode(pickupCoordsRef.current.lat, pickupCoordsRef.current.lng, "pickup")
+        }
+      } else {
+        if (!destCoordsRef.current) {
+          const center = map.getCenter()
+          destCoordsRef.current = { lat: center.lat + 0.007, lng: center.lng + 0.009 }
+        }
+        map.flyTo([destCoordsRef.current.lat, destCoordsRef.current.lng], map.getZoom(), {
+          duration: 0.8,
+        })
+        reverseGeocode(destCoordsRef.current.lat, destCoordsRef.current.lng, "destination")
+      }
+
+      setTimeout(() => {
+        updateBookingVisuals(target)
+      }, 60)
+    },
+    [reverseGeocode, updateBookingVisuals]
+  )
+
+  useEffect(() => {
+    handleSwitchPinModeRef.current = handleSwitchPinMode
+  }, [handleSwitchPinMode])
+
+  useEffect(() => {
+    updateBookingVisuals(pinMode)
+  }, [pinMode, updateBookingVisuals])
+
+  // 1. Initialize Leaflet Map Instance
+  useEffect(() => {
+    if (!mapContainerRef.current) return
+    if (mapRef.current) return // Prevent duplicate map container in React 19
+
+    const defaultCity = VIETNAM_CITIES[0]
+    const map = L.map(mapContainerRef.current, {
+      center: [defaultCity.lat, defaultCity.lng],
+      zoom: defaultCity.zoom,
+      zoomControl: false,
+      attributionControl: false,
+    })
+
+    const initialTileConfig = TILE_SERVERS.standard
+    const tileLayer = L.tileLayer(initialTileConfig.url, {
+      maxZoom: initialTileConfig.maxZoom,
+      subdomains: initialTileConfig.subdomains,
+    }).addTo(map)
+
+    const markersLayer = L.layerGroup().addTo(map)
+    const bookingLayer = L.layerGroup().addTo(map)
+
+    mapRef.current = map
+    tileLayerRef.current = tileLayer
+    markersLayerRef.current = markersLayer
+    bookingLayerRef.current = bookingLayer
+
+    // Setup initial coordinates
+    const initialPickup = { lat: defaultCity.lat, lng: defaultCity.lng }
+    const initialDest = { lat: defaultCity.lat - 0.0035, lng: defaultCity.lng + 0.0035 }
+    if (!pickupCoordsRef.current) {
+      pickupCoordsRef.current = initialPickup
+    }
+    if (!destCoordsRef.current) {
+      destCoordsRef.current = initialDest
+      reverseGeocode(defaultCity.lat - 0.0035, defaultCity.lng + 0.0035, "destination")
+    }
+    if (!initialMapStateRef.current) {
+      initialMapStateRef.current = {
+        center: [defaultCity.lat, defaultCity.lng],
+        zoom: defaultCity.zoom,
+        pickup: initialPickup,
+        dest: initialDest,
+        cityId: defaultCity.id,
+      }
+    }
+    emitRouteCoordinates()
+    setTimeout(() => {
+      updateBookingVisualsRef.current?.("pickup")
+    }, 100)
+
+    // Invalidate size once DOM stabilizes
+    setTimeout(() => {
+      map.invalidateSize()
+    }, 250)
+
+    // Map drag / pan listeners for central pin
+    map.on("movestart", () => {
+      setPinLifted(true)
+    })
+
+    map.on("moveend", () => {
+      setPinLifted(false)
+      const center = map.getCenter()
+      const currentTarget = pinModeRef.current
+      if (currentTarget === "pickup") {
+        pickupCoordsRef.current = { lat: center.lat, lng: center.lng }
+      } else {
+        destCoordsRef.current = { lat: center.lat, lng: center.lng }
+      }
+      reverseGeocode(center.lat, center.lng, currentTarget)
+      updateBookingVisualsRef.current?.(currentTarget)
+      emitRouteCoordinates()
+    })
+
+    // Auto-detect Device GPS on initial load
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords
+          // Check if user is roughly within Vietnam boundary (Lat: 8-24, Lng: 102-110)
+          if (latitude >= 8 && latitude <= 24 && longitude >= 102 && longitude <= 110) {
+            updateUserLocationMarker(latitude, longitude, accuracy)
+            pickupCoordsRef.current = { lat: latitude, lng: longitude }
+            const gpsDest = { lat: latitude - 0.0035, lng: longitude + 0.0035 }
+            if (!destCoordsRef.current) {
+              destCoordsRef.current = gpsDest
+            }
+            initialMapStateRef.current = {
+              center: [latitude, longitude],
+              zoom: 16,
+              pickup: { lat: latitude, lng: longitude },
+              dest: gpsDest,
+              cityId: defaultCity.id,
+            }
+            map.flyTo([latitude, longitude], 16, { duration: 1.2 })
+            reverseGeocode(latitude, longitude, "pickup")
+            reverseGeocode(latitude - 0.0035, longitude + 0.0035, "destination")
+            updateBookingVisualsRef.current?.("pickup")
+            emitRouteCoordinates()
+          }
+        },
+        () => {
+          // If denied, remain in TP.HCM smoothly
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      )
+    }
+
+    return () => {
+      if (reverseGeocodeTimeoutRef.current) {
+        window.clearTimeout(reverseGeocodeTimeoutRef.current)
+      }
+      if (userLocationMarkerRef.current) {
+        userLocationMarkerRef.current.remove()
+        userLocationMarkerRef.current = null
+      }
+      if (userAccuracyCircleRef.current) {
+        userAccuracyCircleRef.current.remove()
+        userAccuracyCircleRef.current = null
+      }
+      if (bookingFixedMarkerRef.current) {
+        bookingFixedMarkerRef.current.remove()
+        bookingFixedMarkerRef.current = null
+      }
+      if (bookingRoutePolylineRef.current) {
+        bookingRoutePolylineRef.current.remove()
+        bookingRoutePolylineRef.current = null
+      }
+      if (bookingLayerRef.current) {
+        bookingLayerRef.current.clearLayers()
+        bookingLayerRef.current.remove()
+        bookingLayerRef.current = null
+      }
+      map.remove()
+      mapRef.current = null
+      tileLayerRef.current = null
+      markersLayerRef.current = null
+      routeLayerRef.current = null
+      movingTruckMarkerRef.current = null
+    }
+  }, [reverseGeocode, updateUserLocationMarker])
+
+  // 2. Handle Map Layer switching
+  useEffect(() => {
+    if (!tileLayerRef.current || !mapRef.current) return
+    const cfg = TILE_SERVERS[layer]
+    tileLayerRef.current.setUrl(cfg.url)
+    tileLayerRef.current.options.maxZoom = cfg.maxZoom
+    if (cfg.subdomains) {
+      tileLayerRef.current.options.subdomains = cfg.subdomains
+    }
+  }, [layer])
+
+  // Isolate City Switcher from Leaflet map dragging
+  useEffect(() => {
+    const el = cityWrapperRef.current
+    if (el) {
+      L.DomEvent.disableClickPropagation(el)
+      L.DomEvent.disableScrollPropagation(el)
+    }
+  }, [mode, isBooking])
+
+  // Drag-to-scroll & wheel logic for City Switcher
+  const handleCityPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return
+    const container = cityScrollRef.current
+    if (!container) return
+    isDraggingCity.current = true
+    hasDragged.current = false
+    dragStartX.current = e.clientX
+    dragScrollLeft.current = container.scrollLeft
   }
 
-  const onMouseMove = (e: ReactMouseEvent) => {
-    if (!isDragging.current) return
+  const handleCityPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingCity.current) return
+    const container = cityScrollRef.current
+    if (!container) return
+    const deltaX = e.clientX - dragStartX.current
+    if (Math.abs(deltaX) > 4) {
+      hasDragged.current = true
+    }
+    container.scrollLeft = dragScrollLeft.current - deltaX
+  }
 
-    const dx = e.clientX - dragStart.current.x
+  const handleCityPointerUp = () => {
+    isDraggingCity.current = false
+    setTimeout(() => {
+      hasDragged.current = false
+    }, 60)
+  }
 
-    const dy = e.clientY - dragStart.current.y
+  const handleCityWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const container = cityScrollRef.current
+    if (!container) return
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+    if (delta !== 0) {
+      container.scrollLeft += delta
+    }
+  }
 
-    setPan({
-      x: panStart.current.x + dx,
-
-      y: panStart.current.y + dy,
+  const handleScrollCity = (direction: "left" | "right") => {
+    const container = cityScrollRef.current
+    if (!container) return
+    container.scrollBy({
+      left: direction === "left" ? -140 : 140,
+      behavior: "smooth",
     })
   }
 
-  const onMouseUp = () => {
-    if (!isDragging.current) return
-
-    isDragging.current = false
-
-    setDragging(false)
-
-    if (isBooking) {
-      setPinLifted(false)
-
-      // Pick dynamic nearby address when dropped
-
-      const randomIdx = Math.floor(
-        Math.abs(pan.x + pan.y) % STREET_NAMES.length,
-      )
-
-      onPickupChange?.(STREET_NAMES[randomIdx])
-    }
-  }
-
-  // Touch Drag & Pinch Events
-
-  const onTouchStart = (e: ReactTouchEvent) => {
-    if (e.touches.length === 1) {
-      isDragging.current = true
-
-      dragStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-
-      panStart.current = { ...pan }
-
-      setDragging(true)
-
-      if (isBooking) setPinLifted(true)
-    } else if (e.touches.length === 2) {
-      // Pinch to zoom start
-
-      isDragging.current = false
-
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-
-      touchDistance.current = Math.hypot(dx, dy)
-
-      zoomStart.current = zoom
-    }
-  }
-
-  const onTouchMove = (e: ReactTouchEvent) => {
-    if (e.touches.length === 1 && isDragging.current) {
-      const dx = e.touches[0].clientX - dragStart.current.x
-
-      const dy = e.touches[0].clientY - dragStart.current.y
-
-      setPan({
-        x: panStart.current.x + dx,
-
-        y: panStart.current.y + dy,
+  // 3. Switch City Quick Button
+  const handleCityChange = useCallback((city: typeof VIETNAM_CITIES[0]) => {
+    if (hasDragged.current) return
+    setActiveCityId(city.id)
+    pickupCoordsRef.current = { lat: city.lat, lng: city.lng }
+    destCoordsRef.current = { lat: city.lat - 0.0035, lng: city.lng + 0.0035 }
+    emitRouteCoordinates()
+    if (mapRef.current) {
+      mapRef.current.flyTo([city.lat, city.lng], city.zoom, {
+        duration: 1.2,
       })
-    } else if (e.touches.length === 2 && touchDistance.current !== null) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX
-
-      const dy = e.touches[0].clientY - e.touches[1].clientY
-
-      const dist = Math.hypot(dx, dy)
-
-      const ratio = dist / touchDistance.current
-
-      setZoom(Math.min(2.5, Math.max(0.7, zoomStart.current * ratio)))
+      reverseGeocode(city.lat, city.lng, "pickup")
+      reverseGeocode(city.lat - 0.0035, city.lng + 0.0035, "destination")
+      setTimeout(() => {
+        updateBookingVisualsRef.current?.(pinModeRef.current)
+      }, 300)
     }
-  }
+  }, [reverseGeocode])
 
-  const onTouchEnd = () => {
-    if (isDragging.current) {
-      isDragging.current = false
+  // 4. GPS "Locate Me" Button
+  const handleLocateMe = useCallback(() => {
+    if (!navigator.geolocation || !mapRef.current) return
+    setIsLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setIsLocating(false)
+        const { latitude, longitude, accuracy } = pos.coords
+        updateUserLocationMarker(latitude, longitude, accuracy)
+        if (mapRef.current) {
+          mapRef.current.flyTo([latitude, longitude], 16, {
+            duration: 1.2,
+          })
+          reverseGeocode(latitude, longitude)
+        }
+      },
+      (err) => {
+        setIsLocating(false)
+        console.warn("GPS Geolocation error:", err.message)
+        // Fallback to active city
+        const current = VIETNAM_CITIES.find((c) => c.id === activeCityId) || VIETNAM_CITIES[0]
+        mapRef.current?.flyTo([current.lat, current.lng], current.zoom, { duration: 0.8 })
+        reverseGeocode(current.lat, current.lng)
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    )
+  }, [activeCityId, reverseGeocode, updateUserLocationMarker])
 
-      setDragging(false)
+  // 4b. Reset Map & Location Back to Initial Position
+  const handleResetToInitial = useCallback(() => {
+    if (!mapRef.current) return
+    setIsResetting(true)
+    setTimeout(() => setIsResetting(false), 600)
 
-      if (isBooking) {
-        setPinLifted(false)
+    if (mode === "driver") {
+      const center = mapRef.current.getCenter()
+      mapRef.current.flyTo([center.lat, center.lng], 16, { duration: 0.8 })
+      setResetToast("✓ Đã căn giữa vị trí xe")
+      if (resetToastTimerRef.current) window.clearTimeout(resetToastTimerRef.current)
+      resetToastTimerRef.current = window.setTimeout(() => setResetToast(null), 2200)
+      return
+    }
 
-        const randomIdx = Math.floor(
-          Math.abs(pan.x + pan.y) % STREET_NAMES.length,
-        )
+    const defaultCity = VIETNAM_CITIES[0]
+    const state = initialMapStateRef.current || {
+      center: [defaultCity.lat, defaultCity.lng] as [number, number],
+      zoom: defaultCity.zoom,
+      pickup: { lat: defaultCity.lat, lng: defaultCity.lng },
+      dest: { lat: defaultCity.lat - 0.0035, lng: defaultCity.lng + 0.0035 },
+      cityId: defaultCity.id,
+    }
 
-        onPickupChange?.(STREET_NAMES[randomIdx])
+    // 1. Reset map view smoothly
+    mapRef.current.flyTo(state.center, state.zoom, { duration: 1.0 })
+
+    // 2. Reset pin mode to pickup (A)
+    setPinMode("pickup")
+    pinModeRef.current = "pickup"
+
+    // 3. Reset coords
+    pickupCoordsRef.current = { ...state.pickup }
+    destCoordsRef.current = { ...state.dest }
+    emitRouteCoordinates()
+
+    // 4. Reset active city
+    setActiveCityId(state.cityId)
+
+    // 5. Reverse geocode back for both points
+    reverseGeocode(state.pickup.lat, state.pickup.lng, "pickup")
+    reverseGeocode(state.dest.lat, state.dest.lng, "destination")
+
+    // 6. Update visuals (connecting line & fixed marker)
+    updateBookingVisualsRef.current?.("pickup")
+
+    // 7. Show toast feedback
+    if (resetToastTimerRef.current) window.clearTimeout(resetToastTimerRef.current)
+    setResetToast("✓ Đã đặt lại vị trí ban đầu")
+    resetToastTimerRef.current = window.setTimeout(() => {
+      setResetToast(null)
+    }, 2400)
+  }, [mode, reverseGeocode])
+
+  // 5. Zoom Handlers
+  const handleZoomIn = () => mapRef.current?.zoomIn()
+  const handleZoomOut = () => mapRef.current?.zoomOut()
+
+  // 6. Nearby Drivers Radar (when searching or driver online)
+  // 6. Nearby Drivers Radar (when searching or driver mode)
+  useEffect(() => {
+    if (!mapRef.current || !markersLayerRef.current) return
+    const markersLayer = markersLayerRef.current
+    markersLayer.clearLayers()
+
+    // In customer mode, only show if searching
+    if (mode === "customer" && !isSearching) {
+      return
+    }
+
+    // In driver mode, don't show idle markers if already working a trip (route polyline handles it)
+    if (mode === "driver" && jobState !== "none") {
+      return
+    }
+
+    const center = mapRef.current.getCenter()
+
+    // ==========================================
+    // A. DRIVER MODE: ALWAYS RENDER DRIVER'S OWN TRUCK (ONLINE & OFFLINE)
+    // ==========================================
+    if (mode === "driver") {
+      const isOnline = Boolean(online)
+      const myName = driverName || "Tài xế"
+      const myPlate = driverPlate || "51D-892.41"
+
+      const myIcon = L.divIcon({
+        className: `leaflet-truck-marker is-my-truck ${isOnline ? "is-online" : "is-offline"}`,
+        html: `
+          <div class="truck-marker-inner is-me ${isOnline ? "online-me" : "offline-me"}">
+            ${isOnline ? '<span class="truck-pulse-ring pulse-me"></span>' : ""}
+            <span class="truck-emoji">🚛</span>
+            <span class="truck-plate-tag tag-me ${isOnline ? "" : "tag-offline"}">
+              ${isOnline ? "Xe của bạn" : "Xe của bạn (Tạm nghỉ)"}
+            </span>
+          </div>
+        `,
+        iconSize: [46, 46],
+        iconAnchor: [23, 23],
+      })
+
+      const myMarker = L.marker([center.lat, center.lng], {
+        icon: myIcon,
+        zIndexOffset: 2000,
+      })
+
+      myMarker.bindPopup(`
+        <div style="font-family: inherit; font-size: 13px; min-width: 175px; line-height: 1.5; padding: 2px;">
+          <div style="font-weight: 700; color: ${isOnline ? "#059669" : "#475569"}; margin-bottom: 2px;">
+            📍 Vị trí xe của bạn
+          </div>
+          <div>Tài xế: <b>${myName}</b></div>
+          <div>Biển số: <b>${myPlate}</b></div>
+          <div style="margin-top: 5px; font-size: 11px; color: ${isOnline ? "#10b981" : "#64748b"}; font-weight: 600;">
+            ${isOnline ? "🟢 Đang trực tuyến (Sẵn sàng nhận cuốc)" : "⚪ Ngoại tuyến (Tạm nghỉ - Bấm Bật để nhận cuốc)"}
+          </div>
+        </div>
+      `)
+      markersLayer.addLayer(myMarker)
+
+      // If online, render radar circle & demand hotspots
+      if (isOnline && demandHotspots && demandHotspots.length > 0) {
+        demandHotspots.forEach((h) => {
+          if (!h.lat || !h.lng) return
+          const isSurge = h.count > 0
+          const circleColor = isSurge ? "#f59e0b" : "#10b981"
+          const circle = L.circle([h.lat, h.lng], {
+            radius: h.radiusMeters || 1500,
+            color: circleColor,
+            fillColor: circleColor,
+            fillOpacity: isSurge ? 0.16 : 0.08,
+            weight: 1.5,
+            dashArray: "6, 6",
+          })
+          const tooltipContent = isSurge
+            ? `<b>🔥 ${h.district}</b><br/>${h.count} đơn hàng chờ (+15% cước)`
+            : `<b>🟢 ${h.district}</b><br/>Bán kính quét đơn ưu tiên (~${Math.round((h.radiusMeters || 1500) / 1000)} km)`
+          circle.bindTooltip(tooltipContent, {
+            permanent: false,
+            direction: "top",
+          })
+          markersLayer.addLayer(circle)
+        })
+      }
+      return
+    }
+
+    // ==========================================
+    // B. CUSTOMER MODE: FETCH & RENDER NEARBY FLEET
+    // ==========================================
+    const url = `/api/v1/driver/nearby?lat=${center.lat}&lng=${center.lng}&radiusKm=8&limit=6`
+    let isMounted = true
+    fetch(url)
+      .then((r) => r.json())
+      .then((json) => {
+        if (!isMounted || !mapRef.current || !markersLayerRef.current) return
+        let drivers = json.success && Array.isArray(json.data) ? json.data : []
+
+        if (drivers.length === 0) {
+          drivers = [
+            { fullName: "Lê Thành Đạt", licensePlate: "51D-892.41", currentLocation: { latitude: center.lat + 0.005, longitude: center.lng + 0.004 } },
+            { fullName: "Trần Minh Quân", licensePlate: "29H-712.05", currentLocation: { latitude: center.lat - 0.006, longitude: center.lng + 0.005 } },
+            { fullName: "Võ Tuấn Kiệt", licensePlate: "43C-663.18", currentLocation: { latitude: center.lat + 0.004, longitude: center.lng - 0.007 } },
+          ]
+        }
+
+        drivers.forEach((d: any) => {
+          const lat = Number(d.currentLocation?.latitude ?? d.lat)
+          const lng = Number(d.currentLocation?.longitude ?? d.lng)
+          if (!lat || !lng) return
+
+          const name = d.fullName || d.name || "Tài xế"
+          const plate = d.licensePlate || ""
+
+          const icon = L.divIcon({
+            className: "leaflet-truck-marker",
+            html: `
+              <div class="truck-marker-inner">
+                <span class="truck-pulse-ring"></span>
+                <span class="truck-emoji">🚚</span>
+                ${plate ? `<span class="truck-plate-tag">${plate}</span>` : ""}
+              </div>
+            `,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20],
+          })
+
+          const marker = L.marker([lat, lng], { icon })
+          marker.bindPopup(`<b>${name}</b><br/>Biển số: ${plate || "N/A"}`)
+          markersLayer.addLayer(marker)
+        })
+      })
+      .catch((err) => console.warn("Lỗi tải radar Leaflet:", err))
+
+    return () => {
+      isMounted = false
+    }
+  }, [isSearching, mode, online, jobState, demandHotspots, driverName, driverPlate])
+
+  // 7. Route and Truck Animation during Active Trip (Tracking mode)
+  useEffect(() => {
+    if (!mapRef.current || !markersLayerRef.current) return
+    const map = mapRef.current
+    const markersLayer = markersLayerRef.current
+
+    if (isCustomerTracking || isDriverWorking) {
+      // Pick coordinates based on map center and route offset
+      const center = map.getCenter()
+      const pickupLatLng: [number, number] = [center.lat - 0.006, center.lng - 0.008]
+      const destLatLng: [number, number] = [center.lat + 0.012, center.lng + 0.014]
+
+      // L.Polyline along real route coordinates
+      const waypoints: [number, number][] = [
+        pickupLatLng,
+        [center.lat - 0.001, center.lng - 0.003],
+        [center.lat + 0.005, center.lng + 0.006],
+        destLatLng,
+      ]
+
+      if (routeLayerRef.current) {
+        routeLayerRef.current.remove()
+      }
+
+      const polyline = L.polyline(waypoints, {
+        color: "#1478d4",
+        weight: 6,
+        opacity: 0.9,
+        dashArray: "8, 6",
+      }).addTo(map)
+      routeLayerRef.current = polyline
+
+      // Pickup Marker
+      const pickupIcon = L.divIcon({
+        className: "route-marker-pin",
+        html: `
+          <div class="route-pickup-dot">
+            <span class="pulse-core"></span>
+          </div>
+        `,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      })
+      const pickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(markersLayer)
+      pickupMarker.bindPopup(`<b>Điểm Lấy Hàng</b><br/>${pickupAddr || "Vị trí nhận hàng"}`)
+
+      // Destination Marker
+      const destIcon = L.divIcon({
+        className: "route-marker-pin",
+        html: `
+          <div class="route-dest-badge">
+            <span>🏁</span>
+          </div>
+        `,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+      })
+      const destMarker = L.marker(destLatLng, { icon: destIcon }).addTo(markersLayer)
+      destMarker.bindPopup(`<b>Điểm Giao Hàng</b><br/>${destAddr || "Vị trí giao hàng"}`)
+
+      // Moving Truck Marker
+      const truckIcon = L.divIcon({
+        className: "route-moving-truck",
+        html: `
+          <div class="moving-truck-badge">
+            <span class="truck-radar-wave"></span>
+            <span class="truck-icon-glyph">🚛</span>
+          </div>
+        `,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22],
+      })
+
+      const movingTruck = L.marker(pickupLatLng, { icon: truckIcon }).addTo(markersLayer)
+      movingTruckMarkerRef.current = movingTruck
+
+      // Fit bounds nicely with padding
+      map.fitBounds(polyline.getBounds(), { padding: [70, 70] })
+
+      return () => {
+        polyline.remove()
+        routeLayerRef.current = null
+        movingTruck.remove()
+        movingTruckMarkerRef.current = null
+      }
+    } else {
+      if (routeLayerRef.current) {
+        routeLayerRef.current.remove()
+        routeLayerRef.current = null
+      }
+      if (movingTruckMarkerRef.current) {
+        movingTruckMarkerRef.current.remove()
+        movingTruckMarkerRef.current = null
       }
     }
+  }, [isCustomerTracking, isDriverWorking, pickupAddr, destAddr])
 
-    touchDistance.current = null
-  }
+  // 8. Progressively interpolate truck marker along the route
+  useEffect(() => {
+    if (!isCustomerTracking && !isDriverWorking) return
 
-  // Wheel zoom
+    const interval = window.setInterval(() => {
+      setDriverProgress((prev) => {
+        const next = prev >= 1 ? 0 : prev + 0.015
+        if (movingTruckMarkerRef.current && routeLayerRef.current) {
+          const latlngs = routeLayerRef.current.getLatLngs() as L.LatLng[]
+          if (latlngs && latlngs.length >= 2) {
+            // Linear segment interpolation
+            const totalSegments = latlngs.length - 1
+            const scaled = next * totalSegments
+            const index = Math.min(Math.floor(scaled), totalSegments - 1)
+            const fraction = scaled - index
 
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault()
+            const p1 = latlngs[index]
+            const p2 = latlngs[index + 1]
 
-    const delta = e.deltaY * -0.0015
+            const curLat = p1.lat + (p2.lat - p1.lat) * fraction
+            const curLng = p1.lng + (p2.lng - p1.lng) * fraction
+            movingTruckMarkerRef.current.setLatLng([curLat, curLng])
+          }
+        }
+        return next
+      })
+    }, 120)
 
-    setZoom((z) =>
-      Math.min(2.4, Math.max(0.75, Number((z + delta).toFixed(2)))),
-    )
-  }
-
-  // Compute animated driver coordinates along bezier path
-
-  const calcDriverPos = (t: number) => {
-    const isToPickup =
-      phase === "arriving" || phase === "found" || jobState === "toPickup"
-
-    const p0 = isToPickup ? ROUTE_DRIVER_START : ROUTE_PICKUP
-
-    const p1 = isToPickup ? { x: 120, y: 180 } : { x: 240, y: 170 }
-
-    const p2 = isToPickup ? ROUTE_PICKUP : ROUTE_DEST
-
-    // Quadratic Bezier
-
-    const u = 1 - t
-
-    const tt = t * t
-
-    const uu = u * u
-
-    const x = uu * p0.x + 2 * u * t * p1.x + tt * p2.x
-
-    const y = uu * p0.y + 2 * u * t * p1.y + tt * p2.y
-
-    // Angle of heading
-
-    const dx = 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x)
-
-    const dy = 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y)
-
-    const angle = (Math.atan2(dy, dx) * 180) / Math.PI
-
-    return { x, y, angle }
-  }
-
-  const driverPos = calcDriverPos(driverProgress)
+    return () => window.clearInterval(interval)
+  }, [isCustomerTracking, isDriverWorking])
 
   return (
     <div
-      aria-label="Bản đồ tương tác khu vực TP. Hồ Chí Minh"
-      className={`interactive-map-root layer-${layer} ${
-        dragging ? "is-dragging" : ""
-      }`}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
-      onTouchCancel={onTouchEnd}
-      onTouchEnd={onTouchEnd}
-      onTouchMove={onTouchMove}
-      onTouchStart={onTouchStart}
-      onWheel={onWheel}
-      ref={containerRef}
+      aria-label="Bản đồ tương tác toàn quốc 63 tỉnh thành"
+      className={`interactive-map-root leaflet-real-map layer-${layer} ${layerMenuOpen ? "layer-menu-active" : ""}`}
     >
-      {/* Map Content Transform World */}
+      {/* Real Leaflet Map Canvas */}
       <div
-        className="map-world"
-        style={{
-          transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
-        }}
-      >
-        {/* Vector City Base Map */}
-        <div className="vector-map-bg">
-          <div className="map-grid-mesh" />
+        className="leaflet-map-canvas"
+        ref={mapContainerRef}
+        style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
+      />
 
-          {/* Saigon River & Canals */}
-          <svg
-            aria-hidden="true"
-            className="waterways-svg"
-            viewBox="0 0 600 900"
+      {/* Floating City Switcher Bar (Toàn Quốc - Kéo ngang & điều hướng mượt mà) */}
+      {mode === "customer" && isBooking && (
+        <div
+          className="city-switcher-wrapper glass"
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          ref={cityWrapperRef}
+        >
+          <button
+            aria-label="Cuộn sang trái"
+            className="city-scroll-arrow left"
+            onClick={() => handleScrollCity("left")}
+            title="Xem thành phố trước"
+            type="button"
           >
-            <path
-              className="saigon-river"
-              d="M380,-50 C410,120 460,280 430,420 C400,560 480,720 540,950"
-            />
-            <path
-              className="ben-nghe-canal"
-              d="M430,420 C320,440 220,490 100,560 C40,600 -20,640 -60,680"
-            />
-            <path
-              className="nhieu-loc-canal"
-              d="M390,140 C280,110 180,130 90,180 C20,220 -40,250 -80,300"
-            />
-          </svg>
-
-          {/* Green Parks */}
-          <div
-            className="park park-tao-dan"
-            style={{ left: 110, top: 290, width: 110, height: 75 }}
-          >
-            <span>CV Tao Đàn</span>
-          </div>
-          <div
-            className="park park-le-van-tam"
-            style={{ left: 180, top: 140, width: 95, height: 65 }}
-          >
-            <span>CV Lê Văn Tám</span>
-          </div>
-          <div
-            className="park park-zoo"
-            style={{ left: 340, top: 190, width: 90, height: 70 }}
-          >
-            <span>Thảo Cầm Viên</span>
-          </div>
-          <div
-            className="park park-23-9"
-            style={{ left: 90, top: 400, width: 140, height: 45 }}
-          >
-            <span>CV 23 Tháng 9</span>
-          </div>
-
-          {/* Urban District Labels */}
-          <span className="district-tag" style={{ left: 240, top: 280 }}>
-            QUẬN 1
-          </span>
-          <span className="district-tag" style={{ left: 140, top: 180 }}>
-            QUẬN 3
-          </span>
-          <span className="district-tag" style={{ left: 260, top: 510 }}>
-            QUẬN 4
-          </span>
-          <span className="district-tag" style={{ left: 340, top: 90 }}>
-            BÌNH THẠNH
-          </span>
-
-          {/* Main Road Network */}
-          <svg aria-hidden="true" className="roads-svg" viewBox="0 0 600 900">
-            {/* Primary Arteries */}
-            <path className="road-artery" d="M-50,220 L550,200" />
-            <path className="road-artery" d="M-50,320 L550,290" />
-            <path className="road-artery" d="M120,-50 L260,850" />
-            <path className="road-artery" d="M250,-50 L380,850" />
-            <path className="road-artery" d="M-50,120 L450,750" />
-            <path className="road-artery" d="M-50,450 L550,430" />
-
-            {/* Secondary Local Roads */}
-            <path className="road-local" d="M30,-50 L120,850" />
-            <path className="road-local" d="M340,-50 L440,850" />
-            <path className="road-local" d="M-50,260 L450,240" />
-            <path className="road-local" d="M-50,380 L550,360" />
-            <path className="road-local" d="M80,80 L480,480" />
-          </svg>
-
-          {/* Street Name Labels */}
-          <span
-            className="street-label"
-            style={{ left: 120, top: 205, transform: "rotate(-2deg)" }}
-          >
-            Nguyễn Đình Chiểu
-          </span>
-          <span
-            className="street-label"
-            style={{ left: 160, top: 295, transform: "rotate(-3deg)" }}
-          >
-            Điện Biên Phủ
-          </span>
-          <span
-            className="street-label"
-            style={{ left: 200, top: 120, transform: "rotate(79deg)" }}
-          >
-            Hai Bà Trưng
-          </span>
-          <span
-            className="street-label"
-            style={{ left: 295, top: 240, transform: "rotate(78deg)" }}
-          >
-            Nam Kỳ Khởi Nghĩa
-          </span>
-          <span
-            className="street-label"
-            style={{ left: 240, top: 480, transform: "rotate(-2deg)" }}
-          >
-            Hoàng Diệu · Q.4
-          </span>
-
-          {/* Live Heat Zones when Traffic Layer is ON or in Driver Hot zone */}
-          {(layer === "traffic" ||
-            (mode === "driver" && online && jobState === "none")) && (
-            <>
-              <div
-                className="hot-zone"
-                style={{ left: 190, top: 220, width: 170, height: 130 }}
-              />
-              <div
-                className="hot-zone"
-                style={{ left: 280, top: 310, width: 140, height: 110 }}
-              />
-              <span className="hot-zone-tag" style={{ left: 180, top: 200 }}>
-                🔥 Nhu cầu cao +15%
-              </span>
-            </>
-          )}
-
-          {/* Nearby Drivers when Searching */}
-          {isSearching && (
-            <>
-              {nearbyTrucks.map((d, i) => (
-                <div
-                  className="nearby-truck-marker"
-                  key={i}
-                  title={d.name ? `${d.name} (${d.plate || "Xe tải"})` : "Tài xế sẵn sàng"}
-                  style={{ left: d.x, top: d.y, animationDelay: d.delay }}
-                >
-                  <span className="truck-pulse" />
-                  <span className="truck-icon">🚚</span>
-                </div>
-              ))}
-            </>
-          )}
-
-          {/* Live Active Trip Navigation Route */}
-          {(isCustomerTracking || isDriverWorking) && (
             <svg
-              aria-hidden="true"
-              className="trip-route-svg"
-              viewBox="0 0 600 900"
+              fill="none"
+              height={12}
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2.5}
+              viewBox="0 0 24 24"
+              width={12}
             >
-              <defs>
-                <linearGradient
-                  id="routeGlow"
-                  x1="0%"
-                  y1="0%"
-                  x2="100%"
-                  y2="100%"
-                >
-                  <stop offset="0%" stopColor="#1478d4" />
-                  <stop offset="100%" stopColor="#19a96b" />
-                </linearGradient>
-              </defs>
-              {/* Route Casing Outline */}
-              <path
-                className="trip-route-casing"
-                d={`M${ROUTE_PICKUP.x},${ROUTE_PICKUP.y} Q240,170 ${ROUTE_DEST.x},${ROUTE_DEST.y}`}
-              />
-              {/* Route Active Dash Stroke */}
-              <path
-                className="trip-route-core"
-                d={`M${ROUTE_PICKUP.x},${ROUTE_PICKUP.y} Q240,170 ${ROUTE_DEST.x},${ROUTE_DEST.y}`}
-              />
+              <polyline points="15 18 9 12 15 6" />
             </svg>
-          )}
+          </button>
 
-          {/* Destination Pin Marker */}
-          {(isCustomerTracking || isDriverWorking) && (
-            <div
-              className="dest-point-marker"
-              style={{ left: ROUTE_DEST.x, top: ROUTE_DEST.y }}
-            >
-              <span className="dest-pin-badge">
-                <i>📍</i>
-              </span>
-              <span className="dest-pin-label">
-                {destAddr ? destAddr.split(",")[0] : "Điểm giao"}
-              </span>
-            </div>
-          )}
-
-          {/* Live Animated Driver Truck */}
-          {(isCustomerTracking || isDriverWorking) && (
-            <div
-              className="live-driver-truck"
-              style={{
-                left: driverPos.x,
-
-                top: driverPos.y,
-
-                transform: `translate(-50%, -50%) rotate(${driverPos.angle}deg)`,
-              }}
-            >
-              <span className="truck-radar-wave" />
-              <div className="truck-vehicle-body">
-                <span className="truck-glyph">🚛</span>
-              </div>
-            </div>
-          )}
-
-          {/* Pickup Pin Marker (Interactive Lift-on-Drag) */}
           <div
-            className={`interactive-center-pin ${pinLifted ? "is-lifted" : ""}`}
-            style={{ left: ROUTE_PICKUP.x, top: ROUTE_PICKUP.y }}
+            className="city-switcher-scroll"
+            onPointerCancel={handleCityPointerUp}
+            onPointerDown={handleCityPointerDown}
+            onPointerLeave={handleCityPointerUp}
+            onPointerMove={handleCityPointerMove}
+            onPointerUp={handleCityPointerUp}
+            onWheel={handleCityWheel}
+            ref={cityScrollRef}
           >
-            {isSearching && (
-              <>
-                <span className="radar-radar-ring" />
-                <span className="radar-radar-ring ring-delay" />
-              </>
-            )}
-            <span className="pin-ground-shadow" />
-            <div className="pin-head">
-              <span className="pin-inner-dot" />
-            </div>
-            {isBooking && (
-              <div className="pin-callout-bubble">
-                <span className="pin-callout-text">
-                  {pickupAddr ? pickupAddr.split(",")[0] : "Điểm lấy hàng"}
-                </span>
-                <small className="pin-callout-sub">
-                  Kéo bản đồ để chỉnh vị trí
-                </small>
-              </div>
-            )}
+            {VIETNAM_CITIES.map((city) => (
+              <button
+                className={`city-pill ${activeCityId === city.id ? "active" : ""}`}
+                key={city.id}
+                onClick={() => handleCityChange(city)}
+                title={`Chuyển bản đồ đến ${city.name}`}
+                type="button"
+              >
+                <span className="city-pill-dot" />
+                <span>{city.shortName}</span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            aria-label="Cuộn sang phải"
+            className="city-scroll-arrow right"
+            onClick={() => handleScrollCity("right")}
+            title="Xem thêm thành phố"
+            type="button"
+          >
+            <svg
+              fill="none"
+              height={12}
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2.5}
+              viewBox="0 0 24 24"
+              width={12}
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* 2-Pin Mode Switcher (Chuyển giữa Tâm đón 🟢 A và Tâm đến 🔴 B) */}
+      {mode === "customer" && isBooking && (
+        <div className="pin-mode-switcher-container">
+          <div className="pin-mode-switcher glass">
+            <button
+              className={`pin-toggle-btn ${pinMode === "pickup" ? "active-pickup" : ""}`}
+              onClick={() => handleSwitchPinMode("pickup")}
+              type="button"
+              title="Chuyển tâm ghim để chọn Vị trí đón / lấy hàng"
+            >
+              <span className="pin-dot-indicator dot-green" />
+              <span>Điểm đón (A)</span>
+            </button>
+            <div className="pin-toggle-divider" />
+            <button
+              className={`pin-toggle-btn ${pinMode === "destination" ? "active-dest" : ""}`}
+              onClick={() => handleSwitchPinMode("destination")}
+              type="button"
+              title="Chuyển tâm ghim để chọn Điểm đến / giao hàng"
+            >
+              <span className="pin-dot-indicator dot-red" />
+              <span>Điểm đến (B)</span>
+            </button>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Center Draggable Pickup/Destination Pin Overlay (Khi đang đặt xe) */}
+      {isBooking && (
+        <div className={`center-pin-overlay mode-${pinMode} ${pinLifted ? "is-lifted" : ""}`}>
+          <div className="center-pin-wrapper">
+            <span className="pin-ground-shadow" />
+            <div className={`pin-head pin-head-${pinMode}`}>
+              <span className="pin-badge-letter">{pinMode === "pickup" ? "A" : "B"}</span>
+            </div>
+
+            {/* Bubble Callout with Real Address */}
+            <div className={`pin-callout-bubble bubble-${pinMode}`}>
+              <span className={`pin-type-tag tag-${pinMode}`}>
+                {pinMode === "pickup" ? "🟢 Điểm lấy hàng (A)" : "🔴 Điểm giao hàng (B)"}
+              </span>
+              <span className="pin-callout-text">
+                {pinMode === "pickup"
+                  ? currentDisplayAddr.split(",")[0] || (geocodingLoading ? "Đang dò tên đường..." : "Điểm đón")
+                  : currentDestDisplayAddr.split(",")[0] || (geocodingLoading ? "Đang dò tên đường..." : "Điểm giao")}
+              </span>
+              <small className="pin-callout-sub">
+                {geocodingLoading
+                  ? "Đang cập nhật vị trí..."
+                  : pinMode === "pickup"
+                  ? "Kéo bản đồ để chọn điểm đón (A)"
+                  : "Kéo bản đồ để chọn điểm đến (B)"}
+              </small>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Map Tools (Controls) */}
       <div className="floating-map-controls">
@@ -690,53 +1238,53 @@ export default function InteractiveMap({
           </button>
 
           {layerMenuOpen && (
-            <div className="layer-dropdown glass-strong">
-              <button
-                className={`layer-opt ${
-                  layer === "standard" ? "selected" : ""
-                }`}
-                onClick={() => {
-                  setLayer("standard")
-
-                  setLayerMenuOpen(false)
-                }}
-                type="button"
-              >
-                <span>🌿 Đô thị chuẩn</span>
-              </button>
-              <button
-                className={`layer-opt ${layer === "traffic" ? "selected" : ""}`}
-                onClick={() => {
-                  setLayer("traffic")
-
-                  setLayerMenuOpen(false)
-                }}
-                type="button"
-              >
-                <span>🚗 Mật độ & Nhu cầu</span>
-              </button>
-              <button
-                className={`layer-opt ${
-                  layer === "satellite" ? "selected" : ""
-                }`}
-                onClick={() => {
-                  setLayer("satellite")
-
-                  setLayerMenuOpen(false)
-                }}
-                type="button"
-              >
-                <span>🌙 Chế độ đêm</span>
-              </button>
-            </div>
+            <>
+              <div
+                aria-hidden="true"
+                className="layer-menu-backdrop"
+                onClick={() => setLayerMenuOpen(false)}
+              />
+              <div className="layer-dropdown glass-strong">
+                <button
+                  className={`layer-opt ${layer === "standard" ? "selected" : ""}`}
+                  onClick={() => {
+                    setLayer("standard")
+                    setLayerMenuOpen(false)
+                  }}
+                  type="button"
+                >
+                  <span>🌿 Đô thị chuẩn (OSM)</span>
+                </button>
+                <button
+                  className={`layer-opt ${layer === "traffic" ? "selected" : ""}`}
+                  onClick={() => {
+                    setLayer("traffic")
+                    setLayerMenuOpen(false)
+                  }}
+                  type="button"
+                >
+                  <span>🌙 Chế độ đêm (CartoDB)</span>
+                </button>
+                <button
+                  className={`layer-opt ${layer === "satellite" ? "selected" : ""}`}
+                  onClick={() => {
+                    setLayer("satellite")
+                    setLayerMenuOpen(false)
+                  }}
+                  type="button"
+                >
+                  <span>🛰️ Ảnh vệ tinh (Esri)</span>
+                </button>
+              </div>
+            </>
           )}
         </div>
 
         {/* Locate / Recenter Button */}
         <button
           aria-label="Định vị về vị trí của tôi"
-          className="icon-button glass locate"
-          onClick={recenter}
+          className={`icon-button glass locate ${isLocating ? "is-locating" : ""}`}
+          onClick={handleLocateMe}
           title="Vị trí của tôi"
           type="button"
         >
@@ -752,6 +1300,31 @@ export default function InteractiveMap({
             <circle cx="12" cy="12" r="7" />
             <circle cx="12" cy="12" r="2" />
             <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+          </svg>
+        </button>
+
+        {/* Reset to Initial Location Button */}
+        <button
+          aria-label="Đặt lại vị trí từ đầu"
+          className={`icon-button glass reset-location-btn ${isResetting ? "is-resetting" : ""}`}
+          onClick={handleResetToInitial}
+          title="Đặt lại vị trí từ đầu (Reset)"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            fill="none"
+            height={20}
+            viewBox="0 0 24 24"
+            width={20}
+            stroke="currentColor"
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
           </svg>
         </button>
 
@@ -778,10 +1351,29 @@ export default function InteractiveMap({
       </div>
 
       {/* Floating Hint Pill */}
-      {isBooking && (
+      {isBooking && !pinLifted && (
         <div className="drag-hint-pill glass">
           <span className="hint-pulse-dot" />
-          <span>Kéo & thả bản đồ để chọn điểm đón</span>
+          <span>Kéo & thả bản đồ để chọn điểm đón thật</span>
+        </div>
+      )}
+
+      {/* Reset Confirmation Toast */}
+      {resetToast && (
+        <div className="map-reset-toast glass-strong">
+          <svg
+            fill="none"
+            height={16}
+            stroke="#10b981"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2.5}
+            viewBox="0 0 24 24"
+            width={16}
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span>{resetToast}</span>
         </div>
       )}
 

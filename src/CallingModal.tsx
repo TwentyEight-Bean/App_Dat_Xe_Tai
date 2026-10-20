@@ -6,6 +6,7 @@ export interface CallingModalProps {
   bookingId?: string
   partnerName: string
   partnerRole: "CUSTOMER" | "DRIVER"
+  partnerAvatar?: string
   licensePlate?: string
   vehicleType?: string
   authToken?: string
@@ -17,6 +18,7 @@ export default function CallingModal({
   bookingId,
   partnerName,
   partnerRole,
+  partnerAvatar,
   licensePlate,
   vehicleType,
   authToken,
@@ -217,6 +219,7 @@ export default function CallingModal({
             fontSize: "36px",
             fontWeight: 700,
             color: "#ffffff",
+            overflow: "hidden",
             boxShadow:
               callStatus === "IN_CALL"
                 ? "0 0 0 10px rgba(37, 99, 235, 0.25), 0 0 30px rgba(37, 99, 235, 0.4)"
@@ -224,7 +227,13 @@ export default function CallingModal({
             transition: "all 0.3s ease",
           }}
         >
-          {partnerName ? partnerName.charAt(0).toUpperCase() : "U"}
+          {partnerAvatar ? (
+            <img src={partnerAvatar} alt={partnerName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : partnerName ? (
+            partnerName.charAt(0).toUpperCase()
+          ) : (
+            "U"
+          )}
         </div>
 
         <div style={{ textAlign: "center" }}>

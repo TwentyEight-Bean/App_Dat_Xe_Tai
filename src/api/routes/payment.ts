@@ -6,6 +6,7 @@ import {
   processMomoIpn,
   getPaymentStatus,
   getUserPaymentHistory,
+  confirmSimulatedPayment,
 } from "../../lib/paymentService"
 
 import { requireAuth, type AuthRequest } from "../middleware"
@@ -334,6 +335,20 @@ router.get("/history", requireAuth, async (req: AuthRequest, res, next) => {
 
       data: history,
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * 7. POST /payments/confirm-simulated
+ * Xác nhận giao dịch thành công (Dành cho bản thử nghiệm / sandbox)
+ */
+router.post("/confirm-simulated", async (req, res, next) => {
+  try {
+    const { transactionCode } = req.body
+    const result = await confirmSimulatedPayment(transactionCode)
+    res.json(result)
   } catch (err) {
     next(err)
   }

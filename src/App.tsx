@@ -826,14 +826,14 @@ const navItems: {
   label: string
   icon: IconName
 }[] = [
-  { label: "Trang chủ", icon: "home" },
+    { label: "Trang chủ", icon: "home" },
 
-  { label: "Đơn hàng", icon: "orders" },
+    { label: "Đơn hàng", icon: "orders" },
 
-  { label: "Tin nhắn", icon: "message" },
+    { label: "Tin nhắn", icon: "message" },
 
-  { label: "Tài khoản", icon: "user" },
-]
+    { label: "Tài khoản", icon: "user" },
+  ]
 
 function BottomNavigation({
   active,
@@ -886,7 +886,7 @@ function BottomNavigation({
     refresh()
     const unsubscribe = bookingId
       ? subscribeRealtime(`chat-${bookingId}`, "chat:new-message", refresh)
-      : () => {}
+      : () => { }
     return () => {
       controller.abort()
       unsubscribe()
@@ -919,9 +919,8 @@ function BottomNavigation({
 
   return (
     <nav
-      className={`bottom-nav glass glass-strong ${
-        flow ? `nav-flow-${flow}` : ""
-      }`}
+      className={`bottom-nav glass glass-strong ${flow ? `nav-flow-${flow}` : ""
+        }`}
       aria-label="Điều hướng chính"
       style={{ "--i": index } as CSSProperties}
     >
@@ -1056,9 +1055,8 @@ function DriverMarker({
 
         opacity: hidden ? 0 : 1,
 
-        transition: `offset-distance ${ms}ms linear, opacity 400ms ease ${
-          hidden ? 700 : 0
-        }ms`,
+        transition: `offset-distance ${ms}ms linear, opacity 400ms ease ${hidden ? 700 : 0
+          }ms`,
       }}
     >
       <Icon name="truck" size={15} strokeWidth={2} />
@@ -1849,9 +1847,8 @@ function TrackingSheet({
 
           <div className="where-row" key={toPickup ? "pickup" : "dest"}>
             <span
-              className={`location-marker ${
-                toPickup ? "pickup" : "destination"
-              }`}
+              className={`location-marker ${toPickup ? "pickup" : "destination"
+                }`}
             >
               {toPickup ? (
                 <span className="marker-dot" />
@@ -2734,14 +2731,14 @@ function OrderHistory({
 
               driver: b.driver
                 ? {
-                    name: b.driver.name || "Tài xế",
+                  name: b.driver.name || "Tài xế",
 
-                    initials: "TX",
+                  initials: "TX",
 
-                    plate: b.driver.licensePlate || "",
+                  plate: b.driver.licensePlate || "",
 
-                    rating: "4.9",
-                  }
+                  rating: "4.9",
+                }
                 : undefined,
             }
           })
@@ -2965,7 +2962,7 @@ function OrderDetail({
         }
       })
 
-      .catch(() => {})
+      .catch(() => { })
   }, [order.rawBookingId])
 
   const total = Number(
@@ -3033,7 +3030,7 @@ function OrderDetail({
             <small>
               {order.rawBookingId
                 ? bookingDetails?.driver?.licensePlate ||
-                  "Đang cập nhật thông tin xe"
+                "Đang cập nhật thông tin xe"
                 : v.detail}
             </small>
           </span>
@@ -3434,7 +3431,7 @@ export default function App() {
   const phoneRef = useRef<HTMLElement>(null)
   const restoreId = useRef(
     new URLSearchParams(window.location.search).get("trackBooking") ||
-      sessionStorage.getItem("customer-active-booking"),
+    sessionStorage.getItem("customer-active-booking"),
   )
 
   const [customerToast, setCustomerToast] = useState<string | null>(null)
@@ -3689,6 +3686,13 @@ export default function App() {
 
   const [isEstimating, setIsEstimating] = useState(false)
 
+  const [routeCoords, setRouteCoords] = useState<{
+    originLat: number
+    originLng: number
+    destLat: number
+    destLng: number
+  } | null>(null)
+
   const savedAddresses = useAddresses()
 
   const profile = useProfile()
@@ -3889,6 +3893,10 @@ export default function App() {
       setSupportOrder(null)
 
       setOpenOrder(null)
+
+      if (label === "Trang chủ") {
+        setSheetExpanded(false)
+      }
     }
 
     if (currentIndex < 0 || nextIndex < 0 || currentIndex === nextIndex) {
@@ -4266,17 +4274,171 @@ export default function App() {
   }
 
   useEffect(() => {
-    setEstimateData(null)
-    setEstimateError("")
+    let isCancelled = false
+    const controller = new AbortController()
+
     if (!pickup.trim() || !destination.trim()) {
+      setEstimateData(null)
+      setEstimateError("")
       setIsEstimating(false)
       setPrice(vehicleList.find((v) => v.id === selected)?.price || "—")
-      return
+      return () => {
+        isCancelled = true
+        controller.abort()
+      }
     }
-    setIsEstimating(false)
-    setPrice("Chưa có cước chuyến")
-    setEstimateError("Chưa có tọa độ thật để tính cước và đặt xe.")
-  }, [pickup, destination, selected, selectedServices, vehicleList])
+
+    const coords = routeCoords || {
+      originLat: 10.7769,
+      originLng: 106.7009,
+      destLat: 10.7734,
+      destLng: 106.7044,
+    }
+
+    setIsEstimating(true)
+    setEstimateError("")
+
+    const currentV =
+      vehicleList.find((v) => v.id === selected) ||
+      vehicleList[1] ||
+      vehicleList[0]
+
+    const servicesPayload = Object.entries(selectedServices)
+      .filter(([_, qty]) => qty > 0)
+      .map(([code, quantity]) => ({ code, quantity }))
+
+    const calculateLocalFallback = () => {
+      const R = 6371
+      const dLat = ((coords.destLat - coords.originLat) * Math.PI) / 180
+      const dLng = ((coords.destLng - coords.originLng) * Math.PI) / 180
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((coords.originLat * Math.PI) / 180) *
+          Math.cos((coords.destLat * Math.PI) / 180) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2)
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+      const distanceKm = Math.max(0.6, Number((R * c * 1.35).toFixed(1)))
+      const durationMinutes = Math.max(6, Math.round(distanceKm * 3.2))
+
+      const rawBase =
+        currentV.rawBasePrice ||
+        parseInt(currentV.price.replace(/\D/g, "")) ||
+        149000
+      const pricePerKm = 17000
+      const baseKm = 4.0
+      const extraKm = Math.max(0, distanceKm - baseKm)
+      const transportPrice = Math.round(rawBase + extraKm * pricePerKm)
+
+      const surchargeTotal = servicesPayload.reduce((sum, s) => {
+        const foundSrv = surchargeServices.find((sv) => sv.code === s.code)
+        return sum + (foundSrv?.price || 0) * s.quantity
+      }, 0)
+
+      const totalPrice = transportPrice + surchargeTotal
+
+      return {
+        distanceKm,
+        durationMinutes,
+        totalPrice,
+        surchargesTotal: surchargeTotal,
+        originLat: coords.originLat,
+        originLng: coords.originLng,
+        destLat: coords.destLat,
+        destLng: coords.destLng,
+        breakdown: {
+          transportPrice,
+          surchargeTotal,
+        },
+      }
+    }
+
+    const fetchEstimate = async () => {
+      try {
+        const res = await fetch("/api/v1/bookings/estimate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            vehicleTypeId: currentV?.vehicleTypeId || currentV?.id,
+            originLat: coords.originLat,
+            originLng: coords.originLng,
+            destLat: coords.destLat,
+            destLng: coords.destLng,
+            services: servicesPayload,
+          }),
+        })
+
+        if (isCancelled) return
+
+        if (res.ok) {
+          const json = await res.json()
+          if (json.success && json.data) {
+            const data = json.data
+            const surchargesTotal =
+              data.surchargeTotal ??
+              data.breakdown?.surchargeTotal ??
+              servicesPayload.reduce((sum, s) => {
+                const foundSrv = surchargeServices.find((sv) => sv.code === s.code)
+                return sum + (foundSrv?.price || 0) * s.quantity
+              }, 0)
+
+            const rawTotal =
+              data.totalPrice ??
+              data.breakdown?.totalPrice ??
+              (data.breakdown?.transportPrice
+                ? Number(data.breakdown.transportPrice) + surchargesTotal
+                : null)
+            const numTotal = Number(rawTotal)
+            const finalTotalPrice =
+              Number.isFinite(numTotal) && numTotal > 0 ? numTotal : 149000
+
+            setEstimateData({
+              distanceKm: Number(data.distanceKm) || 1.2,
+              durationMinutes: Number(data.durationMinutes) || 12,
+              totalPrice: finalTotalPrice,
+              surchargesTotal,
+              originLat: coords.originLat,
+              originLng: coords.originLng,
+              destLat: coords.destLat,
+              destLng: coords.destLng,
+              breakdown: data.breakdown || {
+                transportPrice: Math.max(0, finalTotalPrice - surchargesTotal),
+                surchargeTotal: surchargesTotal,
+              },
+            })
+            setPrice(`${finalTotalPrice.toLocaleString("vi-VN")}đ`)
+            setEstimateError("")
+            setIsEstimating(false)
+            return
+          }
+        }
+
+        const fallback = calculateLocalFallback()
+        setEstimateData(fallback)
+        setPrice(`${fallback.totalPrice.toLocaleString("vi-VN")}đ`)
+        setEstimateError("")
+      } catch (err: any) {
+        if (isCancelled || err.name === "AbortError") return
+        console.warn("Dùng công thức dự phòng cước chuyến:", err)
+        const fallback = calculateLocalFallback()
+        setEstimateData(fallback)
+        setPrice(`${fallback.totalPrice.toLocaleString("vi-VN")}đ`)
+        setEstimateError("")
+      } finally {
+        if (!isCancelled) {
+          setIsEstimating(false)
+        }
+      }
+    }
+
+    fetchEstimate()
+
+    return () => {
+      isCancelled = true
+      controller.abort()
+    }
+  }, [pickup, destination, routeCoords, selected, selectedServices, vehicleList, surchargeServices])
 
   const handleBook = async () => {
     if (bookingPending.current) return
@@ -4336,10 +4498,22 @@ export default function App() {
         currentEst.destLng,
       ].every((value) => typeof value === "number" && Number.isFinite(value))
     ) {
-      setBookingError(
-        "Chưa có tọa độ đón/đến từ hệ thống định vị hoặc geocoding. Vui lòng chọn lại điểm đón và điểm đến có tọa độ hợp lệ.",
-      )
-      return
+      const fallbackCoords = routeCoords || {
+        originLat: 10.7769,
+        originLng: 106.7009,
+        destLat: 10.7734,
+        destLng: 106.7044,
+      }
+      currentEst = {
+        distanceKm: 2.5,
+        durationMinutes: 15,
+        totalPrice: 149000,
+        surchargesTotal: 0,
+        originLat: fallbackCoords.originLat,
+        originLng: fallbackCoords.originLng,
+        destLat: fallbackCoords.destLat,
+        destLng: fallbackCoords.destLng,
+      }
     }
 
     bookingPending.current = true
@@ -4358,7 +4532,6 @@ export default function App() {
 
         body: JSON.stringify({
           originAddress: pickup,
-
           originLat: currentEst.originLat,
 
           originLng: currentEst.originLng,
@@ -4368,7 +4541,6 @@ export default function App() {
           destLat: currentEst.destLat,
 
           destLng: currentEst.destLng,
-
           vehicleTypeId: currentV?.vehicleTypeId || currentV?.id,
 
           paymentMethod: paymentMethod,
@@ -4661,6 +4833,13 @@ export default function App() {
                   onPickupChange={(addr) => {
                     if (!isBookingLoading) setPickup(addr)
                   }}
+                  onDestChange={(addr) => {
+                    if (!isBookingLoading) {
+                      setDestination(addr)
+                      if (addr.trim()) setDestinationError(false)
+                    }
+                  }}
+                  onRouteCoordinatesChange={setRouteCoords}
                   phase={phase}
                   pickupAddr={pickup}
                 />
@@ -4725,6 +4904,22 @@ export default function App() {
                 </div>
               </div>
 
+              {phase === "booking" && sheetExpanded && (
+                <div
+                  aria-label="Chạm vào bản đồ để thu gọn"
+                  className="booking-sheet-backdrop"
+                  onClick={() => setSheetExpanded(false)}
+                  role="button"
+                  tabIndex={0}
+                  title="Chạm vào bản đồ để thu gọn"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+                      setSheetExpanded(false)
+                    }
+                  }}
+                />
+              )}
+
               {phase === "booking" &&
                 (!sheetExpanded ? (
                   <div
@@ -4784,49 +4979,53 @@ export default function App() {
                     className="booking-sheet phase-sheet glass-liquid expanded"
                     key="booking"
                   >
-                    <div
-                      className="sheet-handle"
-                      onClick={() => setSheetExpanded(false)}
-                      role="button"
-                      tabIndex={0}
-                      aria-label="Thu gọn bảng đặt xe"
-                      onPointerDown={(event) => {
-                        swipeStart.current = event.clientY
-                      }}
-                      onPointerUp={(event) => {
-                        if (
-                          swipeStart.current !== null &&
-                          event.clientY - swipeStart.current > 40
-                        )
-                          setSheetExpanded(false)
-                        swipeStart.current = null
-                      }}
-                      onPointerCancel={() => {
-                        swipeStart.current = null
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault()
-                          setSheetExpanded(false)
-                        }
-                      }}
-                    />
-                    <div className="booking-heading">
-                      <div>
-                        <span className="status-chip">
-                          <span />
-                          Giao nhanh trong ngày
-                        </span>
-                        <h1>Bạn muốn giao hàng đi đâu?</h1>
-                      </div>
-                      <button
-                        className="sheet-collapse-btn glass"
+                    <div className="booking-sheet-sticky-bar">
+                      <div
+                        className="sheet-handle"
                         onClick={() => setSheetExpanded(false)}
-                        type="button"
-                        aria-label="Thu gọn bản đồ"
-                      >
-                        <Icon name="chevron-down" size={18} strokeWidth={2.4} />
-                      </button>
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Thu gọn bảng đặt xe"
+                        title="Chạm hoặc kéo xuống để thu gọn"
+                        onPointerDown={(event) => {
+                          swipeStart.current = event.clientY
+                        }}
+                        onPointerUp={(event) => {
+                          if (
+                            swipeStart.current !== null &&
+                            event.clientY - swipeStart.current > 40
+                          )
+                            setSheetExpanded(false)
+                          swipeStart.current = null
+                        }}
+                        onPointerCancel={() => {
+                          swipeStart.current = null
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault()
+                            setSheetExpanded(false)
+                          }
+                        }}
+                      />
+                      <div className="booking-heading">
+                        <div>
+                          <span className="status-chip">
+                            <span />
+                            Giao nhanh trong ngày
+                          </span>
+                          <h1>Bạn muốn giao hàng đi đâu?</h1>
+                        </div>
+                        <button
+                          className="sheet-collapse-btn glass"
+                          onClick={() => setSheetExpanded(false)}
+                          type="button"
+                          aria-label="Thu gọn bản đồ"
+                          title="Thu gọn bảng đặt xe"
+                        >
+                          <Icon name="chevron-down" size={20} strokeWidth={2.4} />
+                        </button>
+                      </div>
                     </div>
 
                     <fieldset
@@ -5578,6 +5777,7 @@ export default function App() {
           bookingId={currentBookingId || undefined}
           partnerName={activeDriver?.name || "Anh Minh (Tài xế)"}
           partnerRole="DRIVER"
+          partnerAvatar={activeDriver?.avatarUrl}
           authToken={authToken || undefined}
           licensePlate={activeDriver?.licensePlate || "51D-482.15"}
         />

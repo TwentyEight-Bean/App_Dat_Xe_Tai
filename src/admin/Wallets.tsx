@@ -3,17 +3,24 @@ import { Icon, Status, Avatar } from "./ui"
 import { vnd } from "./data"
 
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
+  const token = localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"
   const res = await fetch(url, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"}`,
+      Authorization: `Bearer ${token}`,
       ...(opts?.headers ?? {}),
     },
   })
   const json = await res.json()
-  if (!res.ok || json.success === false)
+  if (!res.ok || json.success === false) {
+    if (res.status === 401 || json.message?.includes("Token không hợp lệ") || json.message?.includes("UNAUTHORIZED")) {
+      localStorage.removeItem("admin_auth_token")
+      localStorage.removeItem("admin_user_info")
+      window.dispatchEvent(new Event("admin_session_expired"))
+    }
     throw new Error(json.message || "Lỗi API")
+  }
   return json as T
 }
 
@@ -172,7 +179,10 @@ export default function Wallets() {
         }),
       })
 
-      alert(`Điều chỉnh thành công ${finalAmount > 0 ? "+" : ""}${vnd(finalAmount)} vào ví tài xế ${adjustDriver.fullName}`)
+      const driverDisplayName = adjustDriver.fullName?.includes(adjustDriver.phone)
+        ? adjustDriver.fullName
+        : `${adjustDriver.fullName || "tài xế"} (${adjustDriver.phone})`
+      alert(`Điều chỉnh thành công ${finalAmount > 0 ? "+" : ""}${vnd(finalAmount)} vào ví của ${driverDisplayName}`)
       setAdjustDriver(null)
       setAdjustAmount("")
       setAdjustDesc("")
@@ -232,8 +242,29 @@ export default function Wallets() {
       </div>
 
       {error && (
-        <div style={{ padding: "12px 16px", backgroundColor: "#fef2f2", color: "#b91c1c", borderRadius: 8, marginBottom: 20 }}>
-          {error}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", backgroundColor: "#fef2f2", color: "#b91c1c", borderRadius: 8, marginBottom: 20 }}>
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.removeItem("admin_auth_token")
+              localStorage.removeItem("admin_user_info")
+              window.dispatchEvent(new Event("admin_session_expired"))
+              window.location.reload()
+            }}
+            style={{
+              background: "#dc2626",
+              color: "#fff",
+              border: "none",
+              padding: "6px 12px",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: 600,
+              fontSize: "13px"
+            }}
+          >
+            Đăng nhập lại
+          </button>
         </div>
       )}
 
@@ -283,7 +314,9 @@ export default function Wallets() {
                   return (
                     <tr key={d.userId} style={{ borderBottom: "1px solid #f3f4f6" }}>
                       <td style={{ padding: "14px 16px" }}>
-                        <div style={{ fontWeight: 600, color: "#111827" }}>{d.fullName}</div>
+                        <div style={{ fontWeight: 600, color: "#111827" }}>
+                          {d.fullName || `Tài xế (${d.phone})`}
+                        </div>
                         <div style={{ fontSize: 12, color: d.isOnline ? "#059669" : "#9ca3af" }}>
                           {d.isOnline ? "● Đang trực tuyến" : "○ Ngoại tuyến"}
                         </div>
@@ -434,7 +467,7 @@ export default function Wallets() {
             <div style={{ padding: "18px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#111827" }}>
-                  Lịch Sử Giao Dịch Ví: {selectedDriver.fullName}
+                  Lịch Sử Giao Dịch Ví: {selectedDriver.fullName || `Tài xế (${selectedDriver.phone})`}
                 </h2>
                 <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
                   Số dư hiện tại: <strong style={{ color: "#111827" }}>{vnd(selectedDriver.wallet.balance)}</strong>
@@ -559,7 +592,9 @@ export default function Wallets() {
             </div>
 
             <div style={{ padding: "10px 14px", backgroundColor: "#f3f4f6", borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
-              <div>Tài xế: <strong>{adjustDriver.fullName}</strong> ({adjustDriver.phone})</div>
+              <div>
+                Tài xế: <strong>{adjustDriver.fullName?.includes(adjustDriver.phone) ? adjustDriver.fullName : `${adjustDriver.fullName || "Tài xế"} (${adjustDriver.phone})`}</strong>
+              </div>
               <div>Số dư hiện tại: <strong style={{ color: "#2563eb" }}>{vnd(adjustDriver.wallet.balance)}</strong></div>
             </div>
 

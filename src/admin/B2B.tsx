@@ -12,8 +12,14 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
     },
   })
   const json = await res.json()
-  if (!res.ok || json.success === false)
+  if (!res.ok || json.success === false) {
+    if (res.status === 401 || json.message?.includes("Token không hợp lệ") || json.message?.includes("UNAUTHORIZED")) {
+      localStorage.removeItem("admin_auth_token")
+      localStorage.removeItem("admin_user_info")
+      window.dispatchEvent(new Event("admin_session_expired"))
+    }
     throw new Error(json.message || "Lỗi API")
+  }
   return json as T
 }
 

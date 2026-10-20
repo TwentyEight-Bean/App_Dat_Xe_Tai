@@ -1428,3 +1428,112 @@ export async function rateBooking(
   }
 }
 
+/**
+ * 10. Lấy danh sách lịch sử cuốc xe và thống kê thu nhập thực tế của tài xế
+ */
+export async function getDriverBookings(driverUserId: string, limit = 50) {
+  if (!driverUserId) {
+    throw new ApiError(400, "Thiếu thông tin tài xế")
+  }
+
+  // 1. Tìm driver profile theo user_id
+  const dpRows = await client.unsafe(
+    `SELECT id FROM driver_profiles WHERE user_id = $1::uuid LIMIT 1`,
+    [driverUserId],
+  )
+  if (dpRows.length === 0) {
+    return {
+      bookings: [],
+      summary: { todayEarnings: 0, todayTrips: 0, weekEarnings: 0 },
+    }
+  }
+  const driverId = dpRows[0].id
+
+  // 2. Lấy danh sách cuốc xe
+  const rows = await client.unsafe(
+    `
+    SELECT 
+      b.id,
+      b.booking_code,
+      b.status,
+      b.origin_address,
+      b.destination_address,
+      b.distance_km,
+      b.total_price,
+      b.driver_commission,
+      b.payment_method,
+      b.payment_status,
+      b.created_at,
+      b.updated_at,
+      u.full_name as customer_name,
+      u.phone as customer_phone,
+      vt.name as vehicle_type_name
+    FROM bookings b
+    LEFT JOIN users u ON u.id = b.customer_id
+    LEFT JOIN vehicle_types vt ON vt.id = b.vehicle_type_id
+    WHERE b.driver_id = $1::uuid
+    ORDER BY b.created_at DESC
+    LIMIT $2
+    `,
+    [driverId, limit],
+  )
+
+  // 3. Tính toán thống kê doanh thu thực tế từ DB
+  const todayStats = await client.unsafe(
+    `
+    SELECT 
+      COUNT(*) as count,
+      COALESCE(SUM(total_price * 0.8), 0) as total_earnings
+    FROM bookings
+    WHERE driver_id = $1::uuid 
+      AND status = 'COMPLETED'
+      AND created_at >= CURRENT_DATE
+    `,
+    [driverId],
+  )
+
+  const weekStats = await client.unsafe(
+    `
+    SELECT 
+      COALESCE(SUM(total_price * 0.8), 0) as total_earnings
+    FROM bookings
+    WHERE driver_id = $1::uuid 
+      AND status = 'COMPLETED'
+      AND created_at >= NOW() - INTERVAL '7 days'
+    `,
+    [driverId],
+  )
+
+  const todayEarnings = Math.round(Number(todayStats[0]?.total_earnings || 0))
+  const todayTrips = Number(todayStats[0]?.count || 0)
+  const weekEarnings = Math.round(Number(weekStats[0]?.total_earnings || 0))
+
+  const bookings = rows.map((r: any) => ({
+    id: r.id,
+    bookingCode: r.booking_code,
+    status: r.status,
+    originAddress: r.origin_address,
+    destinationAddress: r.destination_address,
+    distanceKm: Number(r.distance_km || 0),
+    totalPrice: Number(r.total_price || 0),
+    driverEarning: Math.round(Number(r.total_price || 0) * 0.8),
+    paymentMethod: r.payment_method,
+    paymentStatus: r.payment_status,
+    customerName: r.customer_name || "Khách hàng",
+    customerPhone: r.customer_phone || "",
+    vehicleTypeName: r.vehicle_type_name || "Xe tải",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }))
+
+  return {
+    bookings,
+    summary: {
+      todayEarnings,
+      todayTrips,
+      weekEarnings,
+    },
+  }
+}
+
+

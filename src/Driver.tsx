@@ -2,6 +2,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useCallback,
   type CSSProperties,
   type ReactNode,
 } from "react"
@@ -240,83 +241,11 @@ type Entry = {
   status: string
 }
 
-const seedHistory: Entry[] = [
-  {
-    id: 1,
-
-    when: "Hôm nay, 11:20",
-
-    route: "Q.3 → Phú Nhuận",
-
-    amount: 113000,
-
-    status: "Đã nhận",
-  },
-
-  {
-    id: 2,
-
-    when: "Hôm nay, 09:45",
-
-    route: "Tân Bình → Q.10",
-
-    amount: 102000,
-
-    status: "Đã nhận",
-  },
-
-  {
-    id: 3,
-
-    when: "Hôm nay, 08:30",
-
-    route: "Q.1 → Thủ Đức",
-
-    amount: 118000,
-
-    status: "Đã nhận",
-  },
-
-  {
-    id: 4,
-
-    when: "Hôm nay, 07:10",
-
-    route: "Q.5 → Q.7",
-
-    amount: 95000,
-
-    status: "Chờ đối soát",
-  },
-
-  {
-    id: 5,
-
-    when: "Hôm qua, 17:40",
-
-    route: "Gò Vấp → Q.1",
-
-    amount: 126000,
-
-    status: "Đã nhận",
-  },
-
-  {
-    id: 6,
-
-    when: "Hôm qua, 14:05",
-
-    route: "Q.4 → Bình Thạnh",
-
-    amount: 88000,
-
-    status: "Đã nhận",
-  },
-]
+const seedHistory: Entry[] = []
 
 /* ---------- shared bits ---------- */
 
-function DriverMap({ job, online }: { job: Job online: boolean }) {
+function DriverMap({ job, online }: { job: Job; online: boolean }) {
   const toPickup = job === "toPickup" || job === "atPickup"
 
   const delivering = job === "delivering"
@@ -437,7 +366,7 @@ function MapTools() {
   )
 }
 
-const driverNavItems: { id: Tab label: string icon: IconName }[] = [
+const driverNavItems: { id: Tab; label: string; icon: IconName }[] = [
   { id: "home", label: "Trang chủ", icon: "home" },
 
   { id: "trips", label: "Cuốc xe", icon: "route" },
@@ -447,7 +376,7 @@ const driverNavItems: { id: Tab label: string icon: IconName }[] = [
   { id: "account", label: "Tài khoản", icon: "user" },
 ]
 
-function DriverNav({ tab, onChange }: { tab: Tab onChange: (t: Tab) => void }) {
+function DriverNav({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
   const index = driverNavItems.findIndex((i) => i.id === tab)
 
   const [flow, setFlow] = useState<TabDirection | null>(null)
@@ -576,7 +505,55 @@ function ContactRow({
   )
 }
 
-function EntryList({ entries }: { entries: Entry[] }) {
+function EntryList({
+  entries,
+  emptyMessage = "Chưa có cuốc xe nào trong khoảng thời gian này.",
+}: {
+  entries: Entry[]
+  emptyMessage?: string
+}) {
+  if (!entries || entries.length === 0) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "36px 20px",
+          textAlign: "center",
+          background: "#ffffff",
+          borderRadius: "16px",
+          border: "1px dashed #cbd5e1",
+          margin: "12px 0",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)",
+        }}
+      >
+        <span
+          style={{
+            width: "52px",
+            height: "52px",
+            borderRadius: "50%",
+            background: "rgba(20, 120, 212, 0.08)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#1478d4",
+            marginBottom: "12px",
+          }}
+        >
+          <Icon name="truck" size={26} />
+        </span>
+        <strong style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
+          {emptyMessage}
+        </strong>
+        <p style={{ fontSize: "13px", color: "#64748b", margin: 0, maxWidth: "280px", lineHeight: 1.5 }}>
+          Bật trực tuyến và sẵn sàng nhận cuốc xe gần nhất từ khách hàng.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <ul className="d-entries">
       {entries.map((e) => (
@@ -1306,7 +1283,7 @@ function Incoming({
       return
     }
 
-    const t = window.setTimeout(() => setLeft((l) => l - 1), 1000)
+    const t = window.setTimeout(() => setLeft((l: number) => l - 1), 1000)
     return () => window.clearTimeout(t)
   }, [left, onSkip])
 
@@ -1426,7 +1403,7 @@ function ActiveJob({
   onCall?: () => void
   updating?: boolean
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const [proofUrl, setProofUrl] = useState<string>("")
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -1496,7 +1473,7 @@ function ActiveJob({
     setUploadingPhoto(true)
     try {
       const res = await uploadImageWithFallback(file)
-      setProofUrl(res.url)
+      setProofUrl((res as any)?.url || res)
     } catch (err) {
       console.warn("Upload proof photo error:", err)
       const reader = new FileReader()
@@ -1527,8 +1504,16 @@ function ActiveJob({
           </strong>
           <em>{banner.addr}</em>
         </span>
+        <button
+          aria-label="Hủy chuyến hoặc báo sự cố"
+          className="d-banner-cancel-btn"
+          onClick={onCancelTrip}
+          title="Báo sự cố / Hủy chuyến xe"
+          type="button"
+        >
+          ✕
+        </button>
       </div>
-      <MapTools />
 
       {!expanded ? (
         <div
@@ -1998,8 +1983,8 @@ function Earnings({
                 border: "none",
                 cursor: "pointer",
                 whiteSpace: "nowrap",
-                backgroundColor: selectedFilter === chip.id ? "#2563eb" : "rgba(255, 255, 255, 0.08)",
-                color: selectedFilter === chip.id ? "#fff" : "#94a3b8",
+                backgroundColor: selectedFilter === chip.id ? "#2563eb" : "#f1f5f9",
+                color: selectedFilter === chip.id ? "#fff" : "#475569",
               }}
             >
               {chip.label}
@@ -2013,17 +1998,18 @@ function Earnings({
               <div
                 key={tx.id}
                 style={{
-                  background: "rgba(255, 255, 255, 0.04)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  borderRadius: "10px",
-                  padding: "10px 12px",
+                  background: "#ffffff",
+                  border: "1px solid rgba(0, 0, 0, 0.06)",
+                  boxShadow: "0 1px 4px rgba(0, 0, 0, 0.04)",
+                  borderRadius: "12px",
+                  padding: "12px 14px",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
                 }}
               >
                 <div>
-                  <div style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
+                  <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#0f172a" }}>
                     {tx.type === "COMMISSION_DEDUCTION"
                       ? "Trừ hoa hồng cuốc xe"
                       : tx.type === "TRIP_INCOME"
@@ -2032,7 +2018,7 @@ function Earnings({
                       ? "Nạp tiền ví ký quỹ"
                       : "Điều chỉnh số dư"}
                   </div>
-                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
+                  <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
                     {tx.description || tx.reference_code || new Date(tx.created_at).toLocaleString("vi-VN")}
                   </div>
                 </div>
@@ -2040,7 +2026,7 @@ function Earnings({
                   style={{
                     fontSize: "14px",
                     fontWeight: 700,
-                    color: Number(tx.amount) >= 0 ? "#4ade80" : "#f87171",
+                    color: Number(tx.amount) >= 0 ? "#16a34a" : "#dc2626",
                     whiteSpace: "nowrap",
                     marginLeft: "8px",
                   }}
@@ -2070,26 +2056,27 @@ function Earnings({
                 <div
                   key={c.id}
                   style={{
-                    background: "rgba(255, 255, 255, 0.04)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    borderRadius: "10px",
-                    padding: "10px 12px",
+                    background: "#ffffff",
+                    border: "1px solid rgba(0, 0, 0, 0.06)",
+                    boxShadow: "0 1px 4px rgba(0, 0, 0, 0.04)",
+                    borderRadius: "12px",
+                    padding: "12px 14px",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
+                    <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#0f172a" }}>
                       📞 {c.isCaller ? "Gọi khách hàng" : "Khách gọi đến"}
                     </div>
-                    <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
+                    <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
                       Đơn #{c.bookingCode || c.bookingId?.slice(0, 8)} · {new Date(c.createdAt).toLocaleDateString("vi-VN")}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#38bdf8" }}>{timeStr}</div>
-                    <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#0284c7" }}>{timeStr}</div>
+                    <span style={{ fontSize: "10.5px", color: "#64748b" }}>
                       {c.callStatus === "ANSWERED" || c.callStatus === "COMPLETED" ? "Đã nghe" : "Nhỡ / Bận"}
                     </span>
                   </div>
@@ -2150,41 +2137,68 @@ function Account({
   onLogout: () => void
   onReset: () => void
 }) {
-  const driverName = profile?.fullName || "Nguyễn Văn Minh"
-  const licensePlate = profile?.licensePlate || "51D-482.15"
+  const driverName =
+    profile?.fullName ||
+    profile?.user?.fullName ||
+    (typeof window !== "undefined" ? localStorage.getItem("driver_phone") : null) ||
+    "Tài xế đối tác"
+  const licensePlate = profile?.licensePlate || "Chưa cập nhật biển số"
+  const vehicleName = profile?.vehicleTypeName || profile?.vehicleType?.name || "Xe tải"
+  const rating = profile?.ratingAvg ? Number(profile.ratingAvg).toFixed(1) : "5.0"
   const kycStatus =
     profile?.kycStatus === "APPROVED"
       ? "Đã được duyệt"
       : profile?.kycStatus === "REJECTED"
-        ? "Bị từ chối"
+        ? `Bị từ chối: ${profile?.rejectionReason || "Thiếu giấy tờ"}`
         : "Đang chờ duyệt"
+
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return name.slice(0, 2).toUpperCase()
+  }
 
   return (
     <section className="d-screen d-tab">
       <h1>Tài khoản</h1>
       <div className="d-profile">
         <span className="d-avatar big" aria-hidden="true">
-          {driverName
-            .trim()
-            .split(/\s+/)
-            .map((w: string) => w[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase()}
+          {getInitials(driverName)}
         </span>
         <span>
           <strong>{driverName}</strong>
-          <small>{profile?.ratingAvg || "4,9"} sao · Đối tác xe tải</small>
+          <small>{rating} sao · Đối tác xe tải</small>
         </span>
       </div>
       <ul className="d-review plain">
         <li>
-          <span className="d-review-tick">
+          <span
+            className="d-review-tick"
+            style={
+              profile?.kycStatus === "APPROVED"
+                ? { background: "rgba(34, 197, 94, 0.2)", color: "#4ade80" }
+                : profile?.kycStatus === "REJECTED"
+                ? { background: "rgba(239, 68, 68, 0.2)", color: "#f87171" }
+                : { background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24" }
+            }
+          >
             <Icon name="shield" size={14} strokeWidth={2.6} />
           </span>
           <span>
-            <small>Hồ sơ</small>
-            <strong>{kycStatus}</strong>
+            <small>Hồ sơ xét duyệt (KYC)</small>
+            <strong
+              style={
+                profile?.kycStatus === "APPROVED"
+                  ? { color: "#4ade80" }
+                  : profile?.kycStatus === "REJECTED"
+                  ? { color: "#f87171" }
+                  : { color: "#fbbf24" }
+              }
+            >
+              {kycStatus}
+            </strong>
           </span>
         </li>
         <li>
@@ -2193,7 +2207,9 @@ function Account({
           </span>
           <span>
             <small>Xe đang chạy</small>
-            <strong>Xe van · {licensePlate}</strong>
+            <strong>
+              {vehicleName} · {licensePlate}
+            </strong>
           </span>
         </li>
       </ul>
@@ -2239,11 +2255,13 @@ export default function DriverApp() {
 
   const [job, setJob] = useState<Job>("none")
 
-  const [history, setHistory] = useState<Entry[]>(seedHistory)
+  const [history, setHistory] = useState<Entry[]>([])
 
-  const [balance, setBalance] = useState(1254000)
+  const [balance, setBalance] = useState(0)
 
-  const [week, setWeek] = useState(2364000)
+  const [week, setWeek] = useState(0)
+  const [todayIncome, setTodayIncome] = useState(0)
+  const [todayTripsCount, setTodayTripsCount] = useState(0)
 
   const [notice, setNotice] = useState("")
 
@@ -2254,6 +2272,53 @@ export default function DriverApp() {
   const [driverWallet, setDriverWallet] = useState<any>(null)
   const [walletTxs, setWalletTxs] = useState<any[]>([])
   const [driverCallLogs, setDriverCallLogs] = useState<any[]>([])
+
+  const loadDriverBookings = () => {
+    if (!driverToken) return
+    fetch("/api/v1/driver/bookings", {
+      headers: { Authorization: `Bearer ${driverToken}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          const formatted: Entry[] = res.data.map((b: any) => {
+            const dt = new Date(b.createdAt)
+            const isToday = dt.toDateString() === new Date().toDateString()
+            const timeStr = dt.toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+            const when = isToday ? `Hôm nay, ${timeStr}` : dt.toLocaleDateString("vi-VN")
+            const originShort = (b.originAddress || "").split(",")[0] || "Điểm đón"
+            const destShort = (b.destinationAddress || "").split(",")[0] || "Điểm giao"
+
+            let statusText = "Đã nhận"
+            if (b.status === "COMPLETED") statusText = "Đã nhận"
+            else if (b.status === "CANCELLED") statusText = "Đã hủy"
+            else if (b.status === "IN_TRANSIT") statusText = "Đang giao"
+            else if (b.status === "ARRIVED_AT_PICKUP") statusText = "Đã đến nơi nhận"
+            else statusText = "Đang xử lý"
+
+            return {
+              id: b.id,
+              when,
+              route: `${originShort} → ${destShort}`,
+              amount: b.driverEarning || Math.round((b.totalPrice || 0) * 0.8),
+              status: statusText,
+              bookingCode: b.bookingCode,
+              distanceKm: b.distanceKm,
+            }
+          })
+          setHistory(formatted)
+          if (res.summary) {
+            setTodayIncome(res.summary.todayEarnings || 0)
+            setTodayTripsCount(res.summary.todayTrips || 0)
+            setWeek(res.summary.weekEarnings || 0)
+          }
+        }
+      })
+      .catch((err) => console.warn("Could not load driver bookings:", err))
+  }
 
   const loadDriverTxs = (type?: string) => {
     if (!driverToken) return
@@ -2302,6 +2367,9 @@ export default function DriverApp() {
       })
       .catch((err) => console.warn("Could not load driver wallet:", err))
 
+    // Tải lịch sử cuốc xe thật từ DB
+    loadDriverBookings()
+
     // Tải lịch sử biến động số dư ví
     loadDriverTxs()
 
@@ -2326,6 +2394,11 @@ export default function DriverApp() {
     }
     setDriverToken(null)
     setDriverProfile(null)
+    setHistory([])
+    setBalance(0)
+    setWeek(0)
+    setTodayIncome(0)
+    setTodayTripsCount(0)
     setOnline(false)
   }
 
@@ -2354,13 +2427,56 @@ export default function DriverApp() {
   const [cancelReason, setCancelReason] = useState("Xe gặp sự cố kỹ thuật")
   const [isCancelling, setIsCancelling] = useState(false)
 
-  const today = history
-    .filter((e) => e.when.startsWith("Hôm nay") || e.when === "Vừa xong")
-    .reduce((s, e) => s + e.amount, 0)
+  // Real-time Demand Hotspots (Dữ liệu động nhu cầu thật từ PostgreSQL)
+  const [demandData, setDemandData] = useState<{
+    isHighDemand: boolean
+    badge: string
+    text: string
+    surgeBonusPercent: number
+    hotspots: Array<{ district: string; count: number; lat: number; lng: number; radiusMeters: number }>
+  }>({
+    isHighDemand: false,
+    badge: "🟢 Nhu cầu ổn định:",
+    text: "Hệ thống đang quét đơn hàng phù hợp gần vị trí bạn",
+    surgeBonusPercent: 0,
+    hotspots: [],
+  })
 
-  const trips = history.filter(
-    (e) => e.when.startsWith("Hôm nay") || e.when === "Vừa xong",
-  ).length
+  const loadDemandZones = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/driver/demand-zones?lat=10.7769&lng=106.7009&radiusKm=25")
+      const json = await res.json()
+      if (json.success && json.data) {
+        setDemandData(json.data)
+      }
+    } catch (err) {
+      console.warn("Lỗi tải demand-zones:", err)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadDemandZones()
+    const timer = window.setInterval(loadDemandZones, 35000)
+    return () => window.clearInterval(timer)
+  }, [loadDemandZones, online])
+
+  const today =
+    todayIncome ||
+    history
+      .filter(
+        (e) =>
+          (e.when.startsWith("Hôm nay") || e.when === "Vừa xong") &&
+          e.status !== "Đã hủy",
+      )
+      .reduce((s, e) => s + e.amount, 0)
+
+  const trips =
+    todayTripsCount ||
+    history.filter(
+      (e) =>
+        (e.when.startsWith("Hôm nay") || e.when === "Vừa xong") &&
+        e.status !== "Đã hủy",
+    ).length
 
   // 1. Lắng nghe sự kiện Realtime (Nổ cuốc mới, Hủy cuốc)
   useEffect(() => {
@@ -2384,7 +2500,7 @@ export default function DriverApp() {
       "offer:cancelled",
       (data) => {
         console.log("⚠️ [Driver UI] Cuốc đã có người nhận:", data)
-        setActiveOffer((current) => {
+        setActiveOffer((current: any) => {
           if (current && current.bookingId === data.bookingId) {
             setJob("none")
             setNotice("Đơn hàng đã có tài xế khác nhanh tay tiếp nhận.")
@@ -2400,7 +2516,7 @@ export default function DriverApp() {
       "booking:cancelled",
       (data) => {
         console.log("🛑 [Driver UI] Khách hủy chuyến:", data)
-        setActiveBooking((curr) => {
+        setActiveBooking((curr: any) => {
           if (curr && curr.id === data.bookingId) {
             setJob("none")
             setNotice(`Khách đã hủy chuyến: ${data.reason || "Đổi kế hoạch"}`)
@@ -2701,6 +2817,12 @@ export default function DriverApp() {
 
     setWeek((w) => w + earnAmount)
     setBalance((b) => b + earnAmount)
+    setTodayIncome((t) => t + earnAmount)
+    setTodayTripsCount((c) => c + 1)
+    setTimeout(() => {
+      loadDriverBookings()
+      loadDriverTxs()
+    }, 1200)
   }
 
   const changeTab = (nextTab: Tab) => {
@@ -2749,6 +2871,20 @@ export default function DriverApp() {
 
   const showNav = !working && job !== "incoming" && job !== "complete"
 
+  const driverDisplayName =
+    driverProfile?.fullName ||
+    driverProfile?.user?.fullName ||
+    (typeof window !== "undefined" ? localStorage.getItem("driver_phone") : null) ||
+    "Bác tài"
+
+  const getDriverInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    return name.slice(0, 2).toUpperCase()
+  }
+
   return (
     <main className="app-shell">
       <section className="phone-frame d-frame" ref={phoneRef}>
@@ -2757,7 +2893,14 @@ export default function DriverApp() {
             <div className="tab-screen home-screen" key="home">
               <div className="map-area">
                 <InteractiveMap
+                  demandHotspots={demandData.hotspots}
                   destAddr={JOB.destination}
+                  driverName={driverDisplayName}
+                  driverPlate={
+                    driverProfile?.vehicle?.licensePlate ||
+                    driverProfile?.licensePlate ||
+                    (driverDisplayName.includes("Kiệt") ? "51D-638.19" : "51D-892.41")
+                  }
                   jobState={job}
                   mode="driver"
                   online={online}
@@ -2769,14 +2912,12 @@ export default function DriverApp() {
                       <div className="d-top-row">
                         <span className="d-hello">
                           <span className="d-avatar" aria-hidden="true">
-                            {(driverProfile?.fullName || "Minh")
-                              .slice(0, 2)
-                              .toUpperCase()}
+                            {getDriverInitials(driverDisplayName)}
                           </span>
                           <span>
                             <small>Chào buổi sáng,</small>
                             <strong>
-                              {driverProfile?.fullName || "Bác tài"}
+                              {driverDisplayName}
                             </strong>
                           </span>
                         </span>
@@ -2920,10 +3061,12 @@ export default function DriverApp() {
                   </div>
 
                   {online && (
-                    <div className="d-hot-mini">
-                      <span className="d-hot-badge">🔥 Nhu cầu cao:</span>
+                    <div className={`d-hot-mini ${demandData.isHighDemand ? "is-surge" : "is-stable"}`}>
+                      <span className={`d-hot-badge ${demandData.isHighDemand ? "surge" : "stable"}`}>
+                        {demandData.badge}
+                      </span>
                       <span>
-                        Q.1 & Q.3 đang có nhiều đơn đặt xe (+15% cước)
+                        {demandData.text}
                       </span>
                     </div>
                   )}

@@ -23,7 +23,7 @@ type PricingRule = {
 
   payloadCapacityKg: string
 
-  dimensionsLxwxh: string | null
+  dimensionsLxwxh: any
 
   createdAt: string
 
@@ -70,6 +70,20 @@ const fmtWeight = (v: string) => {
     : `${n.toLocaleString("vi-VN")} kg`
 }
 
+export const formatDimensions = (dim: any): string => {
+  if (!dim) return ""
+  if (typeof dim === "string") return dim
+  if (typeof dim === "object") {
+    const l = dim.length ?? dim.l
+    const w = dim.width ?? dim.w
+    const h = dim.height ?? dim.h
+    if (l !== undefined || w !== undefined || h !== undefined) {
+      return `${l ?? 0}m × ${w ?? 0}m × ${h ?? 0}m`
+    }
+  }
+  return ""
+}
+
 const vehicleIcons: Record<string, string> = {
   MOTORBIKE: "🏍️",
 
@@ -105,8 +119,14 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
 
   const json = await res.json()
 
-  if (!res.ok || json.success === false)
+  if (!res.ok || json.success === false) {
+    if (res.status === 401 || json.message?.includes("Token không hợp lệ") || json.message?.includes("UNAUTHORIZED")) {
+      localStorage.removeItem("admin_auth_token")
+      localStorage.removeItem("admin_user_info")
+      window.dispatchEvent(new Event("admin_session_expired"))
+    }
     throw new Error(json.message || "Lỗi API")
+  }
 
   return json.data as T
 }
@@ -247,6 +267,14 @@ function EditRuleModal({
   )
 }
 
+interface VehicleTypeOption {
+  id: string
+  code: string
+  name: string
+  payloadCapacityKg: string | number
+  dimensionsLxwxh?: any
+}
+
 function CreateRuleModal({
   onClose,
   onSaved,
@@ -254,27 +282,94 @@ function CreateRuleModal({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [vehicleTypeId, setVehicleTypeId] = useState("v-3ton")
+  const [vehicleMode, setVehicleMode] = useState<"new" | "existing">("new")
+  const [existingTypes, setExistingTypes] = useState<VehicleTypeOption[]>([])
+  const [selectedVehicleId, setSelectedVehicleId] = useState("")
+
+  const [vehicleName, setVehicleName] = useState("Xe tải 3 Tấn")
+  const [vehicleCode, setVehicleCode] = useState("3TON")
+  const [payloadCapacityKg, setPayloadCapacityKg] = useState("3000")
+  const [dimensionsLxwxh, setDimensionsLxwxh] = useState("4.5m × 1.9m × 1.9m")
+
   const [basePrice, setBasePrice] = useState("320000")
   const [baseKm, setBaseKm] = useState("4.0")
   const [perKm, setPerKm] = useState("23000")
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState("")
 
+  useEffect(() => {
+    fetch("/api/v1/driver/vehicle-types")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setExistingTypes(res.data)
+        }
+      })
+      .catch((e) => console.warn("Lỗi tải vehicle-types:", e))
+  }, [])
+
+  const handleSelectExisting = (id: string) => {
+    setSelectedVehicleId(id)
+    const found = existingTypes.find((t) => t.id === id)
+    if (found) {
+      setVehicleName(found.name)
+      setVehicleCode(found.code)
+      setPayloadCapacityKg(String(found.payloadCapacityKg || ""))
+      setDimensionsLxwxh(formatDimensions(found.dimensionsLxwxh))
+    }
+  }
+
+  const handleNameChange = (name: string) => {
+    setVehicleName(name)
+    const cleanCode = name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "")
+    if (cleanCode) setVehicleCode(cleanCode)
+  }
+
   const save = async () => {
-    if (!vehicleTypeId.trim()) {
-      setErr("Vui lòng nhập mã loại xe (vehicleTypeId)")
+    if (vehicleMode === "new") {
+      if (!vehicleName.trim()) {
+        setErr("Vui lòng nhập tên loại xe (VD: Xe tải 3 Tấn)")
+        return
+      }
+    } else {
+      if (!selectedVehicleId) {
+        setErr("Vui lòng chọn một loại xe trong hệ thống")
+        return
+      }
+    }
+
+    if (!basePrice || parseFloat(basePrice) <= 0) {
+      setErr("Vui lòng nhập giá mở cửa hợp lệ")
       return
     }
+
+    if (!perKm || parseFloat(perKm) <= 0) {
+      setErr("Vui lòng nhập giá mỗi km vượt hợp lệ")
+      return
+    }
+
     setSaving(true)
     setErr("")
+
     try {
       await apiFetch("/api/admin/pricing/rules", {
         method: "POST",
         body: JSON.stringify({
-          vehicleTypeId: vehicleTypeId.trim(),
+          vehicleTypeId: vehicleMode === "existing" ? selectedVehicleId : undefined,
+          vehicleName: vehicleName.trim(),
+          vehicleCode: vehicleCode.trim() || undefined,
+          payloadCapacityKg: parseFloat(payloadCapacityKg) || 2000,
+          dimensionsLxwxh: dimensionsLxwxh.trim() || undefined,
           basePrice: parseFloat(basePrice) || 0,
-          baseDistanceKm: parseFloat(baseKm) || 2,
+          baseDistanceKm: parseFloat(baseKm) || 4.0,
           pricePerKm: parseFloat(perKm) || 0,
         }),
       })
@@ -286,68 +381,144 @@ function CreateRuleModal({
     }
   }
 
+  const numBase = parseFloat(basePrice) || 0
+  const numBaseKm = parseFloat(baseKm) || 4.0
+  const numPerKm = parseFloat(perKm) || 0
+  const est10 = numBase + Math.max(0, 10 - numBaseKm) * numPerKm
+  const est25 = numBase + Math.max(0, 25 - numBaseKm) * numPerKm
+
   return (
     <div className="scrim" role="presentation" onMouseDown={onClose}>
       <div
         className="modal glass"
         role="dialog"
         aria-label="Thêm bảng giá loại xe mới"
+        style={{ maxWidth: "540px", width: "95%" }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="pr-modal-ic">
           <span>🚚</span>
         </div>
-        <h3>Thêm bảng giá loại xe mới</h3>
-        <p>Thiết lập công thức tính cước vận chuyển cho loại phương tiện mới.</p>
+        <h3>Thêm bảng giá loại xe</h3>
+        <p>Thiết lập thông tin xe và công thức tính cước vận chuyển chuẩn.</p>
 
-        {err && (
-          <div
-            style={{
-              color: "#ef4444",
-              fontSize: "12px",
-              marginBottom: "10px",
-              textAlign: "center",
-            }}
-          >
-            {err}
-          </div>
-        )}
+        {err && <div className="pr-err">{err}</div>}
 
         <div className="pr-form">
-          <label className="pr-field">
-            <span className="pr-label">Mã loại xe (vehicleTypeId) *</span>
-            <input
-              type="text"
-              value={vehicleTypeId}
-              onChange={(e) => setVehicleTypeId(e.target.value)}
-              placeholder="VD: v-3ton, v-pickup"
-            />
-            <small className="pr-hint">
-              Định danh phân khúc xe trong cơ sở dữ liệu
-            </small>
-          </label>
-          <label className="pr-field">
-            <span className="pr-label">Giá mở cửa (đ) *</span>
-            <input
-              type="number"
-              value={basePrice}
-              onChange={(e) => setBasePrice(e.target.value)}
-              min={0}
-              step={1000}
-            />
-            <small className="pr-hint">Cước khởi điểm chuyến đi</small>
-          </label>
-          <label className="pr-field">
-            <span className="pr-label">Cự ly mở cửa (km)</span>
-            <input
-              type="number"
-              value={baseKm}
-              onChange={(e) => setBaseKm(e.target.value)}
-              min={0}
-              step={0.5}
-            />
-            <small className="pr-hint">Số km đã bao gồm trong giá mở cửa</small>
-          </label>
+          <div style={{ display: "flex", gap: "8px", marginBottom: "4px" }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${vehicleMode === "new" ? "btn-primary" : ""}`}
+              onClick={() => setVehicleMode("new")}
+              style={{ flex: 1 }}
+            >
+              ➕ Thêm loại xe mới
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${vehicleMode === "existing" ? "btn-primary" : ""}`}
+              onClick={() => setVehicleMode("existing")}
+              style={{ flex: 1 }}
+            >
+              📋 Chọn xe có sẵn ({existingTypes.length})
+            </button>
+          </div>
+
+          {vehicleMode === "existing" ? (
+            <label className="pr-field">
+              <span className="pr-label">Chọn loại xe có sẵn trong hệ thống *</span>
+              <select
+                value={selectedVehicleId}
+                onChange={(e) => handleSelectExisting(e.target.value)}
+              >
+                <option value="">-- Chọn loại xe --</option>
+                {existingTypes.map((vt) => (
+                  <option key={vt.id} value={vt.id}>
+                    {vt.name} (Mã: {vt.code} · Tải: {vt.payloadCapacityKg}kg)
+                  </option>
+                ))}
+              </select>
+              <small className="pr-hint">Chọn loại xe đã có để cập nhật hoặc thiết lập giá cước</small>
+            </label>
+          ) : (
+            <>
+              <div className="pr-row">
+                <label className="pr-field">
+                  <span className="pr-label">Tên loại xe *</span>
+                  <input
+                    type="text"
+                    value={vehicleName}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    placeholder="VD: Xe tải 3 Tấn, Xe cẩu..."
+                  />
+                  <small className="pr-hint">Tên hiển thị trên hệ thống</small>
+                </label>
+                <label className="pr-field">
+                  <span className="pr-label">Mã xe (Code)</span>
+                  <input
+                    type="text"
+                    value={vehicleCode}
+                    onChange={(e) => setVehicleCode(e.target.value.toUpperCase())}
+                    placeholder="VD: 3TON, TRUCK_3T"
+                  />
+                  <small className="pr-hint">Mã phân khúc trong CSDL</small>
+                </label>
+              </div>
+
+              <div className="pr-row">
+                <label className="pr-field">
+                  <span className="pr-label">Tải trọng tối đa (kg)</span>
+                  <input
+                    type="number"
+                    value={payloadCapacityKg}
+                    onChange={(e) => setPayloadCapacityKg(e.target.value)}
+                    placeholder="VD: 3000"
+                    min={100}
+                    step={100}
+                  />
+                </label>
+                <label className="pr-field">
+                  <span className="pr-label">Kích thước thùng (Dài × Rộng × Cao)</span>
+                  <input
+                    type="text"
+                    value={dimensionsLxwxh}
+                    onChange={(e) => setDimensionsLxwxh(e.target.value)}
+                    placeholder="VD: 4.5m × 1.9m × 1.9m"
+                  />
+                </label>
+              </div>
+            </>
+          )}
+
+          <div style={{ height: "1px", background: "var(--line)", margin: "4px 0" }} />
+
+          <div className="pr-row">
+            <label className="pr-field">
+              <span className="pr-label">Giá mở cửa (đ) *</span>
+              <input
+                type="number"
+                value={basePrice}
+                onChange={(e) => setBasePrice(e.target.value)}
+                min={0}
+                step={1000}
+                placeholder="VD: 320000"
+              />
+              <small className="pr-hint">Cước khởi điểm chuyến đi</small>
+            </label>
+            <label className="pr-field">
+              <span className="pr-label">Cự ly mở cửa (km) *</span>
+              <input
+                type="number"
+                value={baseKm}
+                onChange={(e) => setBaseKm(e.target.value)}
+                min={0.5}
+                step={0.5}
+                placeholder="VD: 4.0"
+              />
+              <small className="pr-hint">Km bao gồm trong giá mở cửa</small>
+            </label>
+          </div>
+
           <label className="pr-field">
             <span className="pr-label">Đơn giá km tiếp theo (đ/km) *</span>
             <input
@@ -356,14 +527,20 @@ function CreateRuleModal({
               onChange={(e) => setPerKm(e.target.value)}
               min={0}
               step={500}
+              placeholder="VD: 23000"
             />
-            <small className="pr-hint">
-              Phí tính thêm cho mỗi km vượt cự ly mở cửa
-            </small>
+            <small className="pr-hint">Phí tính thêm cho mỗi km vượt cự ly mở cửa</small>
           </label>
         </div>
 
-        <div className="modal-actions">
+        <div className="pr-preview">
+          <Icon name="route" size={14} />
+          <span>
+            Ước tính: 10km = <b>{fmtVnd(est10)}</b> · 25km = <b>{fmtVnd(est25)}</b>
+          </span>
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: "14px" }}>
           <button
             type="button"
             className="btn"
@@ -376,7 +553,7 @@ function CreateRuleModal({
             type="button"
             className="btn btn-primary"
             onClick={save}
-            disabled={saving || !vehicleTypeId.trim()}
+            disabled={saving}
           >
             {saving ? "Đang lưu…" : "Tạo bảng giá"}
           </button>
@@ -828,7 +1005,7 @@ export default function Pricing() {
           <p>Quản lý cước vận chuyển và phụ phí dịch vụ</p>
         </div>
         <div className="h-row">
-          {tab === "vehicles" && (
+          {tab === "rules" && (
             <button
               type="button"
               className="btn btn-primary"
@@ -954,7 +1131,7 @@ export default function Pricing() {
                   <strong>{r.vehicleName}</strong>
                   <small>
                     {fmtWeight(r.payloadCapacityKg)}
-                    {r.dimensionsLxwxh ? ` · ${r.dimensionsLxwxh}` : ""}
+                    {formatDimensions(r.dimensionsLxwxh) ? ` · ${formatDimensions(r.dimensionsLxwxh)}` : ""}
                   </small>
                 </div>
                 <button

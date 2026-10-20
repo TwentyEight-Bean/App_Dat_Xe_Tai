@@ -61,6 +61,10 @@ export interface PriceEstimateResult {
 
   routingSource: string
 
+  totalPrice?: number
+
+  surchargeTotal?: number
+
   breakdown: {
     basePrice: number
 
@@ -523,69 +527,153 @@ export async function updatePricingRule(
  * 3.1 Quản trị viên tạo mới hoặc cập nhật bảng giá loại xe
  */
 
+function nameToCode(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+}
+
 export async function createPricingRule(data: {
-  vehicleTypeId: string
-
+  vehicleTypeId?: string
+  vehicleName?: string
+  vehicleCode?: string
+  payloadCapacityKg?: number | string
+  dimensionsLxwxh?: any
+  description?: string
   basePrice: number
-
   baseDistanceKm?: number
-
   pricePerKm: number
 }) {
-  if (!data.vehicleTypeId) throw new ApiError(400, "Thiếu mã loại xe")
+  const basePrice = Number(data.basePrice)
+  if (isNaN(basePrice) || basePrice < 0) {
+    throw new ApiError(400, "Giá mở cửa không hợp lệ")
+  }
+  const pricePerKm = Number(data.pricePerKm)
+  if (isNaN(pricePerKm) || pricePerKm < 0) {
+    throw new ApiError(400, "Đơn giá mỗi km không hợp lệ")
+  }
+  const baseDistanceKm = Number(data.baseDistanceKm ?? 4.0)
 
-  const baseDistanceKm = data.baseDistanceKm ?? 4.0
+  let targetVehicleTypeId = ""
 
   try {
+    // 1. Kiểm tra nếu có vehicleTypeId truyền lên (UUID hoặc code)
+    if (data.vehicleTypeId && data.vehicleTypeId.trim()) {
+      const rawId = data.vehicleTypeId.trim()
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId)
+      if (isUuid) {
+        const vtype = await db.select().from(vehicleTypes).where(eq(vehicleTypes.id, rawId)).limit(1)
+        if (vtype.length > 0) {
+          targetVehicleTypeId = vtype[0].id
+        }
+      } else {
+        const vtype = await db.select().from(vehicleTypes).where(
+          or(
+            eq(vehicleTypes.code, rawId),
+            eq(vehicleTypes.code, rawId.toUpperCase()),
+          ),
+        ).limit(1)
+        if (vtype.length > 0) {
+          targetVehicleTypeId = vtype[0].id
+        }
+      }
+    }
+
+    // 2. Nếu chưa có targetVehicleTypeId, tạo loại xe mới từ vehicleName/code
+    if (!targetVehicleTypeId) {
+      const vName = (data.vehicleName || data.vehicleCode || data.vehicleTypeId || "Xe tải mới").trim()
+      const vCode = (data.vehicleCode || nameToCode(vName) || `TRUCK_${Date.now()}`).trim().toUpperCase()
+
+      const existing = await db.select().from(vehicleTypes).where(eq(vehicleTypes.code, vCode)).limit(1)
+      if (existing.length > 0) {
+        targetVehicleTypeId = existing[0].id
+        if (data.vehicleName) {
+          await db.update(vehicleTypes).set({
+            name: data.vehicleName,
+            payloadCapacityKg: String(data.payloadCapacityKg || existing[0].payloadCapacityKg),
+            dimensionsLxwxh: data.dimensionsLxwxh || existing[0].dimensionsLxwxh,
+            isActive: true,
+          }).where(eq(vehicleTypes.id, targetVehicleTypeId))
+        }
+      } else {
+        let dim = data.dimensionsLxwxh
+        if (typeof dim === "string" && dim.trim()) {
+          const parts = dim.split(/x|\*/i).map((s: string) => parseFloat(s.replace(/[^0-9.]/g, "")))
+          if (parts.length >= 3 && !parts.some(isNaN)) {
+            dim = { length: parts[0], width: parts[1], height: parts[2] }
+          } else {
+            dim = { length: 4.3, width: 1.8, height: 1.8 }
+          }
+        } else if (!dim || typeof dim !== "object") {
+          dim = { length: 4.3, width: 1.8, height: 1.8 }
+        }
+
+        const [newV] = await db
+          .insert(vehicleTypes)
+          .values({
+            code: vCode,
+            name: vName,
+            payloadCapacityKg: String(data.payloadCapacityKg || 2000),
+            dimensionsLxwxh: dim,
+            description: data.description || `Loại xe vận chuyển ${vName}`,
+            isActive: true,
+          })
+          .returning()
+        targetVehicleTypeId = newV.id
+      }
+    }
+
+    // 3. Insert hoặc update pricingRules với targetVehicleTypeId
     const inserted = await db
-
       .insert(pricingRules)
-
       .values({
-        vehicleTypeId: data.vehicleTypeId,
-
-        basePrice: String(data.basePrice),
-
+        vehicleTypeId: targetVehicleTypeId,
+        basePrice: String(basePrice),
         baseDistanceKm: String(baseDistanceKm),
-
-        pricePerKm: String(data.pricePerKm),
+        pricePerKm: String(pricePerKm),
       })
-
       .onConflictDoUpdate({
         target: pricingRules.vehicleTypeId,
-
         set: {
-          basePrice: String(data.basePrice),
-
+          basePrice: String(basePrice),
           baseDistanceKm: String(baseDistanceKm),
-
-          pricePerKm: String(data.pricePerKm),
-
+          pricePerKm: String(pricePerKm),
           updatedAt: new Date(),
         },
       })
-
       .returning()
 
-    return inserted[0]
-  } catch (err) {
+    // 4. Lấy rule đầy đủ với JOIN vehicleTypes
+    const fullRule = await db
+      .select({
+        id: pricingRules.id,
+        vehicleTypeId: pricingRules.vehicleTypeId,
+        basePrice: pricingRules.basePrice,
+        baseDistanceKm: pricingRules.baseDistanceKm,
+        pricePerKm: pricingRules.pricePerKm,
+        createdAt: pricingRules.createdAt,
+        updatedAt: pricingRules.updatedAt,
+        vehicleCode: vehicleTypes.code,
+        vehicleName: vehicleTypes.name,
+        payloadCapacityKg: vehicleTypes.payloadCapacityKg,
+        dimensionsLxwxh: vehicleTypes.dimensionsLxwxh,
+      })
+      .from(pricingRules)
+      .innerJoin(vehicleTypes, eq(pricingRules.vehicleTypeId, vehicleTypes.id))
+      .where(eq(pricingRules.id, inserted[0].id))
+      .limit(1)
+
+    return fullRule[0] || inserted[0]
+  } catch (err: any) {
     if (err instanceof ApiError) throw err
-
-    return {
-      id: `p-${Date.now()}`,
-
-      vehicleTypeId: data.vehicleTypeId,
-
-      basePrice: String(data.basePrice),
-
-      baseDistanceKm: String(baseDistanceKm),
-
-      pricePerKm: String(data.pricePerKm),
-
-      createdAt: new Date(),
-
-      updatedAt: new Date(),
-    }
+    console.error("[createPricingRule] Error:", err)
+    throw new ApiError(500, `Lỗi tạo bảng giá: ${err?.message || "Lỗi CSDL"}`)
   }
 }
 
@@ -998,6 +1086,10 @@ export async function estimateBookingPrice(
     durationMinutes,
 
     routingSource: route.routingSource,
+
+    totalPrice,
+
+    surchargeTotal,
 
     breakdown: {
       basePrice,

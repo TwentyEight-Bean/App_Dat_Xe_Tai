@@ -12,8 +12,14 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
     },
   })
   const json = await res.json()
-  if (!res.ok || json.success === false)
+  if (!res.ok || json.success === false) {
+    if (res.status === 401 || json.message?.includes("Token không hợp lệ") || json.message?.includes("UNAUTHORIZED")) {
+      localStorage.removeItem("admin_auth_token")
+      localStorage.removeItem("admin_user_info")
+      window.dispatchEvent(new Event("admin_session_expired"))
+    }
     throw new Error(json.message || "Lỗi API")
+  }
   return json.data as T
 }
 
@@ -106,8 +112,52 @@ export default function Accounting() {
       if (paymentFilter !== "ALL") params.set("paymentMethod", paymentFilter)
 
       const queryStr = params.toString() ? `?${params.toString()}` : ""
-      const res = await apiFetch<AccountingData>(`/api/v1/accounting/dashboard${queryStr}`)
-      setData(res)
+      const res = await apiFetch<any>(`/api/v1/accounting/dashboard${queryStr}`)
+      const raw = res?.data || res
+      const mappedData: AccountingData = {
+        timeframe: {
+          startDate: raw?.timeRange?.startDate || raw?.timeframe?.startDate || null,
+          endDate: raw?.timeRange?.endDate || raw?.timeframe?.endDate || null,
+        },
+        kpis: {
+          grossRevenue: Number(raw?.summary?.grossRevenue ?? raw?.kpis?.grossRevenue ?? 0),
+          platformCommission: Number(raw?.summary?.platformCommission ?? raw?.kpis?.platformCommission ?? 0),
+          driverNetEarnings: Number(raw?.summary?.driverNetEarnings ?? raw?.kpis?.driverNetEarnings ?? 0),
+          totalTrips: Number(raw?.summary?.totalTrips ?? raw?.kpis?.totalTrips ?? 0),
+          completedTrips: Number(raw?.summary?.completedTrips ?? raw?.kpis?.completedTrips ?? 0),
+          cancelledTrips: Number(raw?.summary?.cancelledTrips ?? raw?.kpis?.cancelledTrips ?? 0),
+          completionRate: Number(raw?.summary?.completionRate ?? raw?.kpis?.completionRate ?? 0),
+        },
+        paymentBreakdown: (raw?.byPaymentMethod || raw?.paymentBreakdown || []).map((m: any) => ({
+          method: m.method,
+          trips: Number(m.totalTrips ?? m.trips ?? 0),
+          amount: Number(m.totalRevenue ?? m.amount ?? 0),
+          percentage: Number(m.percentage ?? 0),
+        })),
+        vehicleBreakdown: (raw?.byVehicleType || raw?.vehicleBreakdown || []).map((v: any) => ({
+          vehicleTypeId: v.vehicleTypeId || v.vehicleCode || "",
+          vehicleName: v.vehicleName || "Xe tải",
+          trips: Number(v.completedTrips ?? v.trips ?? 0),
+          revenue: Number(v.revenue ?? 0),
+          percentage: Number(v.percentage ?? 0),
+        })),
+        topDrivers: (raw?.topDrivers || []).map((d: any) => ({
+          driverId: d.driverId,
+          fullName: d.driverName || d.fullName || "Tài xế",
+          phone: d.driverPhone || d.phone || "—",
+          licensePlate: d.licensePlate || "—",
+          completedTrips: Number(d.completedTrips ?? 0),
+          grossRevenue: Number(d.grossRevenue ?? 0),
+          platformCommission: Number(d.commissionPaid ?? d.platformCommission ?? 0),
+        })),
+        dailyTrends: (raw?.dailyTrends || []).map((t: any) => ({
+          date: t.date || "",
+          trips: Number(t.trips ?? 0),
+          grossRevenue: Number(t.grossRevenue ?? 0),
+          platformCommission: Number(t.platformCommission ?? 0),
+        })),
+      }
+      setData(mappedData)
     } catch (err: any) {
       setError(err.message || "Không thể tải dữ liệu kế toán")
     } finally {

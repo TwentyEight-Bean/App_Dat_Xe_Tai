@@ -653,6 +653,7 @@ export async function getAdminBookings(params: {
   limit?: number
   status?: string
   search?: string
+  vehicle?: string
 } = {}) {
   const page = Math.max(1, params.page || 1)
   const limit = Math.min(100, Math.max(1, params.limit || 20))
@@ -662,6 +663,9 @@ export async function getAdminBookings(params: {
   if (params.status && params.status !== "ALL" && params.status !== "Tất cả") {
     conditions.push(eq(bookings.status, params.status as any))
   }
+  if (params.vehicle && params.vehicle !== "ALL" && params.vehicle !== "Tất cả loại xe") {
+    conditions.push(ilike(vehicleTypes.name, `%${params.vehicle.trim()}%`))
+  }
   if (params.search && params.search.trim()) {
     const s = `%${params.search.trim()}%`
     conditions.push(
@@ -669,6 +673,8 @@ export async function getAdminBookings(params: {
         ilike(bookings.bookingCode, s),
         ilike(bookings.originAddress, s),
         ilike(bookings.destinationAddress, s),
+        ilike(users.fullName, s),
+        ilike(users.phone, s),
       ),
     )
   }
@@ -714,6 +720,8 @@ export async function getAdminBookings(params: {
   const countQuery = db
     .select({ count: sql<number>`count(*)::int` })
     .from(bookings)
+    .leftJoin(users, eq(bookings.customerId, users.id))
+    .leftJoin(vehicleTypes, eq(bookings.vehicleTypeId, vehicleTypes.id))
   const countResult = await (conditions.length > 0 ? countQuery.where(and(...conditions)) : countQuery)
   const total = countResult[0]?.count || 0
 
