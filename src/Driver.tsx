@@ -520,33 +520,34 @@ function EntryList({
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          padding: "32px 16px",
+          padding: "36px 20px",
           textAlign: "center",
-          background: "rgba(255, 255, 255, 0.03)",
+          background: "#ffffff",
           borderRadius: "16px",
-          border: "1px dashed rgba(255, 255, 255, 0.12)",
+          border: "1px dashed #cbd5e1",
           margin: "12px 0",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)",
         }}
       >
         <span
           style={{
-            width: "48px",
-            height: "48px",
+            width: "52px",
+            height: "52px",
             borderRadius: "50%",
-            background: "rgba(255, 255, 255, 0.06)",
+            background: "rgba(20, 120, 212, 0.08)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "#94a3b8",
+            color: "#1478d4",
             marginBottom: "12px",
           }}
         >
-          <Icon name="truck" size={24} />
+          <Icon name="truck" size={26} />
         </span>
-        <strong style={{ fontSize: "14px", color: "#f8fafc", marginBottom: "4px" }}>
+        <strong style={{ fontSize: "15px", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
           {emptyMessage}
         </strong>
-        <p style={{ fontSize: "12px", color: "#94a3b8", margin: 0, maxWidth: "260px" }}>
+        <p style={{ fontSize: "13px", color: "#64748b", margin: 0, maxWidth: "280px", lineHeight: 1.5 }}>
           Bật trực tuyến và sẵn sàng nhận cuốc xe gần nhất từ khách hàng.
         </p>
       </div>
@@ -1982,8 +1983,8 @@ function Earnings({
                 border: "none",
                 cursor: "pointer",
                 whiteSpace: "nowrap",
-                backgroundColor: selectedFilter === chip.id ? "#2563eb" : "rgba(255, 255, 255, 0.08)",
-                color: selectedFilter === chip.id ? "#fff" : "#94a3b8",
+                backgroundColor: selectedFilter === chip.id ? "#2563eb" : "#f1f5f9",
+                color: selectedFilter === chip.id ? "#fff" : "#475569",
               }}
             >
               {chip.label}
@@ -1997,17 +1998,18 @@ function Earnings({
               <div
                 key={tx.id}
                 style={{
-                  background: "rgba(255, 255, 255, 0.04)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  borderRadius: "10px",
-                  padding: "10px 12px",
+                  background: "#ffffff",
+                  border: "1px solid rgba(0, 0, 0, 0.06)",
+                  boxShadow: "0 1px 4px rgba(0, 0, 0, 0.04)",
+                  borderRadius: "12px",
+                  padding: "12px 14px",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
                 }}
               >
                 <div>
-                  <div style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
+                  <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#0f172a" }}>
                     {tx.type === "COMMISSION_DEDUCTION"
                       ? "Trừ hoa hồng cuốc xe"
                       : tx.type === "TRIP_INCOME"
@@ -2016,7 +2018,7 @@ function Earnings({
                       ? "Nạp tiền ví ký quỹ"
                       : "Điều chỉnh số dư"}
                   </div>
-                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
+                  <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
                     {tx.description || tx.reference_code || new Date(tx.created_at).toLocaleString("vi-VN")}
                   </div>
                 </div>
@@ -2024,7 +2026,7 @@ function Earnings({
                   style={{
                     fontSize: "14px",
                     fontWeight: 700,
-                    color: Number(tx.amount) >= 0 ? "#4ade80" : "#f87171",
+                    color: Number(tx.amount) >= 0 ? "#16a34a" : "#dc2626",
                     whiteSpace: "nowrap",
                     marginLeft: "8px",
                   }}
@@ -2054,26 +2056,27 @@ function Earnings({
                 <div
                   key={c.id}
                   style={{
-                    background: "rgba(255, 255, 255, 0.04)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    borderRadius: "10px",
-                    padding: "10px 12px",
+                    background: "#ffffff",
+                    border: "1px solid rgba(0, 0, 0, 0.06)",
+                    boxShadow: "0 1px 4px rgba(0, 0, 0, 0.04)",
+                    borderRadius: "12px",
+                    padding: "12px 14px",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
+                    <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#0f172a" }}>
                       📞 {c.isCaller ? "Gọi khách hàng" : "Khách gọi đến"}
                     </div>
-                    <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
+                    <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
                       Đơn #{c.bookingCode || c.bookingId?.slice(0, 8)} · {new Date(c.createdAt).toLocaleDateString("vi-VN")}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#38bdf8" }}>{timeStr}</div>
-                    <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#0284c7" }}>{timeStr}</div>
+                    <span style={{ fontSize: "10.5px", color: "#64748b" }}>
                       {c.callStatus === "ANSWERED" || c.callStatus === "COMPLETED" ? "Đã nghe" : "Nhỡ / Bận"}
                     </span>
                   </div>

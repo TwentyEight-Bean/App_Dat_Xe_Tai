@@ -257,6 +257,7 @@ export async function createPaymentOrder(dto: CreatePaymentDto) {
     const secureHash = hmac.update(Buffer.from(signData, "utf-8")).digest("hex")
 
     paymentUrl = `${VNPAY_CONFIG.url}?${queryParts.join("&")}&vnp_SecureHash=${secureHash}`
+    qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentUrl)}`
   } else if (gateway === "MOMO") {
     const returnUrl = redirectUrl || MOMO_CONFIG.defaultRedirectUrl
 
@@ -867,4 +868,39 @@ export async function getUserPaymentHistory(userId: string, limit = 20) {
 
     createdAt: r.created_at,
   }))
+}
+
+/**
+ * 7. Xác nhận giao dịch thành công cho môi trường Demo / Sandbox
+ */
+export async function confirmSimulatedPayment(transactionCode: string) {
+  if (!transactionCode) {
+    throw new ApiError(400, "Thiếu mã giao dịch transactionCode")
+  }
+
+  const txRows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
+    [transactionCode],
+  )
+
+  if (txRows.length === 0) {
+    throw new ApiError(404, "Không tìm thấy giao dịch thanh toán")
+  }
+
+  const tx = txRows[0]
+  if (tx.status !== "SUCCESS") {
+    await fulfillSuccessfulPayment({
+      paymentTxId: tx.id,
+      userId: tx.user_id,
+      bookingId: tx.booking_id,
+      walletId: tx.wallet_id,
+      amount: Number(tx.amount),
+      gateway: tx.gateway,
+      transactionCode: tx.transaction_code,
+      gatewayRefId: "SIMULATED_" + Date.now(),
+      rawResponse: { simulated: true, completedAt: new Date().toISOString() },
+    })
+  }
+
+  return { success: true, message: "Xác nhận thanh toán thành công!" }
 }

@@ -61,6 +61,10 @@ export interface PriceEstimateResult {
 
   routingSource: string
 
+  totalPrice?: number
+
+  surchargeTotal?: number
+
   breakdown: {
     basePrice: number
 
@@ -1082,6 +1086,10 @@ export async function estimateBookingPrice(
     durationMinutes,
 
     routingSource: route.routingSource,
+
+    totalPrice,
+
+    surchargeTotal,
 
     breakdown: {
       basePrice,
