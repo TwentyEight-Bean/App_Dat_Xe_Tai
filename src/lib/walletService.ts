@@ -859,11 +859,8 @@ export async function getAllDriverWallets(options?: {
 
       return {
         driverId: r.driver_id,
-
         userId: r.user_id,
-
-        fullName: r.full_name,
-
+        fullName: r.full_name || `Tài xế ${r.phone ? `(${r.phone})` : ""}`,
         phone: r.phone,
 
         avatarUrl: r.avatar_url,

@@ -60,7 +60,7 @@ async function runTest() {
   console.log("6. Ghi nhận thanh toán công nợ...")
   await db.update(b2bCustomers).set({ currentDebt: "15000000" }).where(eq(b2bCustomers.id, newC.id))
   const paid = await recordB2bPayment(newC.id, 5000000, "Thanh toán tạm ứng kỳ 1")
-  console.log("-> Dư nợ sau khi thanh toán:", paid.currentDebt, "(kỳ vọng 10,000,000)")
+  console.log("-> Dư nợ sau khi thanh toán:", paid.remainingDebt, "(kỳ vọng 10,000,000)")
 
   // Dọn dẹp bản ghi test
   await db.delete(b2bCustomers).where(eq(b2bCustomers.id, newC.id))

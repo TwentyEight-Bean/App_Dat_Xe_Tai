@@ -24,13 +24,19 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
 
   const json = await res.json()
 
-  if (!res.ok || json.success === false)
+  if (!res.ok || json.success === false) {
+    if (res.status === 401 || json.message?.includes("Token không hợp lệ") || json.message?.includes("UNAUTHORIZED")) {
+      localStorage.removeItem("admin_auth_token")
+      localStorage.removeItem("admin_user_info")
+      window.dispatchEvent(new Event("admin_session_expired"))
+    }
     throw new Error(json.message || "Lỗi API")
+  }
 
   return json.data as T
 }
 
-export type Decision = { res: "approved" | "rejected" reason?: string }
+export type Decision = { res: "approved" | "rejected"; reason?: string }
 
 const docMeta = [
   { label: "CCCD", hint: "Căn cước công dân", icon: "user" as const },
@@ -228,13 +234,13 @@ export function DocPreview({ idx, d }: { idx: number; d: Pending }) {
             Họ và tên
           </text>
           <text x="128" y="96" fontSize="15" fontWeight="800" fill="#1b2630">
-            {d.name.toUpperCase()}
+            {(d.name || "TÀI XẾ").toUpperCase()}
           </text>
           <text x="128" y="122" fontSize="10" fill="#55606a">
             Ngày sinh
           </text>
           <text x="128" y="138" fontSize="13" fontWeight="700" fill="#1b2630">
-            {d.dob}
+            {d.dob || "Chưa cập nhật"}
           </text>
           <text x="128" y="162" fontSize="10" fill="#55606a">
             Số
@@ -247,7 +253,7 @@ export function DocPreview({ idx, d }: { idx: number; d: Pending }) {
             letterSpacing="1"
             fill="#1b2630"
           >
-            {d.docNums[idx].split(" ")[0]}
+            {(d.docNums?.[idx] || "---").split(" ")[0]}
           </text>
         </>
       )}
@@ -292,7 +298,8 @@ export default function Drivers({
       .then((res) => {
         const data = Array.isArray(res) ? res : (res?.data || res?.drivers || [])
         const mapped = data.map((d: any) => {
-          const nameParts = (d.driverName || "Tài xế").split(" ")
+          const rawName = d.driverName || d.fullName || d.user?.fullName || "Tài xế mới"
+          const nameParts = rawName.split(" ")
 
           const initials =
             nameParts.length > 1
@@ -300,21 +307,21 @@ export default function Drivers({
               : nameParts[0].substring(0, 2)
 
           return {
-            id: d.id.split("-")[0].toUpperCase(),
+            id: d.id ? d.id.split("-")[0].toUpperCase() : "DRIVER",
 
             rawId: d.id,
 
-            name: d.driverName,
+            name: rawName,
 
-            initials: initials.toUpperCase(),
+            initials: (initials || "TX").toUpperCase(),
 
-            phone: d.phone,
+            phone: d.phone || d.user?.phone || "Chưa có SĐT",
 
             vehicle: d.vehicleType?.name || "Chưa chọn xe",
 
             plate: d.licensePlate || "Chưa có",
 
-            submitted: new Date(d.submittedAt).toLocaleDateString("vi-VN"),
+            submitted: d.submittedAt ? new Date(d.submittedAt).toLocaleDateString("vi-VN") : "Hôm nay",
 
             area: "Chưa xác định",
 
@@ -339,11 +346,13 @@ export default function Drivers({
 
     // Fetch active
 
-    apiFetch<any[]>("/api/admin/drivers?kycStatus=APPROVED")
+    apiFetch<any>("/api/admin/drivers?kycStatus=APPROVED")
 
-      .then((data) => {
-        const mapped = data.map((d) => {
-          const nameParts = (d.driverName || "Tài xế").split(" ")
+      .then((res) => {
+        const data = Array.isArray(res) ? res : (res?.data || res?.drivers || [])
+        const mapped = data.map((d: any) => {
+          const rawName = d.driverName || d.fullName || d.user?.fullName || "Tài xế"
+          const nameParts = rawName.split(" ")
 
           const initials =
             nameParts.length > 1
@@ -351,15 +360,15 @@ export default function Drivers({
               : nameParts[0].substring(0, 2)
 
           return {
-            id: d.id.split("-")[0].toUpperCase(),
+            id: d.id ? d.id.split("-")[0].toUpperCase() : "DRIVER",
 
             rawId: d.id,
 
-            name: d.driverName,
+            name: rawName,
 
-            initials: initials.toUpperCase(),
+            initials: (initials || "TX").toUpperCase(),
 
-            phone: d.phone,
+            phone: d.phone || d.user?.phone || "—",
 
             vehicle: d.vehicleType?.name || "Chưa chọn xe",
 
@@ -383,7 +392,9 @@ export default function Drivers({
                   ? "green"
                   : "gray",
 
-            date: new Date(d.submittedAt).toLocaleDateString("vi-VN"),
+            date: (d.submittedAt || d.createdAt || d.updatedAt)
+              ? new Date(d.submittedAt || d.createdAt || d.updatedAt).toLocaleDateString("vi-VN")
+              : "Hôm nay",
           }
         })
 
@@ -401,11 +412,9 @@ export default function Drivers({
 
   const activeList = dbActive
 
-  const [sel, setSel] = useState(focus ?? pendingList[0]?.id)
+  const [sel, setSel] = useState<string | undefined>(focus)
 
-  const [docs, setDocs] = useState<Record<string, DocState[]>>(() =>
-    Object.fromEntries(pendingList.map((p) => [p.id, p.docs0])),
-  )
+  const [docs, setDocs] = useState<Record<string, DocState[]>>({})
 
   const [doc, setDoc] = useState(0)
 
@@ -414,6 +423,23 @@ export default function Drivers({
   const [reason, setReason] = useState("")
 
   const d = pendingList.find((p) => p.id === sel) ?? pendingList[0]
+
+  useEffect(() => {
+    if (!sel && pendingList[0]?.id) {
+      setSel(pendingList[0].id)
+    }
+    if (pendingList.length > 0) {
+      setDocs((prev) => {
+        const next = { ...prev }
+        pendingList.forEach((p) => {
+          if (!next[p.id]) {
+            next[p.id] = p.docs0 || ["none", "none", "none", "none"]
+          }
+        })
+        return next
+      })
+    }
+  }, [pendingList, sel])
 
   useEffect(() => {
     if (!d?.rawId) return
@@ -664,11 +690,11 @@ export default function Drivers({
                         </span>
                         <span className="doc-txt">
                           <strong>{m.label}</strong>
-                          <small>{d.docNums[i]}</small>
+                          <small>{d.docNums?.[i] || "---"}</small>
                         </span>
                         <span
-                          className={`doc-state s-${ds[i]}`}
-                          title={stateLabel[ds[i]]}
+                          className={`doc-state s-${ds[i] || "none"}`}
+                          title={stateLabel[ds[i]] || "Chưa kiểm tra"}
                         >
                           {ds[i] === "ok" ? (
                             <Icon name="check" size={11} />
@@ -685,11 +711,11 @@ export default function Drivers({
                 <div className="viewer">
                   <div className="viewer-bar">
                     <div>
-                      <strong>{docMeta[doc].label}</strong>
-                      <small>{docMeta[doc].hint}</small>
+                      <strong>{docMeta[doc]?.label || "Tài liệu"}</strong>
+                      <small>{docMeta[doc]?.hint || ""}</small>
                     </div>
-                    <Status tone={stateTone[ds[doc]]}>
-                      {stateLabel[ds[doc]]}
+                    <Status tone={stateTone[ds[doc]] || "gray"}>
+                      {stateLabel[ds[doc]] || "Chưa kiểm tra"}
                     </Status>
                   </div>
                   <div className="viewer-stage">

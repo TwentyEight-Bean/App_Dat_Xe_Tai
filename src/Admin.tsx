@@ -67,7 +67,7 @@ const crumb: Record<Section, string> = {
   settings: "Cài đặt",
 }
 
-type Cmd = { label: string hint: string icon: IconName fn: () => void }
+type Cmd = { label: string; hint: string; icon: IconName; fn: () => void }
 
 function PaletteInner({
   onClose,
@@ -192,7 +192,24 @@ function useIsMobile() {
 
 export default function Admin() {
   const [adminToken, setAdminToken] = useState<string | null>(() => {
-    return localStorage.getItem("admin_auth_token")
+    const t = localStorage.getItem("admin_auth_token")
+    if (!t) return null
+    try {
+      const parts = t.split(".")
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1]))
+        if (payload.exp && payload.exp * 1000 < Date.now()) {
+          localStorage.removeItem("admin_auth_token")
+          localStorage.removeItem("admin_user_info")
+          return null
+        }
+      }
+    } catch {
+      localStorage.removeItem("admin_auth_token")
+      localStorage.removeItem("admin_user_info")
+      return null
+    }
+    return t
   })
 
   const [adminUser, setAdminUser] = useState<any>(() => {
@@ -203,6 +220,17 @@ export default function Admin() {
       return null
     }
   })
+
+  useEffect(() => {
+    const handleExpired = () => {
+      localStorage.removeItem("admin_auth_token")
+      localStorage.removeItem("admin_user_info")
+      setAdminToken(null)
+      setAdminUser(null)
+    }
+    window.addEventListener("admin_session_expired", handleExpired)
+    return () => window.removeEventListener("admin_session_expired", handleExpired)
+  }, [])
 
   const handleLogout = () => {
     if (

@@ -4,6 +4,26 @@ import { Icon, Status, Avatar } from "./ui"
 
 import { orders, stamps, stepNames, vnd, type Order } from "./data"
 
+export const getDriverInitials = (name?: string | null): string => {
+  if (!name || !name.trim() || name === "—") return "TX"
+  const parts = name.trim().split(/\s+/)
+  const last = parts[parts.length - 1]
+  return last ? last.slice(0, 2).toUpperCase() : "TX"
+}
+
+export const getCustomerInitials = (name?: string | null): string => {
+  if (!name || !name.trim()) return "KH"
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (
+    parts
+      .slice(-2)
+      .map((w) => w[0] || "")
+      .join("")
+      .toUpperCase() || "KH"
+  )
+}
+
 export function Drawer({
   title,
 
@@ -503,17 +523,7 @@ export function OrderDrawer({
         <section className="dsec">
           <div className="dsec-label">Khách hàng</div>
           <div className="person">
-            <Avatar
-              initials={o.customer
-
-                .split(" ")
-
-                .slice(-2)
-
-                .map((w) => w[0])
-
-                .join("")}
-            />
+            <Avatar initials={getCustomerInitials(o.customer)} />
             <span>
               <strong>{o.customer}</strong>
               <small>{o.phone}</small>
@@ -535,7 +545,7 @@ export function OrderDrawer({
           ) : (
             <div className="person">
               <Avatar
-                initials={o.driver.split(" ").pop()!.slice(0, 2).toUpperCase()}
+                initials={getDriverInitials(o.driver)}
                 tone="green"
               />
               <span>
@@ -713,15 +723,54 @@ export default function OrdersPage({
 
   const [dbOrders, setDbOrders] = useState<Order[]>(orders)
   const [totalDb, setTotalDb] = useState(0)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const limit = 10
+
+  const getBackendStatus = (uiStatus: string) => {
+    switch (uiStatus) {
+      case "Chờ tài xế":
+        return "SEARCHING"
+      case "Đã nhận":
+        return "ACCEPTED"
+      case "Đang giao":
+        return "IN_TRANSIT"
+      case "Hoàn thành":
+        return "COMPLETED"
+      case "Đã hủy":
+        return "CANCELLED"
+      default:
+        return undefined
+    }
+  }
+
+  useEffect(() => {
+    setPage(1)
+  }, [q, status, vehicle])
 
   useEffect(() => {
     const token = localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"
-    fetch("/api/v1/admin/bookings?page=1&limit=50", {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    })
+    if (q.trim()) params.set("search", q.trim())
+    const bStatus = getBackendStatus(status)
+    if (bStatus) params.set("status", bStatus)
+    if (vehicle && vehicle !== vehicles[0]) params.set("vehicle", vehicle)
+
+    fetch(`/api/v1/admin/bookings?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
       .then((res) => {
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (!res.success && (res.message?.includes("Token không hợp lệ") || res.message?.includes("UNAUTHORIZED"))) {
+          localStorage.removeItem("admin_auth_token")
+          localStorage.removeItem("admin_user_info")
+          window.dispatchEvent(new Event("admin_session_expired"))
+          return
+        }
+        if (res.success && Array.isArray(res.data)) {
           const mapped: Order[] = res.data.map((b: any) => {
             let tone: "green" | "amber" | "blue" | "sky" | "red" = "blue"
             let statusText = "Chờ tài xế"
@@ -785,22 +834,16 @@ export default function OrdersPage({
             } as Order
           })
           setDbOrders(mapped)
-          if (res.pagination) setTotalDb(res.pagination.total)
+          if (res.pagination) {
+            setTotalDb(res.pagination.total)
+            setTotalPages(res.pagination.totalPages || Math.ceil(res.pagination.total / limit) || 1)
+          }
         }
       })
       .catch((err) => console.warn("Lỗi tải đơn hàng DB trong admin:", err))
-  }, [])
+  }, [page, q, status, vehicle])
 
-  const rows = dbOrders.filter(
-    (o) =>
-      (status === statuses[0] || o.status === status) &&
-      (vehicle === vehicles[0] || o.vehicle === vehicle) &&
-      `${o.id} ${o.customer} ${o.driver}`
-
-        .toLowerCase()
-
-        .includes(q.toLowerCase()),
-  )
+  const rows = dbOrders
 
   const active = dbOrders.find((o) => o.id === activeId) || orders.find((o) => o.id === activeId)
 
@@ -876,7 +919,11 @@ export default function OrdersPage({
               </button>
             </>
           ) : (
-            <span>{rows.length} / {totalDb || rows.length} đơn</span>
+            <span>
+              {totalDb > 0
+                ? `Trang ${page}/${totalPages} (${totalDb} đơn)`
+                : `${rows.length} đơn`}
+            </span>
           )}
         </div>
       </div>
@@ -960,17 +1007,42 @@ export default function OrdersPage({
           </table>
         </div>
         <div className="table-foot">
-          <span>Hiển thị 1–{rows.length} trong 248 đơn hàng</span>
+          <span>
+            {totalDb > 0
+              ? `Hiển thị ${(page - 1) * limit + 1}–${Math.min(page * limit, totalDb)} trong ${totalDb} đơn hàng`
+              : "0 đơn hàng"}
+          </span>
           <div className="pager">
-            <button type="button" disabled>
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
               Trước
             </button>
-            <button type="button" className="on">
-              1
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+              .map((p, idx, arr) => (
+                <span key={p} style={{ display: "inline-flex", alignItems: "center" }}>
+                  {idx > 0 && arr[idx - 1] !== p - 1 && (
+                    <span style={{ padding: "0 4px", color: "#9ca3af", fontSize: "12px" }}>…</span>
+                  )}
+                  <button
+                    type="button"
+                    className={page === p ? "on" : ""}
+                    onClick={() => setPage(p)}
+                  >
+                    {p}
+                  </button>
+                </span>
+              ))}
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Sau
             </button>
-            <button type="button">2</button>
-            <button type="button">3</button>
-            <button type="button">Sau</button>
           </div>
         </div>
       </section>
@@ -986,7 +1058,7 @@ export default function OrdersPage({
   )
 }
 
-export function OrderDetail({ id, back }: { id: string back: () => void }) {
+export function OrderDetail({ id, back }: { id: string; back: () => void }) {
   const [dbOrder, setDbOrder] = useState<Order | null>(null)
   const [lightbox, setLightbox] = useState<{ src: string; title: string } | null>(
     null,
@@ -1184,17 +1256,7 @@ export function OrderDetail({ id, back }: { id: string back: () => void }) {
           <section className="panel pad">
             <div className="dsec-label">Khách hàng</div>
             <div className="person">
-              <Avatar
-                initials={o.customer
-
-                  .split(" ")
-
-                  .slice(-2)
-
-                  .map((w) => w[0])
-
-                  .join("")}
-              />
+              <Avatar initials={getCustomerInitials(o.customer)} />
               <span>
                 <strong>{o.customer}</strong>
                 <small>{o.phone}</small>
@@ -1209,15 +1271,7 @@ export function OrderDetail({ id, back }: { id: string back: () => void }) {
             ) : (
               <div className="person">
                 <Avatar
-                  initials={o.driver
-
-                    .split(" ")
-
-                    .pop()!
-
-                    .slice(0, 2)
-
-                    .toUpperCase()}
+                  initials={getDriverInitials(o.driver)}
                   tone="green"
                 />
                 <span>

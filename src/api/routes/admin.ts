@@ -271,6 +271,7 @@ router.get("/wallets/:userId/transactions", async (req, res, next) => {
 
 /**
  * POST /admin/wallets/:userId/adjust
+ */
 // Idempotency cache chống gửi trùng lặp điều chỉnh số dư trong 5 phút
 const walletAdjustIdempotencyCache = new Map<string, { result: any; expiresAt: number }>()
 
@@ -410,8 +411,9 @@ router.get("/bookings", async (req, res, next) => {
     const limit = parseInt((req.query.limit as string) || "20", 10)
     const status = req.query.status as string | undefined
     const search = req.query.search as string | undefined
+    const vehicle = req.query.vehicle as string | undefined
 
-    const result = await getAdminBookings({ page, limit, status, search })
+    const result = await getAdminBookings({ page, limit, status, search, vehicle })
     res.json({
       success: true,
       data: result.bookings,

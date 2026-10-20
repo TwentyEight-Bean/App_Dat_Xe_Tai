@@ -11,36 +11,62 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
     },
   })
   const json = await res.json()
-  if (!res.ok || json.success === false)
+  if (!res.ok || json.success === false) {
+    if (res.status === 401 || json.message?.includes("Token không hợp lệ") || json.message?.includes("UNAUTHORIZED")) {
+      localStorage.removeItem("admin_auth_token")
+      localStorage.removeItem("admin_user_info")
+      window.dispatchEvent(new Event("admin_session_expired"))
+    }
     throw new Error(json.message || "Lỗi API")
+  }
   return json as T
 }
 
 export interface CronSystemStatus {
   success: boolean
   data: {
-    status: string
-    currentTime: string
-    timezone: string
-    jobs: {
-      blockLowRatingDrivers: {
-        name: string
-        schedule: string
-        description: string
-        lastRunAt: string | null
-        lastRunStatus: string | null
+    status?: string
+    currentTime?: string
+    timezone?: string
+    isRunning?: boolean
+    jobs?: {
+      blockLowRating?: {
+        name?: string
+        cronSchedule?: string
+        schedule?: string
+        description?: string
+        lastRunAt?: string | null
+        lastRunStatus?: string | null
+        lastProcessedCount?: number
         processedCount?: number
       }
-      databaseBackup: {
-        name: string
-        schedule: string
-        description: string
-        lastRunAt: string | null
-        lastRunStatus: string | null
-        lastBackupFile?: string
+      blockLowRatingDrivers?: {
+        name?: string
+        cronSchedule?: string
+        schedule?: string
+        description?: string
+        lastRunAt?: string | null
+        lastRunStatus?: string | null
+        lastProcessedCount?: number
+        processedCount?: number
+      }
+      databaseBackup?: {
+        name?: string
+        cronSchedule?: string
+        schedule?: string
+        description?: string
+        lastRunAt?: string | null
+        lastRunStatus?: string | null
+        lastBackupFile?: string | null
       }
     }
-    recentBackups: {
+    backupFiles?: {
+      filename: string
+      sizeBytes: number
+      createdAt: string
+      path?: string
+    }[]
+    recentBackups?: {
       filename: string
       sizeBytes: number
       createdAt: string
@@ -215,8 +241,8 @@ export default function SystemCron() {
     }
   }
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 B"
+  const formatBytes = (bytes?: number) => {
+    if (!bytes || bytes <= 0) return "0 B"
     const k = 1024
     const sizes = ["B", "KB", "MB", "GB"]
     const i = Math.floor(Math.log(bytes) / Math.log(k))
@@ -224,6 +250,8 @@ export default function SystemCron() {
   }
 
   const jobs = cronData?.jobs
+  const blockJob = jobs?.blockLowRating || jobs?.blockLowRatingDrivers
+  const backupJob = jobs?.databaseBackup
 
   return (
     <div className="a-page" style={{ padding: "24px 32px" }}>
@@ -307,18 +335,20 @@ export default function SystemCron() {
             <div style={{ backgroundColor: "#f9fafb", borderRadius: 8, padding: 14, marginBottom: 16, fontSize: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ color: "#6b7280" }}>Lịch trình (Cron):</span>
-                <code style={{ fontWeight: 600, color: "#111827" }}>{jobs?.blockLowRatingDrivers.schedule || "0 3 * * *"}</code>
+                <code style={{ fontWeight: 600, color: "#111827" }}>{blockJob?.cronSchedule || blockJob?.schedule || "0 3 * * *"}</code>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ color: "#6b7280" }}>Lần chạy gần nhất:</span>
                 <span style={{ fontWeight: 500, color: "#111827" }}>
-                  {jobs?.blockLowRatingDrivers.lastRunAt ? new Date(jobs.blockLowRatingDrivers.lastRunAt).toLocaleString("vi-VN") : "Chưa ghi nhận"}
+                  {blockJob?.lastRunAt ? new Date(blockJob.lastRunAt).toLocaleString("vi-VN") : "Chưa ghi nhận"}
                 </span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "#6b7280" }}>Tài xế đã xử lý:</span>
                 <span style={{ fontWeight: 600, color: "#dc2626" }}>
-                  {jobs?.blockLowRatingDrivers.processedCount !== undefined ? `${jobs.blockLowRatingDrivers.processedCount} tài xế` : "0 tài xế"}
+                  {(blockJob?.lastProcessedCount ?? blockJob?.processedCount) !== undefined
+                    ? `${blockJob?.lastProcessedCount ?? blockJob?.processedCount} tài xế`
+                    : "0 tài xế"}
                 </span>
               </div>
             </div>
@@ -411,18 +441,18 @@ export default function SystemCron() {
             <div style={{ backgroundColor: "#f9fafb", borderRadius: 8, padding: 14, marginBottom: 16, fontSize: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ color: "#6b7280" }}>Lịch trình (Cron):</span>
-                <code style={{ fontWeight: 600, color: "#111827" }}>{jobs?.databaseBackup.schedule || "0 2 * * *"}</code>
+                <code style={{ fontWeight: 600, color: "#111827" }}>{backupJob?.cronSchedule || backupJob?.schedule || "0 2 * * *"}</code>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ color: "#6b7280" }}>Lần chạy gần nhất:</span>
                 <span style={{ fontWeight: 500, color: "#111827" }}>
-                  {jobs?.databaseBackup.lastRunAt ? new Date(jobs.databaseBackup.lastRunAt).toLocaleString("vi-VN") : "Chưa ghi nhận"}
+                  {backupJob?.lastRunAt ? new Date(backupJob.lastRunAt).toLocaleString("vi-VN") : "Chưa ghi nhận"}
                 </span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "#6b7280" }}>Bản backup gần nhất:</span>
                 <span style={{ fontWeight: 600, color: "#059669" }}>
-                  {jobs?.databaseBackup.lastBackupFile || "Sẵn sàng tạo mới"}
+                  {backupJob?.lastBackupFile || "Sẵn sàng tạo mới"}
                 </span>
               </div>
             </div>
@@ -498,7 +528,7 @@ export default function SystemCron() {
                   </td>
                 </tr>
               ) : (() => {
-                const backupList = (cronData as any)?.recentBackups || (cronData as any)?.backupFiles || []
+                const backupList = cronData?.backupFiles || (cronData as any)?.recentBackups || []
                 if (backupList.length === 0) {
                   return (
                     <tr>
@@ -517,7 +547,7 @@ export default function SystemCron() {
                       {formatBytes(b.sizeBytes)}
                     </td>
                     <td style={{ padding: "12px 16px", color: "#6b7280" }}>
-                      {new Date(b.createdAt).toLocaleString("vi-VN")}
+                      {b.createdAt ? new Date(b.createdAt).toLocaleString("vi-VN") : "Chưa rõ"}
                     </td>
                     <td style={{ padding: "12px 16px" }}>
                       <span

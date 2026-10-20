@@ -567,3 +567,295 @@
   background: var(--brand-500);
   box-shadow: 0 0 0 3px rgba(20, 120, 212, 0.2);
 }
+
+/* ==========================================================================
+   Leaflet Real Map & Nationwide Navigation Styles
+   ========================================================================== */
+
+.interactive-map-root.leaflet-real-map {
+  cursor: default;
+}
+
+.leaflet-map-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* Leaflet Container Customization */
+.leaflet-container {
+  font-family: inherit;
+  background: #e5e9e5 !important;
+}
+
+.leaflet-pane {
+  z-index: 2;
+}
+
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 3;
+}
+
+/* 3 Tile Themes */
+.layer-traffic .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(115%) grayscale(25%);
+}
+
+.layer-satellite .leaflet-tile-pane {
+  filter: saturate(1.15) contrast(1.08);
+}
+
+/* City Switcher Top Bar */
+.city-switcher-wrapper {
+  position: absolute;
+  top: 72px;
+  left: 12px;
+  right: 12px;
+  z-index: 500;
+  padding: 4px;
+  border-radius: 18px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  pointer-events: auto;
+}
+
+.city-switcher-scroll {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 2px;
+}
+
+.city-switcher-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.city-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink-700);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 160ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.city-pill:hover {
+  background: rgba(255, 255, 255, 0.85);
+  transform: translateY(-1px);
+}
+
+.city-pill:active {
+  transform: translateY(1px);
+}
+
+.city-pill.active {
+  background: var(--brand-500);
+  border-color: var(--brand-600);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(20, 120, 212, 0.4);
+}
+
+.city-pill-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.8;
+}
+
+/* Fixed Center Draggable Pickup Pin */
+.center-pin-overlay {
+  position: absolute;
+  top: 36%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 600;
+  pointer-events: none;
+}
+
+.center-pin-wrapper {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  transition: transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.center-pin-overlay.is-lifted .center-pin-wrapper {
+  transform: translateY(-16px) scale(1.12);
+}
+
+.center-pin-overlay.is-lifted .pin-ground-shadow {
+  transform: scale(0.6);
+  opacity: 0.25;
+}
+
+/* Leaflet Nearby Truck Markers */
+.leaflet-truck-marker {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.truck-marker-inner {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--brand-500);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.truck-emoji {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.truck-pulse-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--brand-500);
+  opacity: 0.7;
+  animation: radar-expand 2s cubic-bezier(0.2, 0.7, 0.4, 1) infinite;
+}
+
+.truck-plate-tag {
+  position: absolute;
+  bottom: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #17212b;
+  color: #fbbf24;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* Xe của chính tài xế (My Truck Highlight) */
+.truck-marker-inner.is-me {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+  border: 2.5px solid #ffffff !important;
+  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.5), 0 0 0 3px rgba(16, 185, 129, 0.25) !important;
+  transform: scale(1.12);
+  z-index: 1000;
+}
+
+.truck-pulse-ring.pulse-me {
+  inset: -10px !important;
+  border: 2.5px solid #10b981 !important;
+  opacity: 0.85;
+  animation: radar-expand 1.6s cubic-bezier(0.2, 0.7, 0.4, 1) infinite !important;
+}
+
+.truck-plate-tag.tag-me {
+  background: #064e3b !important;
+  color: #a7f3d0 !important;
+  border: 1px solid rgba(110, 231, 183, 0.5) !important;
+  font-weight: 800 !important;
+  font-size: 9px !important;
+  bottom: -18px !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35) !important;
+}
+
+.truck-marker-inner.is-me.offline-me {
+  background: linear-gradient(135deg, #475569 0%, #64748b 100%) !important;
+  border: 2.5px solid #ffffff !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+  transform: scale(1.05);
+}
+
+.truck-plate-tag.tag-offline {
+  background: #1e293b !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(203, 213, 225, 0.3) !important;
+}
+
+/* Route Pins */
+.route-marker-pin {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.route-pickup-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--green-500);
+  border: 3.5px solid #ffffff;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+}
+
+.route-dest-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2.5px solid #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+.route-moving-truck {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.moving-truck-badge {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  border: 3px solid #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(20, 120, 212, 0.45);
+}
+
+/* Locating pulse */
+.locate.is-locating svg {
+  animation: spin 1s linear infinite;
+  color: var(--amber-500);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Elevate Floating Controls */
+.floating-map-controls {
+  z-index: 700 !important;
+}
+
+.drag-hint-pill {
+  z-index: 650 !important;
+  top: 124px !important;
+}

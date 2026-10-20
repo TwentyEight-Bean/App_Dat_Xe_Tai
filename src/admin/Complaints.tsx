@@ -34,7 +34,7 @@ export default function Complaints({
 
   const [cat, setCat] = useState("Tất cả")
 
-  const [sel, setSel] = useState(focus ?? items[0].id)
+  const [sel, setSel] = useState(focus ?? items[0]?.id ?? "")
 
   const [reply, setReply] = useState("")
 
@@ -46,10 +46,12 @@ export default function Complaints({
       (cat === "Tất cả" || i.cat === cat),
   )
 
-  const c = items.find((i) => i.id === sel) ?? items[0]
+  const c = items.find((i) => i.id === sel) ?? list[0] ?? items[0]
 
-  const patch = (f: (c: Complaint) => Complaint) =>
+  const patch = (f: (c: Complaint) => Complaint) => {
+    if (!c) return
     setItems((p) => p.map((x) => (x.id === c.id ? f(x) : x)))
+  }
 
   const setStatus = (s: string) =>
     patch((x) => ({
@@ -167,157 +169,223 @@ export default function Complaints({
               </li>
             ))}
             {list.length === 0 && (
-              <li className="empty-row">Không có khiếu nại</li>
+              <li
+                className="empty-row"
+                style={{
+                  padding: "32px 16px",
+                  textAlign: "center",
+                  color: "var(--muted)",
+                  fontSize: 13,
+                }}
+              >
+                {items.length === 0
+                  ? "Chưa có khiếu nại nào"
+                  : "Không có khiếu nại phù hợp"}
+              </li>
             )}
           </ul>
         </section>
 
         <section className="ib-detail panel">
-          <header className="ibd-head">
-            <div>
-              <div className="ibd-id">
-                {c.id}
-                <Status tone={tone(c.status)}>{c.status}</Status>
-              </div>
-              <h2>{c.title}</h2>
-            </div>
-            <div className="ibd-actions">
-              <button
-                type="button"
-                className={`btn ${
-                  c.status === "Đang xử lý" ? "btn-tonal" : ""
-                }`}
-                disabled={
-                  c.status === "Đang xử lý" || c.status === "Đã giải quyết"
-                }
-                onClick={() => setStatus("Đang xử lý")}
+          {!c ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                flex: 1,
+                padding: "48px 24px",
+                textAlign: "center",
+                minHeight: 380,
+              }}
+            >
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: "50%",
+                  backgroundColor: "var(--line-soft, #f3f4f6)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: 16,
+                  color: "var(--muted, #9ca3af)",
+                }}
               >
-                Đang xử lý
-              </button>
-              <button
-                type="button"
-                className="btn btn-success"
-                disabled={c.status === "Đã giải quyết"}
-                onClick={() => setStatus("Đã giải quyết")}
-              >
-                <Icon name="check" size={14} />
-                Đã giải quyết
-              </button>
-            </div>
-          </header>
-          <div className="ibd-scroll">
-            <dl className="ibd-meta">
-              <div>
-                <dt>Khách hàng</dt>
-                <dd>
-                  <Avatar
-                    initials={c.customer
-
-                      .split(" ")
-
-                      .slice(-2)
-
-                      .map((w) => w[0])
-
-                      .join("")}
-                    size={22}
-                  />
-                  {c.customer}
-                </dd>
+                <Icon name="message" size={28} />
               </div>
-              <div>
-                <dt>Đơn liên quan</dt>
-                <dd>
+              <h3
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: "var(--ink, #111827)",
+                  margin: "0 0 8px 0",
+                }}
+              >
+                {items.length === 0
+                  ? "Hộp thư khiếu nại đang trống"
+                  : "Chưa chọn khiếu nại"}
+              </h3>
+              <p
+                style={{
+                  fontSize: 13,
+                  margin: 0,
+                  maxWidth: 340,
+                  lineHeight: 1.5,
+                  color: "var(--muted, #6b7280)",
+                }}
+              >
+                {items.length === 0
+                  ? "Hiện tại hệ thống chưa nhận được phản ánh hoặc khiếu nại nào từ khách hàng."
+                  : "Vui lòng chọn một khiếu nại từ danh sách bên trái để xem nội dung chi tiết và trao đổi với khách hàng."}
+              </p>
+            </div>
+          ) : (
+            <>
+              <header className="ibd-head">
+                <div>
+                  <div className="ibd-id">
+                    {c.id}
+                    <Status tone={tone(c.status)}>{c.status}</Status>
+                  </div>
+                  <h2>{c.title}</h2>
+                </div>
+                <div className="ibd-actions">
                   <button
                     type="button"
-                    className="link-btn code"
-                    onClick={() => openOrder(c.order)}
+                    className={`btn ${
+                      c.status === "Đang xử lý" ? "btn-tonal" : ""
+                    }`}
+                    disabled={
+                      c.status === "Đang xử lý" || c.status === "Đã giải quyết"
+                    }
+                    onClick={() => setStatus("Đang xử lý")}
                   >
-                    #{c.order}
+                    Đang xử lý
                   </button>
-                </dd>
-              </div>
-              <div>
-                <dt>Tài xế</dt>
-                <dd>{c.driver}</dd>
-              </div>
-              <div>
-                <dt>Loại</dt>
-                <dd>{c.cat}</dd>
-              </div>
-            </dl>
-            <div className="ibd-issue">
-              <div className="dsec-label">Nội dung phản ánh</div>
-              <p>{c.body}</p>
-            </div>
-            <div className="ibd-cols">
-              <div className="ibd-thread">
-                <div className="dsec-label">Trao đổi</div>
-                {c.messages.map((m, i) => (
-                  <div key={i} className={`msg ${m.from}`}>
-                    <p>{m.text}</p>
-                    <small>
-                      {m.from === "admin" ? "Bạn" : c.customer} · {m.at}
-                    </small>
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    disabled={c.status === "Đã giải quyết"}
+                    onClick={() => setStatus("Đã giải quyết")}
+                  >
+                    <Icon name="check" size={14} />
+                    Đã giải quyết
+                  </button>
+                </div>
+              </header>
+              <div className="ibd-scroll">
+                <dl className="ibd-meta">
+                  <div>
+                    <dt>Khách hàng</dt>
+                    <dd>
+                      <Avatar
+                        initials={(c.customer || "KH")
+                          .split(" ")
+                          .slice(-2)
+                          .map((w) => w[0])
+                          .join("")}
+                        size={22}
+                      />
+                      {c.customer}
+                    </dd>
                   </div>
-                ))}
+                  <div>
+                    <dt>Đơn liên quan</dt>
+                    <dd>
+                      <button
+                        type="button"
+                        className="link-btn code"
+                        onClick={() => openOrder(c.order)}
+                      >
+                        #{c.order}
+                      </button>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Tài xế</dt>
+                    <dd>{c.driver}</dd>
+                  </div>
+                  <div>
+                    <dt>Loại</dt>
+                    <dd>{c.cat}</dd>
+                  </div>
+                </dl>
+                <div className="ibd-issue">
+                  <div className="dsec-label">Nội dung phản ánh</div>
+                  <p>{c.body}</p>
+                </div>
+                <div className="ibd-cols">
+                  <div className="ibd-thread">
+                    <div className="dsec-label">Trao đổi</div>
+                    {c.messages.map((m, i) => (
+                      <div key={i} className={`msg ${m.from}`}>
+                        <p>{m.text}</p>
+                        <small>
+                          {m.from === "admin" ? "Bạn" : c.customer} · {m.at}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="ibd-events">
+                    <div className="dsec-label">Dòng thời gian</div>
+                    <ol className="steps compact">
+                      {c.events.map((e, i) => (
+                        <li
+                          key={i}
+                          className={
+                            i === c.events.length - 1 ? "done cur" : "done"
+                          }
+                        >
+                          <span className="step-dot" />
+                          <strong>{e.text}</strong>
+                          <small>{e.at}</small>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
               </div>
-              <div className="ibd-events">
-                <div className="dsec-label">Dòng thời gian</div>
-                <ol className="steps compact">
-                  {c.events.map((e, i) => (
-                    <li
-                      key={i}
-                      className={
-                        i === c.events.length - 1 ? "done cur" : "done"
-                      }
-                    >
-                      <span className="step-dot" />
-                      <strong>{e.text}</strong>
-                      <small>{e.at}</small>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </div>
-          </div>
-          <footer className="ibd-foot">
-            <div className="reply field">
-              <input
-                value={reply}
-                onChange={(e) => setReply(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && send()}
-                placeholder="Trả lời khách hàng…"
-                disabled={c.status === "Đã giải quyết"}
-              />
-              <button
-                type="button"
-                className="icon-btn send"
-                aria-label="Gửi"
-                onClick={send}
-                disabled={!reply.trim()}
-              >
-                <Icon name="send" size={14} />
-              </button>
-            </div>
-            <div className="danger-zone">
-              <span>Leo thang</span>
-              <button
-                type="button"
-                className="btn btn-danger-o btn-sm"
-                onClick={() => escalate("Đã chuyển cấp quản lý")}
-              >
-                Chuyển cấp quản lý
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger-o btn-sm"
-                onClick={() => escalate("Đã báo cáo tài xế")}
-              >
-                Báo cáo tài xế
-              </button>
-            </div>
-          </footer>
+              <footer className="ibd-foot">
+                <div className="reply field">
+                  <input
+                    value={reply}
+                    onChange={(e) => setReply(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && send()}
+                    placeholder="Trả lời khách hàng…"
+                    disabled={c.status === "Đã giải quyết"}
+                  />
+                  <button
+                    type="button"
+                    className="icon-btn send"
+                    aria-label="Gửi"
+                    onClick={send}
+                    disabled={!reply.trim()}
+                  >
+                    <Icon name="send" size={14} />
+                  </button>
+                </div>
+                <div className="danger-zone">
+                  <span>Leo thang</span>
+                  <button
+                    type="button"
+                    className="btn btn-danger-o btn-sm"
+                    onClick={() => escalate("Đã chuyển cấp quản lý")}
+                  >
+                    Chuyển cấp quản lý
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger-o btn-sm"
+                    onClick={() => escalate("Đã báo cáo tài xế")}
+                  >
+                    Báo cáo tài xế
+                  </button>
+                </div>
+              </footer>
+            </>
+          )}
         </section>
       </div>
     </div>

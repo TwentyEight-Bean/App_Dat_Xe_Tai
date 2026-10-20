@@ -160,7 +160,7 @@ const paths: Record<IconName, ReactNode> = {
   layers: <path d="m12 3 9 5-9 5-9-5 9-5ZM3 13l9 5 9-5" />,
 }
 
-export function Icon({ name, size = 18 }: { name: IconName size?: number }) {
+export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   return (
     <svg
       aria-hidden="true"

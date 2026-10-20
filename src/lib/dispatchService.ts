@@ -554,3 +554,155 @@ export async function findNearbyDrivers(
     }
   })
 }
+
+export interface DemandHotspotsOptions {
+  lat?: number
+  lng?: number
+  radiusKm?: number
+}
+
+export interface DemandHotspotItem {
+  district: string
+  count: number
+  lat: number
+  lng: number
+  radiusMeters: number
+}
+
+export interface DemandHotspotsResult {
+  isHighDemand: boolean
+  badge: string
+  text: string
+  surgeBonusPercent: number
+  hotspots: DemandHotspotItem[]
+}
+
+/**
+ * Phân tích các khu vực có nhu cầu đặt xe cao thời gian thực dựa trên cơ sở dữ liệu bookings
+ */
+export async function getDemandHotspots(
+  options?: DemandHotspotsOptions,
+): Promise<DemandHotspotsResult> {
+  const currentLat = options?.lat || 10.7769
+  const currentLng = options?.lng || 106.7009
+  const radiusKm = options?.radiusKm || 25
+
+  try {
+    // 1. Quét các đơn hàng đang PENDING / SEARCHING hoặc vừa tạo gần đây
+    const query = `
+      SELECT 
+        b.id,
+        b.origin_address,
+        ST_X(b.origin_point::geometry) AS lng,
+        ST_Y(b.origin_point::geometry) AS lat,
+        b.status,
+        b.created_at,
+        ROUND(
+          ST_Distance(
+            b.origin_point::geography,
+            ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography
+          )::numeric, 1
+        ) AS distance_meters
+      FROM bookings b
+      WHERE (
+        b.status IN ('PENDING', 'SEARCHING')
+        OR (b.created_at >= NOW() - INTERVAL '4 hours' AND b.status IN ('ACCEPTED', 'ARRIVED_AT_PICKUP', 'IN_TRANSIT'))
+      )
+      AND ST_DWithin(
+        b.origin_point::geography,
+        ST_SetSRID(ST_MakePoint($1::double precision, $2::double precision), 4326)::geography,
+        $3
+      )
+      ORDER BY b.created_at DESC
+      LIMIT 50
+    `
+
+    const rows = await client.unsafe(query, [currentLng, currentLat, radiusKm * 1000])
+
+    const extractDistrict = (addr: string): string => {
+      if (!addr) return "Khu vực lân cận"
+      const match = addr.match(
+        /(Quận\s+\w+|Q\.\s*\w+|Huyện\s+\w+|TP\.\s*\w+|Thị xã\s+\w+|Bình Thạnh|Gò Vấp|Tân Bình|Tân Phú|Phú Nhuận|Bình Tân|Củ Chi|Hóc Môn|Nhà Bè|Cần Giờ|Thủ Đức|Sóng Thần|Tân Tạo|Cát Lái|Hoàn Kiếm|Ba Đình|Đống Đa|Hai Bà Trưng|Cầu Giấy|Thanh Xuân|Hải Châu|Sơn Trà|Ngũ Hành Sơn|Ninh Kiều)/i,
+      )
+      if (match) {
+        let name = match[0].trim()
+        if (/^Q\.\s*(\d+)$/i.test(name)) name = `Quận ${name.replace(/^Q\.\s*/i, "")}`
+        return name
+      }
+      const parts = addr.split(",")
+      if (parts.length >= 2) return parts[parts.length - 2].trim()
+      return "Khu vực trung tâm"
+    }
+
+    const districtMap: Record<string, { count: number; lats: number[]; lngs: number[] }> = {}
+
+    rows.forEach((r: any) => {
+      const distName = extractDistrict(r.origin_address)
+      if (!districtMap[distName]) {
+        districtMap[distName] = { count: 0, lats: [], lngs: [] }
+      }
+      districtMap[distName].count += 1
+      districtMap[distName].lats.push(Number(r.lat))
+      districtMap[distName].lngs.push(Number(r.lng))
+    })
+
+    const sortedDistricts = Object.entries(districtMap)
+      .map(([name, val]) => ({
+        district: name,
+        count: val.count,
+        lat: val.lats.reduce((a, b) => a + b, 0) / val.lats.length,
+        lng: val.lngs.reduce((a, b) => a + b, 0) / val.lngs.length,
+        radiusMeters: Math.min(2500, Math.max(1000, val.count * 600)),
+      }))
+      .sort((a, b) => b.count - a.count)
+
+    const totalOrders = rows.length
+
+    if (sortedDistricts.length > 0 && totalOrders >= 2) {
+      const topNames = sortedDistricts.slice(0, 2).map((d) => d.district).join(" & ")
+      return {
+        isHighDemand: true,
+        badge: "🔥 Nhu cầu cao:",
+        text: `${topNames} đang có ${totalOrders} đơn đặt xe (+15% cước)`,
+        surgeBonusPercent: 15,
+        hotspots: sortedDistricts.slice(0, 3),
+      }
+    }
+
+    if (sortedDistricts.length === 1) {
+      const d = sortedDistricts[0]
+      return {
+        isHighDemand: false,
+        badge: "⚡ Đang có đơn:",
+        text: `${d.district} đang có đơn đặt xe chờ tài xế tiếp nhận`,
+        surgeBonusPercent: 0,
+        hotspots: [d],
+      }
+    }
+
+    return {
+      isHighDemand: false,
+      badge: "🟢 Nhu cầu ổn định:",
+      text: "Hệ thống đang quét đơn hàng phù hợp gần vị trí bạn",
+      surgeBonusPercent: 0,
+      hotspots: [
+        {
+          district: "Khu vực của bạn",
+          count: 1,
+          lat: currentLat,
+          lng: currentLng,
+          radiusMeters: 1200,
+        },
+      ],
+    }
+  } catch (err) {
+    console.warn("Lỗi phân tích điểm nóng nhu cầu:", err)
+    return {
+      isHighDemand: false,
+      badge: "🟢 Nhu cầu ổn định:",
+      text: "Đang sẵn sàng kết nối các cuốc xe quanh bạn",
+      surgeBonusPercent: 0,
+      hotspots: [],
+    }
+  }
+}

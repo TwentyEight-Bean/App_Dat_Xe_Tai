@@ -56,7 +56,7 @@ export type Order = {
   cancelledBy?: string | null
 }
 
-export const vnd = (n: number) => `${n.toLocaleString("vi-VN")}đ`
+export const vnd = (n?: number | null) => `${(Number(n) || 0).toLocaleString("vi-VN")}đ`
 
 export const orders: Order[] = [
   {
@@ -838,7 +838,7 @@ export type UserRow = {
     when: string
   }[]
 
-  support: { id: string title: string status: string when: string }[]
+  support: { id: string; title: string; status: string; when: string }[]
 }
 
 export const users: UserRow[] = [
@@ -1290,9 +1290,9 @@ export type Complaint = {
 
   time: string
 
-  messages: { from: "customer" | "admin" text: string at: string }[]
+  messages: { from: "customer" | "admin"; text: string; at: string }[]
 
-  events: { text: string at: string }[]
+  events: { text: string; at: string }[]
 }
 
 export const complaints0: Complaint[] = [

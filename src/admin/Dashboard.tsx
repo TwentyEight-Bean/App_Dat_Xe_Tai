@@ -28,7 +28,7 @@ const routeD = (p: Pt, d: Pt) => {
   return `M${p[0]} ${p[1]} Q${c[0]} ${c[1]} ${d[0]} ${d[1]}`
 }
 
-const districts: { n: string x: number y: number }[] = [
+const districts: { n: string; x: number; y: number }[] = [
   { n: "Gò Vấp", x: 30, y: 7 },
 
   { n: "Thủ Đức", x: 78, y: 10 },
@@ -349,7 +349,7 @@ export function OpsMap({
   )
 }
 
-function Spark({ data, tone = "blue" }: { data: number[] tone?: string }) {
+function Spark({ data, tone = "blue" }: { data: number[]; tone?: string }) {
   const max = Math.max(...data),
     min = Math.min(...data)
 

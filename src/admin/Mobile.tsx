@@ -4,7 +4,7 @@ import "./mobile.css"
 
 import { Icon, Status, Avatar, type IconName } from "./ui"
 
-import { Steps } from "./Orders"
+import { Steps, getCustomerInitials } from "./Orders"
 
 import { OpsMap } from "./Dashboard"
 
@@ -26,15 +26,15 @@ import {
 
 type Tab = "home" | "orders" | "act" | "more"
 
-type Screen = { k: "order" id: string } | { k: "driver" id: string } | {
+type Screen = { k: "order"; id: string } | { k: "driver"; id: string } | {
   k: "drivers"
-} | { k: "user" id: string } | { k: "users" } | {
+} | { k: "user"; id: string } | { k: "users" } | {
   k: "complaint"
 
   id: string
-} | { k: "complaints" tab?: string } | { k: "settings" }
+} | { k: "complaints"; tab?: string } | { k: "settings" }
 
-type Nav = { push: (s: Screen) => void pop: () => void tab: (t: Tab) => void }
+type Nav = { push: (s: Screen) => void; pop: () => void; tab: (t: Tab) => void }
 
 type Shared = {
   decided: Record<string, Decision>
@@ -237,7 +237,7 @@ function Search({
   )
 }
 
-function OrderRow({ o, onClick }: { o: Order onClick: () => void }) {
+function OrderRow({ o, onClick }: { o: Order; onClick: () => void }) {
   return (
     <button type="button" className="m-card m-order" onClick={onClick}>
       <span className="m-order-top">
@@ -595,7 +595,7 @@ function OrdersList({ nav }: { nav: Nav }) {
   )
 }
 
-function OrderDetailM({ id, nav }: { id: string nav: Nav }) {
+function OrderDetailM({ id, nav }: { id: string; nav: Nav }) {
   const o = orders.find((x) => x.id === id)!
 
   const promo = o.value > 100000 ? 10000 : 0
@@ -696,18 +696,7 @@ function OrderDetailM({ id, nav }: { id: string nav: Nav }) {
         </Fold>
         <Fold title="Thông tin khách hàng" hint={o.customer}>
           <div className="m-person">
-            <Avatar
-              initials={o.customer
-
-                .split(" ")
-
-                .slice(-2)
-
-                .map((w) => w[0])
-
-                .join("")}
-              size={40}
-            />
+            <Avatar initials={getCustomerInitials(o.customer)} size={40} />
             <span>
               <strong>{o.customer}</strong>
               <small>{o.phone}</small>
@@ -719,8 +708,8 @@ function OrderDetailM({ id, nav }: { id: string nav: Nav }) {
   )
 }
 
-function ActionCenter({ nav, attn }: { nav: Nav attn: Attn[] }) {
-  const groups: { g: Attn["group"] t: string }[] = [
+function ActionCenter({ nav, attn }: { nav: Nav; attn: Attn[] }) {
+  const groups: { g: Attn["group"]; t: string }[] = [
     { g: "urgent", t: "Khẩn cấp" },
 
     { g: "todo", t: "Cần xử lý" },
@@ -1269,7 +1258,7 @@ function UsersM({ nav }: { nav: Nav }) {
   )
 }
 
-function UserDetailM({ u, nav }: { u: UserRow nav: Nav }) {
+function UserDetailM({ u, nav }: { u: UserRow; nav: Nav }) {
   return (
     <div className="m-detail">
       <Header title="Người dùng" sub={u.id} onBack={nav.pop} />
@@ -1963,7 +1952,7 @@ export default function MobileAdmin({
       />
     )
 
-  const tabs: { id: Tab l: string icon: IconName n?: number }[] = [
+  const tabs: { id: Tab; l: string; icon: IconName; n?: number }[] = [
     { id: "home", l: "Tổng quan", icon: "grid" },
 
     { id: "orders", l: "Đơn hàng", icon: "orders" },

@@ -4358,7 +4358,6 @@ export default function App() {
 
         body: JSON.stringify({
           originAddress: pickup,
-
           originLat: currentEst.originLat,
 
           originLng: currentEst.originLng,
@@ -4368,7 +4367,6 @@ export default function App() {
           destLat: currentEst.destLat,
 
           destLng: currentEst.destLng,
-
           vehicleTypeId: currentV?.vehicleTypeId || currentV?.id,
 
           paymentMethod: paymentMethod,
@@ -5578,6 +5576,7 @@ export default function App() {
           bookingId={currentBookingId || undefined}
           partnerName={activeDriver?.name || "Anh Minh (Tài xế)"}
           partnerRole="DRIVER"
+          partnerAvatar={activeDriver?.avatarUrl}
           authToken={authToken || undefined}
           licensePlate={activeDriver?.licensePlate || "51D-482.15"}
         />

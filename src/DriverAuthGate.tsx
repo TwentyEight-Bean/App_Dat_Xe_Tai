@@ -5,96 +5,105 @@ type DriverAuthGateProps = {
   onBackToCustomer?: () => void
 }
 
+const SEED_DRIVERS = [
+  {
+    name: "Lê Thành Đạt",
+    phone: "0908815624",
+    vehicle: "Xe van",
+    plate: "51D-482.15",
+    badge: "Đã duyệt KYC",
+    badgeColor: "#4ade80",
+  },
+  {
+    name: "Trần Minh Quân",
+    phone: "0903124486",
+    vehicle: "Xe 1 tấn",
+    plate: "51D-923.41",
+    badge: "Đã duyệt KYC",
+    badgeColor: "#4ade80",
+  },
+  {
+    name: "Võ Tuấn Kiệt",
+    phone: "0987452201",
+    vehicle: "Xe 2 tấn",
+    plate: "51D-638.19",
+    badge: "Đã duyệt KYC",
+    badgeColor: "#4ade80",
+  },
+  {
+    name: "Ngô Hoàng Nam",
+    phone: "0916348832",
+    vehicle: "Xe 500kg",
+    plate: "Chưa nộp xe",
+    badge: "Chờ duyệt KYC",
+    badgeColor: "#fbbf24",
+  },
+]
+
 export default function DriverAuthGate({
   onSuccess,
   onBackToCustomer,
 }: DriverAuthGateProps) {
-  const [step, setStep] = useState<"phone" | "otp">("phone")
+  const [mode, setMode] = useState<"login" | "register">("login")
   const [phone, setPhone] = useState("0908815624")
-  const [otp, setOtp] = useState("123456")
+  const [fullName, setFullName] = useState("")
+  const [password, setPassword] = useState("123456")
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [countdown, setCountdown] = useState(60)
   const [infoMsg, setInfoMsg] = useState("")
 
   const phoneInputRef = useRef<HTMLInputElement>(null)
-  const otpInputRef = useRef<HTMLInputElement>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (step === "phone") {
-        phoneInputRef.current?.focus()
+      if (mode === "register" && !fullName) {
+        nameInputRef.current?.focus()
       } else {
-        otpInputRef.current?.focus()
+        phoneInputRef.current?.focus()
       }
     }, 200)
     return () => clearTimeout(timer)
-  }, [step])
+  }, [mode])
 
-  useEffect(() => {
-    let timer: any
-    if (step === "otp" && countdown > 0) {
-      timer = setInterval(() => setCountdown((c) => c - 1), 1000)
-    }
-    return () => clearInterval(timer)
-  }, [step, countdown])
-
-  const handleRequestOtp = async () => {
-    const cleanPhone = phone.trim().replace(/\s+/g, "")
-    if (!cleanPhone || cleanPhone.length < 9) {
-      setError("Vui lòng nhập số điện thoại đối tác hợp lệ (tối thiểu 9 số)")
-      return
-    }
-
+  const handleQuickLogin = async (driver: typeof SEED_DRIVERS[0]) => {
+    setPhone(driver.phone)
     setError("")
     setLoading(true)
+    setInfoMsg(`Đang đăng nhập nhanh tài khoản tài xế ${driver.name}...`)
 
     try {
-      const res = await fetch("/api/v1/auth/request-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanPhone }),
-      })
-
-      const data = await res.json()
-      if (!data.success) {
-        throw new Error(data.message || "Gửi mã OTP thất bại")
-      }
-
-      setStep("otp")
-      setCountdown(60)
-      setInfoMsg("Mã OTP đã gửi! Mã thử nghiệm: 123456")
-    } catch (err: any) {
-      setError(err.message || "Không thể kết nối đến máy chủ gửi OTP")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleVerifyOtp = async () => {
-    const cleanOtp = otp.trim()
-    if (!cleanOtp || cleanOtp.length !== 6) {
-      setError("Vui lòng nhập đủ 6 chữ số OTP")
-      return
-    }
-
-    setError("")
-    setLoading(true)
-
-    try {
-      const res = await fetch("/api/v1/auth/verify-otp", {
+      // Thử đăng nhập trước
+      let res = await fetch("/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: phone.trim().replace(/\s+/g, ""),
-          otp: cleanOtp,
+          phone: driver.phone,
+          password: "123456",
           role: "DRIVER",
         }),
       })
 
-      const data = await res.json()
-      if (!data.success) {
-        throw new Error(data.message || "Xác thực mã OTP thất bại")
+      let data = await res.json()
+
+      // Nếu tài xế chưa có trong database, tự động đăng ký mới
+      if (!res.ok && res.status === 404) {
+        res = await fetch("/api/v1/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: driver.phone,
+            password: "123456",
+            fullName: driver.name,
+            role: "DRIVER",
+          }),
+        })
+        data = await res.json()
+      }
+
+      if (!res.ok || !data.success || !data.token || !data.user) {
+        throw new Error(data.message || "Đăng nhập nhanh không thành công")
       }
 
       if (typeof window !== "undefined") {
@@ -104,9 +113,117 @@ export default function DriverAuthGate({
 
       onSuccess(data.token, data.user)
     } catch (err: any) {
-      setError(err.message || "Xác thực OTP không thành công")
+      setError(err.message || "Đăng nhập nhanh không thành công")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleLogin = async () => {
+    const cleanPhone = phone.trim().replace(/\s+/g, "")
+    if (!cleanPhone || cleanPhone.length < 9) {
+      setError("Vui lòng nhập số điện thoại đối tác hợp lệ (tối thiểu 9 số)")
+      return
+    }
+
+    if (!password || password.trim().length < 6) {
+      setError("Vui lòng nhập mật khẩu hoặc mã PIN (tối thiểu 6 ký tự)")
+      return
+    }
+
+    setError("")
+    setLoading(true)
+
+    try {
+      const res = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: cleanPhone,
+          password: password.trim(),
+          role: "DRIVER",
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success || !data.token || !data.user) {
+        if (res.status === 404) {
+          setError("Số điện thoại chưa đăng ký đối tác. Vui lòng chuyển sang 'Đăng ký đối tác mới'.")
+        } else {
+          setError(data.message || "Đăng nhập không thành công. Kiểm tra lại mật khẩu.")
+        }
+        return
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("driver_auth_token", data.token)
+        localStorage.setItem("driver_phone", data.user.phone)
+      }
+
+      onSuccess(data.token, data.user)
+    } catch (err: any) {
+      setError(err.message || "Không thể kết nối đến máy chủ đăng nhập đối tác")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRegister = async () => {
+    const cleanPhone = phone.trim().replace(/\s+/g, "")
+    if (!cleanPhone || cleanPhone.length < 9) {
+      setError("Vui lòng nhập số điện thoại đối tác hợp lệ (tối thiểu 9 số)")
+      return
+    }
+
+    if (!password || password.trim().length < 6) {
+      setError("Vui lòng tạo mật khẩu hoặc mã PIN tối thiểu 6 ký tự")
+      return
+    }
+
+    setError("")
+    setLoading(true)
+
+    try {
+      const res = await fetch("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: cleanPhone,
+          fullName: fullName.trim() || undefined,
+          password: password.trim(),
+          role: "DRIVER",
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success || !data.token || !data.user) {
+        if (res.status === 409) {
+          setError("Số điện thoại đối tác đã tồn tại. Vui lòng chuyển sang Đăng nhập.")
+        } else {
+          setError(data.message || "Đăng ký đối tác không thành công")
+        }
+        return
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("driver_auth_token", data.token)
+        localStorage.setItem("driver_phone", data.user.phone)
+      }
+
+      onSuccess(data.token, data.user)
+    } catch (err: any) {
+      setError(err.message || "Không thể kết nối đến máy chủ đăng ký đối tác")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (mode === "login") {
+      handleLogin()
+    } else {
+      handleRegister()
     }
   }
 
@@ -129,7 +246,7 @@ export default function DriverAuthGate({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: "32px",
+            marginBottom: "28px",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -177,7 +294,7 @@ export default function DriverAuthGate({
         </div>
 
         {/* Hero Title */}
-        <div style={{ marginBottom: "28px" }}>
+        <div style={{ marginBottom: "22px" }}>
           <span
             style={{
               display: "inline-flex",
@@ -189,7 +306,7 @@ export default function DriverAuthGate({
               color: "#fbbf24",
               fontSize: "11px",
               fontWeight: 600,
-              marginBottom: "12px",
+              marginBottom: "10px",
             }}
           >
             <span
@@ -200,33 +317,90 @@ export default function DriverAuthGate({
                 background: "#f59e0b",
               }}
             />
-            Đăng nhập phân quyền Role: DRIVER
+            Phân quyền đối tác: DRIVER
           </span>
           <h1
             style={{
-              fontSize: "24px",
+              fontSize: "22px",
               fontWeight: 800,
               lineHeight: 1.25,
               margin: 0,
               color: "#f8fafc",
             }}
           >
-            {step === "phone"
+            {mode === "login"
               ? "Bắt đầu nhận cuốc xe ngay hôm nay"
-              : "Xác thực mã OTP Đối tác"}
+              : "Đăng ký trở thành tài xế đối tác"}
           </h1>
           <p
             style={{
               color: "#94a3b8",
               fontSize: "13px",
-              margin: "8px 0 0",
+              margin: "6px 0 0",
               lineHeight: 1.4,
             }}
           >
-            {step === "phone"
-              ? "Nhập số điện thoại đối tác đã đăng ký hoặc số mới để tự động liên kết hồ sơ xe."
-              : `Mã xác nhận 6 số đã được gửi tới số điện thoại ${phone}.`}
+            {mode === "login"
+              ? "Đăng nhập bằng số điện thoại và mật khẩu/mã PIN của bạn."
+              : "Tạo tài khoản đối tác để bắt đầu nhận đơn vận chuyển hàng hóa."}
           </p>
+        </div>
+
+        {/* Mode Selector Tabs */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            background: "rgba(255, 255, 255, 0.06)",
+            padding: "3px",
+            borderRadius: "14px",
+            marginBottom: "18px",
+            gap: "4px",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setMode("login")
+              setError("")
+              setInfoMsg("")
+            }}
+            style={{
+              padding: "9px 12px",
+              borderRadius: "11px",
+              border: "none",
+              background: mode === "login" ? "rgba(245, 158, 11, 0.25)" : "transparent",
+              color: mode === "login" ? "#fbbf24" : "#94a3b8",
+              fontWeight: mode === "login" ? 700 : 500,
+              fontSize: "13px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            Đăng nhập
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("register")
+              setError("")
+              setInfoMsg("")
+            }}
+            style={{
+              padding: "9px 12px",
+              borderRadius: "11px",
+              border: "none",
+              background: mode === "register" ? "rgba(245, 158, 11, 0.25)" : "transparent",
+              color: mode === "register" ? "#fbbf24" : "#94a3b8",
+              fontWeight: mode === "register" ? 700 : 500,
+              fontSize: "13px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            Đăng ký đối tác
+          </button>
         </div>
 
         {/* Thông báo lỗi */}
@@ -247,11 +421,32 @@ export default function DriverAuthGate({
             }}
           >
             <span>⚠️</span>
-            <span>{error}</span>
+            <span style={{ flex: 1 }}>{error}</span>
+            {error.includes("Đăng ký") && mode === "login" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("register")
+                  setError("")
+                }}
+                style={{
+                  background: "#ef4444",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "4px 8px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Đăng ký
+              </button>
+            )}
           </div>
         )}
 
-        {/* Thông báo mã test */}
+        {/* Thông báo thông tin */}
         {infoMsg && (
           <div
             style={{
@@ -273,30 +468,79 @@ export default function DriverAuthGate({
           </div>
         )}
 
-        {/* STEP 1: NHẬP SĐT */}
-        {step === "phone" && (
-          <div
-            style={{
-              background: "rgba(255, 255, 255, 0.05)",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              borderRadius: "20px",
-              padding: "20px 16px",
-            }}
-          >
+        {/* Form Đăng nhập / Đăng ký đối tác */}
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            background: "rgba(255, 255, 255, 0.05)",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            borderRadius: "20px",
+            padding: "20px 16px",
+          }}
+        >
+          {/* Tên tài xế (khi Đăng ký) */}
+          {mode === "register" && (
+            <div style={{ marginBottom: "14px" }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "#94a3b8",
+                  marginBottom: "6px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Họ và tên Tài xế
+              </label>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  background: "rgba(15, 23, 42, 0.7)",
+                  border: "1.5px solid rgba(255, 255, 255, 0.15)",
+                  borderRadius: "14px",
+                  padding: "2px 14px",
+                }}
+              >
+                <input
+                  ref={nameInputRef}
+                  type="text"
+                  disabled={loading}
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Ví dụ: Lê Thành Đạt"
+                  style={{
+                    width: "100%",
+                    height: "44px",
+                    border: "none",
+                    outline: "none",
+                    fontSize: "15px",
+                    fontWeight: 600,
+                    color: "#fff",
+                    background: "transparent",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* SĐT */}
+          <div style={{ marginBottom: "14px" }}>
             <label
               style={{
                 display: "block",
                 fontSize: "11px",
                 fontWeight: 600,
                 color: "#94a3b8",
-                marginBottom: "8px",
+                marginBottom: "6px",
                 textTransform: "uppercase",
                 letterSpacing: "0.04em",
               }}
             >
               Số điện thoại Tài xế
             </label>
-
             <div
               style={{
                 display: "flex",
@@ -305,7 +549,6 @@ export default function DriverAuthGate({
                 border: "1.5px solid rgba(255, 255, 255, 0.15)",
                 borderRadius: "14px",
                 padding: "2px 14px",
-                marginBottom: "12px",
               }}
             >
               <span
@@ -323,79 +566,32 @@ export default function DriverAuthGate({
               <input
                 ref={phoneInputRef}
                 type="tel"
+                disabled={loading}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleRequestOtp()
-                }}
                 placeholder="09xx xxx xxx"
                 style={{
                   width: "100%",
-                  height: "46px",
+                  height: "44px",
                   border: "none",
                   outline: "none",
-                  fontSize: "16px",
+                  fontSize: "15px",
                   fontWeight: 600,
                   color: "#fff",
                   background: "transparent",
                 }}
               />
             </div>
-
-            <p style={{ fontSize: "11px", color: "#64748b", margin: "0 0 18px" }}>
-              💡 Gợi ý thử nghiệm: Bấm &quot;Tiếp tục&quot; với số <strong>{phone}</strong> để nhận mã OTP test <strong>123456</strong>.
-            </p>
-
-            <button
-              type="button"
-              disabled={loading}
-              onClick={handleRequestOtp}
-              style={{
-                width: "100%",
-                height: "50px",
-                borderRadius: "14px",
-                border: "none",
-                background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                color: "#111827",
-                fontSize: "15px",
-                fontWeight: 800,
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.7 : 1,
-                boxShadow: "0 4px 18px rgba(245, 158, 11, 0.35)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-              }}
-            >
-              {loading ? (
-                <span>Đang gửi mã...</span>
-              ) : (
-                <>
-                  <span>TIẾP TỤC</span>
-                  <span style={{ fontSize: "18px" }}>➔</span>
-                </>
-              )}
-            </button>
           </div>
-        )}
 
-        {/* STEP 2: NHẬP OTP */}
-        {step === "otp" && (
-          <div
-            style={{
-              background: "rgba(255, 255, 255, 0.05)",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              borderRadius: "20px",
-              padding: "20px 16px",
-            }}
-          >
+          {/* Mật khẩu hoặc Mã PIN */}
+          <div style={{ marginBottom: "18px" }}>
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginBottom: "8px",
+                marginBottom: "6px",
               }}
             >
               <label
@@ -407,14 +603,11 @@ export default function DriverAuthGate({
                   letterSpacing: "0.04em",
                 }}
               >
-                Mã xác nhận 6 số
+                {mode === "login" ? "Mật khẩu / Mã PIN" : "Tạo Mật khẩu / Mã PIN"}
               </label>
               <button
                 type="button"
-                onClick={() => {
-                  setStep("phone")
-                  setError("")
-                }}
+                onClick={() => setShowPassword(!showPassword)}
                 style={{
                   background: "none",
                   border: "none",
@@ -425,108 +618,194 @@ export default function DriverAuthGate({
                   padding: 0,
                 }}
               >
-                Đổi số điện thoại
+                {showPassword ? "Ẩn" : "Hiện"}
               </button>
             </div>
-
             <div
               style={{
+                display: "flex",
+                alignItems: "center",
                 background: "rgba(15, 23, 42, 0.7)",
                 border: "1.5px solid rgba(255, 255, 255, 0.15)",
                 borderRadius: "14px",
                 padding: "2px 14px",
-                marginBottom: "10px",
               }}
             >
               <input
-                ref={otpInputRef}
-                type="text"
-                maxLength={6}
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleVerifyOtp()
-                }}
-                placeholder="123456"
+                type={showPassword ? "text" : "password"}
+                disabled={loading}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Tối thiểu 6 ký tự"
                 style={{
                   width: "100%",
-                  height: "48px",
+                  height: "44px",
                   border: "none",
                   outline: "none",
-                  fontSize: "22px",
-                  fontWeight: 700,
-                  letterSpacing: "8px",
-                  textAlign: "center",
-                  color: "#f8fafc",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  color: "#fff",
                   background: "transparent",
                 }}
               />
             </div>
+          </div>
 
+          {mode === "login" && (
+            <p style={{ fontSize: "11px", color: "#64748b", margin: "0 0 18px" }}>
+              💡 Mật khẩu tài xế mẫu: <strong>123456</strong>
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: "100%",
+              height: "50px",
+              borderRadius: "14px",
+              border: "none",
+              background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+              color: "#111827",
+              fontSize: "15px",
+              fontWeight: 800,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
+              boxShadow: "0 4px 18px rgba(245, 158, 11, 0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+            }}
+          >
+            {loading ? (
+              <span>Đang xử lý...</span>
+            ) : mode === "login" ? (
+              <>
+                <span>ĐĂNG NHẬP NHẬN CUỐC</span>
+                <span style={{ fontSize: "18px" }}>➔</span>
+              </>
+            ) : (
+              <>
+                <span>ĐĂNG KÝ HỒ SƠ TÀI XẾ</span>
+                <span style={{ fontSize: "18px" }}>✓</span>
+              </>
+            )}
+          </button>
+
+          {/* Quick Test Driver Accounts */}
+          <div
+            style={{
+              marginTop: "20px",
+              paddingTop: "16px",
+              borderTop: "1px dashed rgba(255, 255, 255, 0.12)",
+            }}
+          >
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginBottom: "18px",
-                fontSize: "11px",
-                color: "#94a3b8",
+                marginBottom: "10px",
               }}
             >
-              <span>Mã dùng thử: <strong style={{ color: "#fbbf24" }}>123456</strong></span>
-              {countdown > 0 ? (
-                <span>Gửi lại sau {countdown}s</span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleRequestOtp}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#fbbf24",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  Gửi lại mã
-                </button>
-              )}
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#cbd5e1",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                ⚡ Chọn nhanh tài xế thật (Database)
+              </span>
+              <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+                1-chạm đăng nhập
+              </span>
             </div>
-
-            <button
-              type="button"
-              disabled={loading}
-              onClick={handleVerifyOtp}
+            <div
               style={{
-                width: "100%",
-                height: "50px",
-                borderRadius: "14px",
-                border: "none",
-                background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                color: "#111827",
-                fontSize: "15px",
-                fontWeight: 800,
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.7 : 1,
-                boxShadow: "0 4px 18px rgba(245, 158, 11, 0.35)",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                flexDirection: "column",
                 gap: "8px",
               }}
             >
-              {loading ? (
-                <span>Đang xác thực...</span>
-              ) : (
-                <>
-                  <span>ĐĂNG NHẬP NHẬN CUỐC</span>
-                  <span style={{ fontSize: "18px" }}>✓</span>
-                </>
-              )}
-            </button>
+              {SEED_DRIVERS.map((d) => (
+                <button
+                  key={d.phone}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleQuickLogin(d)}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.04)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: "12px",
+                    padding: "8px 12px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background =
+                      "rgba(255, 255, 255, 0.08)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background =
+                      "rgba(255, 255, 255, 0.04)")
+                  }
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        color: "#f8fafc",
+                      }}
+                    >
+                      🚚 {d.name}{" "}
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          color: "#94a3b8",
+                          fontWeight: 400,
+                        }}
+                      >
+                        ({d.phone})
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#94a3b8",
+                        marginTop: "2px",
+                      }}
+                    >
+                      {d.vehicle} · {d.plate}
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      padding: "3px 8px",
+                      borderRadius: "8px",
+                      background: "rgba(255, 255, 255, 0.06)",
+                      color: d.badgeColor,
+                      border: `1px solid ${d.badgeColor}40`,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {d.badge} ➔
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-        )}
+        </form>
       </div>
 
       {/* Footer Info */}

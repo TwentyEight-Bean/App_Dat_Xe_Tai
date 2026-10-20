@@ -1263,124 +1263,130 @@ function LoginOtpPage({
     },
     [],
   )
-  const [step, setStep] = useState<"phone" | "otp">("phone")
-
+  const [mode, setMode] = useState<"login" | "register">("login")
   const [phone, setPhone] = useState("0988888888")
-
-  const [otp, setOtp] = useState("123456")
-
+  const [fullName, setFullName] = useState("")
+  const [password, setPassword] = useState("123456")
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-
   const [error, setError] = useState("")
-
-  const [countdown, setCountdown] = useState(60)
-
   const [infoMsg, setInfoMsg] = useState("")
 
-  useEffect(() => {
-    let timer: any
-
-    if (step === "otp" && countdown > 0) {
-      timer = setInterval(() => setCountdown((c) => c - 1), 1000)
-    }
-
-    return () => clearInterval(timer)
-  }, [step, countdown])
-
-  const handleRequestOtp = async () => {
+  const handleLogin = async () => {
     if (pending.current) return
 
-    if (!/^(0\d{9}|\+?84\d{9})$/.test(phone.trim().replace(/\s+/g, ""))) {
-      setError("Vui lòng nhập số điện thoại hợp lệ")
+    const cleanPhone = phone.trim().replace(/\s+/g, "")
+    if (!cleanPhone || cleanPhone.length < 9) {
+      setError("Vui lòng nhập số điện thoại hợp lệ (tối thiểu 9 số)")
+      return
+    }
 
+    if (!password || password.trim().length < 6) {
+      setError("Vui lòng nhập mật khẩu hoặc mã PIN (tối thiểu 6 ký tự)")
       return
     }
 
     setError("")
-
     setLoading(true)
     pending.current = true
     const request = new AbortController()
     requestRef.current = request
 
     try {
-      const res = await fetch("/api/v1/auth/request-otp", {
+      const res = await fetch("/api/v1/auth/login", {
         signal: request.signal,
         method: "POST",
-
         headers: { "Content-Type": "application/json" },
-
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({
+          phone: cleanPhone,
+          password: password.trim(),
+          role: "CUSTOMER",
+        }),
       })
 
       const data = await res.json()
       if (request.signal.aborted) return
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Gửi mã OTP thất bại")
+      if (!res.ok || !data.success || !data.token || !data.user?.phone) {
+        if (res.status === 404) {
+          setError("Số điện thoại chưa đăng ký. Hãy chuyển sang tab Đăng ký để tạo tài khoản mới.")
+        } else {
+          setError(data.message || "Đăng nhập không thành công. Kiểm tra lại mật khẩu.")
+        }
+        return
       }
 
-      setStep("otp")
-
-      setCountdown(60)
-
-      setInfoMsg("Mã OTP đã gửi! Mã thử nghiệm miễn phí: 123456")
-    } catch (err: any) {
-      if (request.signal.aborted) return
-      setError(err.message || "Không thể gửi OTP")
-    } finally {
-      pending.current = false
-      if (!request.signal.aborted) setLoading(false)
-    }
-  }
-
-  const handleVerifyOtp = async () => {
-    if (pending.current) return
-
-    if (!/^\d{6}$/.test(otp.trim())) {
-      setError("Vui lòng nhập đủ 6 chữ số OTP")
-
-      return
-    }
-
-    setError("")
-
-    setLoading(true)
-    pending.current = true
-    const request = new AbortController()
-    requestRef.current = request
-
-    try {
-      const res = await fetch("/api/v1/auth/verify-otp", {
-        signal: request.signal,
-        method: "POST",
-
-        headers: { "Content-Type": "application/json" },
-
-        body: JSON.stringify({ phone, otp }),
-      })
-
-      const data = await res.json()
-      if (request.signal.aborted) return
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Xác thực OTP thất bại")
-      }
-
-      if (typeof data.token !== "string" || !data.user?.phone)
-        throw new Error("Phản hồi đăng nhập không hợp lệ")
       if (typeof window !== "undefined") {
         localStorage.setItem("auth_token", data.token)
-
         localStorage.setItem("user_phone", data.user.phone)
-
         window.dispatchEvent(new Event("customer-auth-changed"))
       }
 
       onSuccess(data.user.phone, data.token)
     } catch (err: any) {
       if (request.signal.aborted) return
-      setError(err.message || "Xác thực OTP không thành công")
+      setError(err.message || "Không thể kết nối đến máy chủ đăng nhập")
+    } finally {
+      pending.current = false
+      if (!request.signal.aborted) setLoading(false)
+    }
+  }
+
+  const handleRegister = async () => {
+    if (pending.current) return
+
+    const cleanPhone = phone.trim().replace(/\s+/g, "")
+    if (!cleanPhone || cleanPhone.length < 9) {
+      setError("Vui lòng nhập số điện thoại hợp lệ (tối thiểu 9 số)")
+      return
+    }
+
+    if (!password || password.trim().length < 6) {
+      setError("Vui lòng tạo mật khẩu hoặc mã PIN tối thiểu 6 ký tự")
+      return
+    }
+
+    setError("")
+    setLoading(true)
+    pending.current = true
+    const request = new AbortController()
+    requestRef.current = request
+
+    try {
+      const res = await fetch("/api/v1/auth/register", {
+        signal: request.signal,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: cleanPhone,
+          fullName: fullName.trim() || undefined,
+          password: password.trim(),
+          role: "CUSTOMER",
+        }),
+      })
+
+      const data = await res.json()
+      if (request.signal.aborted) return
+
+      if (!res.ok || !data.success || !data.token || !data.user?.phone) {
+        if (res.status === 409) {
+          setError("Số điện thoại đã tồn tại. Vui lòng chuyển sang tab Đăng nhập.")
+        } else {
+          setError(data.message || "Đăng ký tài khoản không thành công")
+        }
+        return
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("auth_token", data.token)
+        localStorage.setItem("user_phone", data.user.phone)
+        window.dispatchEvent(new Event("customer-auth-changed"))
+      }
+
+      onSuccess(data.user.phone, data.token)
+    } catch (err: any) {
+      if (request.signal.aborted) return
+      setError(err.message || "Không thể kết nối đến máy chủ đăng ký")
     } finally {
       pending.current = false
       if (!request.signal.aborted) setLoading(false)
@@ -1389,27 +1395,19 @@ function LoginOtpPage({
 
   return (
     <section className="orders-screen account-screen form">
-      <SubHead onBack={onBack} title="Đăng nhập bằng OTP" />
+      <SubHead onBack={onBack} title={mode === "login" ? "Đăng nhập tài khoản" : "Đăng ký tài khoản"} />
       <div style={{ padding: "20px 16px" }}>
         <div style={{ textAlign: "center", marginBottom: "20px" }}>
           <div
             style={{
               width: "56px",
-
               height: "56px",
-
               borderRadius: "28px",
-
               background: "#eff6ff",
-
               color: "#2563eb",
-
               display: "inline-flex",
-
               alignItems: "center",
-
               justifyContent: "center",
-
               marginBottom: "12px",
             }}
           >
@@ -1418,30 +1416,80 @@ function LoginOtpPage({
           <h2
             style={{ fontSize: "18px", fontWeight: "bold", margin: "0 0 6px" }}
           >
-            {step === "phone" ? "Nhập số điện thoại" : "Xác thực mã OTP"}
+            {mode === "login" ? "Chào mừng bạn trở lại!" : "Tạo tài khoản mới (0 VNĐ)"}
           </h2>
           <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
-            {step === "phone"
-              ? "Hệ thống sẽ gửi mã xác thực One-Time Password đến số của bạn"
-              : `Mã xác thực gồm 6 chữ số đã được gửi tới ${phone}`}
+            {mode === "login"
+              ? "Đăng nhập bằng số điện thoại và mật khẩu hoặc mã PIN của bạn"
+              : "Đăng ký tài khoản khách hàng để theo dõi đơn và nhận ưu đãi"}
           </p>
+        </div>
+
+        {/* Mode Selector Tabs */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            background: "#f1f5f9",
+            padding: "4px",
+            borderRadius: "12px",
+            marginBottom: "18px",
+            gap: "4px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setMode("login")
+              setError("")
+              setInfoMsg("")
+            }}
+            style={{
+              padding: "9px 12px",
+              borderRadius: "10px",
+              border: "none",
+              background: mode === "login" ? "#ffffff" : "transparent",
+              color: mode === "login" ? "#0f172a" : "#64748b",
+              fontWeight: mode === "login" ? 700 : 500,
+              fontSize: "13px",
+              cursor: "pointer",
+              boxShadow: mode === "login" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+            }}
+          >
+            Đăng nhập
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("register")
+              setError("")
+              setInfoMsg("")
+            }}
+            style={{
+              padding: "9px 12px",
+              borderRadius: "10px",
+              border: "none",
+              background: mode === "register" ? "#ffffff" : "transparent",
+              color: mode === "register" ? "#0f172a" : "#64748b",
+              fontWeight: mode === "register" ? 700 : 500,
+              fontSize: "13px",
+              cursor: "pointer",
+              boxShadow: mode === "register" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+            }}
+          >
+            Đăng ký mới
+          </button>
         </div>
 
         {error && (
           <div
             style={{
               background: "#fef2f2",
-
               color: "#b91c1c",
-
               border: "1px solid #fecaca",
-
               padding: "10px 14px",
-
               borderRadius: "10px",
-
               fontSize: "13px",
-
               marginBottom: "16px",
             }}
           >
@@ -1453,17 +1501,11 @@ function LoginOtpPage({
           <div
             style={{
               background: "#f0fdf4",
-
               color: "#15803d",
-
               border: "1px solid #bbf7d0",
-
               padding: "10px 14px",
-
               borderRadius: "10px",
-
               fontSize: "13px",
-
               marginBottom: "16px",
             }}
           >
@@ -1471,122 +1513,133 @@ function LoginOtpPage({
           </div>
         )}
 
-        {step === "phone" ? (
-          <div>
-            <label className="acc-field">
-              <span>Số điện thoại di động</span>
-              <input
-                type="tel"
-                autoComplete="tel"
-                inputMode="tel"
-                disabled={loading}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault()
-                    handleRequestOtp()
-                  }
-                }}
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Ví dụ: 0988888888"
-                autoFocus
-              />
-            </label>
-            <button
-              className="primary-button"
-              style={{ width: "100%", marginTop: "16px" }}
-              disabled={loading || !phone.trim()}
-              onClick={handleRequestOtp}
-              type="button"
-            >
-              <span>{loading ? "Đang gửi..." : "Gửi mã OTP (0 VNĐ)"}</span>
-            </button>
-          </div>
-        ) : (
-          <div>
-            <label className="acc-field">
-              <span>Mã OTP (6 chữ số)</span>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (mode === "login") handleLogin()
+            else handleRegister()
+          }}
+        >
+          {mode === "register" && (
+            <label className="acc-field" style={{ marginBottom: "14px", display: "block" }}>
+              <span style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                Họ và tên
+              </span>
               <input
                 type="text"
-                autoComplete="one-time-code"
-                inputMode="numeric"
                 disabled={loading}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault()
-                    handleVerifyOtp()
-                  }
-                }}
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                placeholder="123456"
-                maxLength={6}
-                autoFocus
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Ví dụ: Nguyễn Văn An"
                 style={{
-                  fontSize: "20px",
-
-                  letterSpacing: "4px",
-
-                  textAlign: "center",
-
-                  fontWeight: "bold",
+                  width: "100%",
+                  height: "44px",
+                  borderRadius: "10px",
+                  border: "1px solid #cbd5e1",
+                  padding: "0 14px",
+                  fontSize: "14px",
                 }}
               />
             </label>
+          )}
 
-            <button
-              className="primary-button"
-              style={{ width: "100%", marginTop: "16px" }}
-              disabled={loading || otp.trim().length !== 6}
-              onClick={handleVerifyOtp}
-              type="button"
-            >
-              <span>
-                {loading ? "Đang xác thực..." : "Xác thực & Đăng nhập"}
-              </span>
-            </button>
-
-            <div
+          <label className="acc-field" style={{ marginBottom: "14px", display: "block" }}>
+            <span style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+              Số điện thoại
+            </span>
+            <input
+              type="tel"
+              autoComplete="tel"
+              inputMode="tel"
+              disabled={loading}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Ví dụ: 0988888888"
               style={{
-                display: "flex",
-
-                justifyContent: "space-between",
-
-                alignItems: "center",
-
-                marginTop: "14px",
+                width: "100%",
+                height: "44px",
+                borderRadius: "10px",
+                border: "1px solid #cbd5e1",
+                padding: "0 14px",
+                fontSize: "14px",
               }}
-            >
+            />
+          </label>
+
+          <label className="acc-field" style={{ marginBottom: "16px", display: "block" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>
+                {mode === "login" ? "Mật khẩu / Mã PIN" : "Tạo Mật khẩu / Mã PIN (tối thiểu 6 ký tự)"}
+              </span>
               <button
                 type="button"
-                className="text-button"
-                disabled={loading}
-                onClick={() => {
-                  setStep("phone")
-                  setError("")
-                  setInfoMsg("")
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#2563eb",
+                  fontSize: "12px",
+                  cursor: "pointer",
                 }}
-                style={{ fontSize: "13px" }}
               >
-                Đổi số điện thoại
+                {showPassword ? "Ẩn" : "Hiện"}
               </button>
-              {countdown > 0 ? (
-                <span style={{ fontSize: "13px", color: "#64748b" }}>
-                  Gửi lại sau {countdown}s
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={handleRequestOtp}
-                  style={{ fontSize: "13px" }}
-                >
-                  Gửi lại mã OTP
-                </button>
-              )}
             </div>
-          </div>
-        )}
+            <input
+              type={showPassword ? "text" : "password"}
+              disabled={loading}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Nhập tối thiểu 6 ký tự"
+              style={{
+                width: "100%",
+                height: "44px",
+                borderRadius: "10px",
+                border: "1px solid #cbd5e1",
+                padding: "0 14px",
+                fontSize: "14px",
+              }}
+            />
+          </label>
+
+          {mode === "login" && (
+            <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 16px" }}>
+              💡 Mật khẩu thử nghiệm mẫu: <strong>123456</strong>
+            </p>
+          )}
+
+          <button
+            className="primary-button"
+            style={{ width: "100%", height: "48px", borderRadius: "12px", fontSize: "14px", fontWeight: 700 }}
+            disabled={loading || !phone.trim() || !password.trim()}
+            type="submit"
+          >
+            <span>
+              {loading
+                ? "Đang xử lý..."
+                : mode === "login"
+                ? "Đăng nhập ngay"
+                : "Tạo tài khoản (0 VNĐ)"}
+            </span>
+          </button>
+        </form>
+
+        <div style={{ textAlign: "center", marginTop: "16px" }}>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setMode(mode === "login" ? "register" : "login")
+              setError("")
+              setInfoMsg("")
+            }}
+            style={{ fontSize: "13px", color: "#2563eb" }}
+          >
+            {mode === "login"
+              ? "Chưa có tài khoản? Bấm vào đây để đăng ký"
+              : "Đã có tài khoản? Quay lại Đăng nhập"}
+          </button>
+        </div>
       </div>
     </section>
   )

@@ -1,10 +1,12 @@
 import { Router } from "express"
 import { eq, or } from "drizzle-orm"
 import { db } from "../../db"
-import { users } from "../../db/schema"
+import { users, driverProfiles } from "../../db/schema"
 import { comparePassword, hashPassword } from "../../lib/hash"
 import { generateToken } from "../../lib/auth"
 import { requestOtp, verifyOtp } from "../../lib/otpService"
+import { validateAndNormalizePhone } from "../../lib/sms/types"
+import { getOrCreateWallet } from "../../lib/walletService"
 import { getClientIp } from "../../lib/ipUtils"
 import {
   registerDeviceToken,
@@ -134,6 +136,265 @@ router.post("/verify-otp", async (req, res, next) => {
   try {
     const result = await verifyOtp(req.body.phone, req.body.otp, req.body.role)
     res.json(result)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /api/v1/auth/register
+ * Đăng ký tài khoản Khách hàng / Tài xế bằng Số điện thoại + Mật khẩu / Mã PIN
+ */
+router.post("/register", async (req, res, next) => {
+  try {
+    const { phone: rawPhone, password, fullName, role } = req.body
+
+    if (!rawPhone || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ Số điện thoại và Mật khẩu",
+      })
+    }
+
+    const phoneValidation = validateAndNormalizePhone(rawPhone)
+    if (!phoneValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: phoneValidation.error || "Số điện thoại không hợp lệ",
+      })
+    }
+    const phone = phoneValidation.standardPhone
+
+    if (typeof password !== "string" || password.trim().length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Mật khẩu hoặc mã PIN phải có tối thiểu 6 ký tự",
+      })
+    }
+
+    // Kiểm tra số điện thoại đã tồn tại chưa
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.phone, phone))
+      .limit(1)
+
+    const targetRole = role === "DRIVER" ? "DRIVER" : "CUSTOMER"
+    const passwordHash = await hashPassword(password.trim())
+
+    let userRecord
+    if (existingUser) {
+      if (existingUser.passwordHash) {
+        return res.status(409).json({
+          success: false,
+          message: "Số điện thoại này đã được đăng ký. Vui lòng chuyển sang Đăng nhập.",
+        })
+      }
+      // Tài khoản cũ chưa có password -> cập nhật password
+      const [updated] = await db
+        .update(users)
+        .set({
+          passwordHash,
+          fullName: fullName?.trim() || existingUser.fullName,
+          role: targetRole,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, existingUser.id))
+        .returning()
+      userRecord = updated
+    } else {
+      const [created] = await db
+        .insert(users)
+        .values({
+          phone,
+          passwordHash,
+          fullName: fullName?.trim() || (targetRole === "DRIVER" ? "Tài xế mới" : "Khách hàng"),
+          role: targetRole,
+          status: "ACTIVE",
+        })
+        .returning()
+      userRecord = created
+    }
+
+    // Nếu là tài xế, khởi tạo hồ sơ và ví
+    if (userRecord.role === "DRIVER") {
+      const [prof] = await db
+        .select()
+        .from(driverProfiles)
+        .where(eq(driverProfiles.userId, userRecord.id))
+        .limit(1)
+      if (!prof) {
+        await db.insert(driverProfiles).values({
+          userId: userRecord.id,
+          kycStatus: "PENDING",
+          isOnline: false,
+          isActive: true,
+        })
+      }
+    }
+    await getOrCreateWallet(userRecord.id)
+
+    const token = generateToken({
+      userId: userRecord.id,
+      role: userRecord.role,
+      phone: userRecord.phone,
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Đăng ký tài khoản thành công!",
+      token,
+      isNewUser: true,
+      user: {
+        id: userRecord.id,
+        phone: userRecord.phone,
+        fullName: userRecord.fullName,
+        role: userRecord.role,
+        avatarUrl: userRecord.avatarUrl,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /api/v1/auth/login
+ * Đăng nhập Khách hàng / Tài xế bằng Số điện thoại + Mật khẩu / Mã PIN
+ */
+router.post("/login", async (req, res, next) => {
+  try {
+    const { phone: rawPhone, password, role } = req.body
+
+    if (!rawPhone || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ Số điện thoại và Mật khẩu",
+      })
+    }
+
+    const phoneValidation = validateAndNormalizePhone(rawPhone)
+    if (!phoneValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: phoneValidation.error || "Số điện thoại không hợp lệ",
+      })
+    }
+    const phone = phoneValidation.standardPhone
+
+    const [foundUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.phone, phone))
+      .limit(1)
+
+    if (!foundUser) {
+      return res.status(404).json({
+        success: false,
+        message: "Số điện thoại chưa được đăng ký trên hệ thống. Vui lòng bấm Đăng ký.",
+      })
+    }
+
+    if (foundUser.status === "BLOCKED") {
+      return res.status(403).json({
+        success: false,
+        message: "Tài khoản của bạn đã bị tạm khóa. Vui lòng liên hệ bộ phận hỗ trợ.",
+      })
+    }
+
+    // Nếu tài khoản cũ chưa tạo mật khẩu
+    if (!foundUser.passwordHash) {
+      // Tự động thiết lập mật khẩu nhập vào lần đầu cho tài khoản cũ
+      const newHash = await hashPassword(password.trim())
+      await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, foundUser.id))
+      foundUser.passwordHash = newHash
+    } else {
+      const isMatch = await comparePassword(password.trim(), foundUser.passwordHash)
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Mật khẩu hoặc mã PIN không chính xác. Vui lòng thử lại.",
+        })
+      }
+    }
+
+    // Nâng cấp role DRIVER nếu đăng nhập từ giao diện tài xế
+    if (role === "DRIVER" && foundUser.role === "CUSTOMER") {
+      await db.update(users).set({ role: "DRIVER", updatedAt: new Date() }).where(eq(users.id, foundUser.id))
+      foundUser.role = "DRIVER"
+    }
+
+    if (foundUser.role === "DRIVER") {
+      const [prof] = await db.select().from(driverProfiles).where(eq(driverProfiles.userId, foundUser.id)).limit(1)
+      if (!prof) {
+        await db.insert(driverProfiles).values({
+          userId: foundUser.id,
+          kycStatus: "PENDING",
+          isOnline: false,
+          isActive: true,
+        })
+      }
+    }
+    await getOrCreateWallet(foundUser.id)
+
+    const token = generateToken({
+      userId: foundUser.id,
+      role: foundUser.role,
+      phone: foundUser.phone,
+    })
+
+    return res.json({
+      success: true,
+      message: "Đăng nhập thành công!",
+      token,
+      isNewUser: false,
+      user: {
+        id: foundUser.id,
+        phone: foundUser.phone,
+        fullName: foundUser.fullName,
+        role: foundUser.role,
+        avatarUrl: foundUser.avatarUrl,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /api/v1/auth/change-password
+ * Đổi mật khẩu / Mã PIN
+ */
+router.post("/change-password", requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body
+
+    if (!newPassword || newPassword.trim().length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Mật khẩu mới phải có tối thiểu 6 ký tự",
+      })
+    }
+
+    const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1)
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" })
+    }
+
+    if (user.passwordHash && currentPassword) {
+      const isMatch = await comparePassword(currentPassword.trim(), user.passwordHash)
+      if (!isMatch) {
+        return res.status(401).json({ success: false, message: "Mật khẩu hiện tại không chính xác" })
+      }
+    }
+
+    const newHash = await hashPassword(newPassword.trim())
+    await db.update(users).set({ passwordHash: newHash, updatedAt: new Date() }).where(eq(users.id, user.id))
+
+    return res.json({
+      success: true,
+      message: "Đổi mật khẩu thành công!",
+    })
   } catch (err) {
     next(err)
   }
