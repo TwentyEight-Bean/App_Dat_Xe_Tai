@@ -46,6 +46,7 @@ export default function DriverAuthGate({
   onBackToCustomer,
 }: DriverAuthGateProps) {
   const [mode, setMode] = useState<"login" | "register">("login")
+  const [authType, setAuthType] = useState<"pin" | "password">("pin")
   const [phone, setPhone] = useState("0908815624")
   const [fullName, setFullName] = useState("")
   const [password, setPassword] = useState("123456")
@@ -128,9 +129,16 @@ export default function DriverAuthGate({
     }
     const cleanPhone = phoneCheck.phone
 
-    if (!password || password.trim().length < 6) {
-      setError("Vui lòng nhập mật khẩu hoặc mã PIN (tối thiểu 6 ký tự)")
-      return
+    if (authType === "pin") {
+      if (!/^\d{6}$/.test(password.trim())) {
+        setError("Vui lòng nhập đúng 6 chữ số mã PIN (Ví dụ: 123456)")
+        return
+      }
+    } else {
+      if (!password || password.trim().length < 6) {
+        setError("Vui lòng nhập mật khẩu (tối thiểu 6 ký tự)")
+        return
+      }
     }
 
     setError("")
@@ -152,7 +160,12 @@ export default function DriverAuthGate({
         if (res.status === 404) {
           setError("Số điện thoại chưa đăng ký đối tác. Vui lòng chuyển sang 'Đăng ký đối tác mới'.")
         } else {
-          setError(data.message || "Đăng nhập không thành công. Kiểm tra lại mật khẩu.")
+          setError(
+            data.message ||
+              (authType === "pin"
+                ? "Mã PIN không chính xác. Vui lòng thử lại."
+                : "Mật khẩu không chính xác. Vui lòng thử lại.")
+          )
         }
         return
       }
@@ -178,9 +191,16 @@ export default function DriverAuthGate({
     }
     const cleanPhone = phoneCheck.phone
 
-    if (!password || password.trim().length < 6) {
-      setError("Vui lòng tạo mật khẩu hoặc mã PIN tối thiểu 6 ký tự")
-      return
+    if (authType === "pin") {
+      if (!/^\d{6}$/.test(password.trim())) {
+        setError("Vui lòng tạo mã PIN đối tác gồm đúng 6 chữ số")
+        return
+      }
+    } else {
+      if (!password || password.trim().length < 6) {
+        setError("Vui lòng tạo mật khẩu đối tác tối thiểu 6 ký tự")
+        return
+      }
     }
 
     setError("")
@@ -588,14 +608,14 @@ export default function DriverAuthGate({
             </div>
           </div>
 
-          {/* Mật khẩu hoặc Mã PIN */}
-          <div style={{ marginBottom: "18px" }}>
+          {/* Lựa chọn phương thức: Mã PIN hoặc Mật khẩu */}
+          <div style={{ marginBottom: "16px" }}>
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginBottom: "6px",
+                marginBottom: "8px",
               }}
             >
               <label
@@ -607,7 +627,7 @@ export default function DriverAuthGate({
                   letterSpacing: "0.04em",
                 }}
               >
-                {mode === "login" ? "Mật khẩu / Mã PIN" : "Tạo Mật khẩu / Mã PIN"}
+                Hình thức xác thực
               </label>
               <button
                 type="button"
@@ -627,6 +647,86 @@ export default function DriverAuthGate({
             </div>
             <div
               style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "6px",
+                background: "rgba(15, 23, 42, 0.7)",
+                padding: "3px",
+                borderRadius: "12px",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthType("pin")
+                  setPassword("123456")
+                  setError("")
+                }}
+                style={{
+                  padding: "7px 10px",
+                  borderRadius: "9px",
+                  border: "none",
+                  background: authType === "pin" ? "rgba(245, 158, 11, 0.25)" : "transparent",
+                  color: authType === "pin" ? "#fbbf24" : "#94a3b8",
+                  fontWeight: authType === "pin" ? 700 : 500,
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                }}
+              >
+                <span>🔢</span>
+                <span>Mã PIN (6 số)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthType("password")
+                  setError("")
+                }}
+                style={{
+                  padding: "7px 10px",
+                  borderRadius: "9px",
+                  border: "none",
+                  background: authType === "password" ? "rgba(245, 158, 11, 0.25)" : "transparent",
+                  color: authType === "password" ? "#fbbf24" : "#94a3b8",
+                  fontWeight: authType === "password" ? 700 : 500,
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                }}
+              >
+                <span>🔑</span>
+                <span>Mật khẩu chữ</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Ô nhập Mã PIN hoặc Mật khẩu */}
+          <div style={{ marginBottom: "18px" }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#94a3b8",
+                marginBottom: "6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {authType === "pin"
+                ? (mode === "login" ? "Nhập mã PIN đối tác (6 số)" : "Tạo mã PIN đối tác (6 số)")
+                : (mode === "login" ? "Nhập mật khẩu đối tác" : "Tạo mật khẩu đối tác (tối thiểu 6 ký tự)")}
+            </label>
+            <div
+              style={{
                 display: "flex",
                 alignItems: "center",
                 background: "rgba(15, 23, 42, 0.7)",
@@ -637,17 +737,29 @@ export default function DriverAuthGate({
             >
               <input
                 type={showPassword ? "text" : "password"}
+                inputMode={authType === "pin" ? "numeric" : "text"}
+                pattern={authType === "pin" ? "[0-9]*" : undefined}
+                maxLength={authType === "pin" ? 6 : 40}
+                autoComplete={authType === "pin" ? "one-time-code" : "current-password"}
                 disabled={loading}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Tối thiểu 6 ký tự"
+                onChange={(e) => {
+                  if (authType === "pin") {
+                    setPassword(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  } else {
+                    setPassword(e.target.value)
+                  }
+                }}
+                placeholder={authType === "pin" ? "123456" : "Nhập mật khẩu của bạn"}
                 style={{
                   width: "100%",
                   height: "44px",
                   border: "none",
                   outline: "none",
-                  fontSize: "15px",
-                  fontWeight: 600,
+                  fontSize: authType === "pin" ? "18px" : "15px",
+                  fontWeight: authType === "pin" ? 700 : 600,
+                  letterSpacing: authType === "pin" ? "4px" : "normal",
+                  textAlign: authType === "pin" ? "center" : "left",
                   color: "#fff",
                   background: "transparent",
                 }}
@@ -657,7 +769,11 @@ export default function DriverAuthGate({
 
           {mode === "login" && (
             <p style={{ fontSize: "11px", color: "#64748b", margin: "0 0 18px" }}>
-              💡 Mật khẩu tài xế mẫu: <strong>123456</strong>
+              {authType === "pin" ? (
+                <>💡 Bàn phím số tự bật. Mã PIN mẫu: <strong>123456</strong></>
+              ) : (
+                <>💡 Bàn phím bình thường. Mật khẩu mẫu: <strong>123456</strong></>
+              )}
             </p>
           )}
 

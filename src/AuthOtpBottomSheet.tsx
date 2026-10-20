@@ -15,6 +15,7 @@ export default function AuthOtpBottomSheet({
   onSuccess,
 }: AuthOtpBottomSheetProps) {
   const [mode, setMode] = useState<"login" | "register">("login")
+  const [authType, setAuthType] = useState<"pin" | "password">("pin")
   const [phone, setPhone] = useState("0988888888")
   const [fullName, setFullName] = useState("")
   const [password, setPassword] = useState("123456")
@@ -66,9 +67,16 @@ export default function AuthOtpBottomSheet({
     }
     const cleanPhone = phoneCheck.phone
 
-    if (!password || password.trim().length < 6) {
-      setError("Vui lòng nhập mật khẩu hoặc mã PIN (tối thiểu 6 ký tự)")
-      return
+    if (authType === "pin") {
+      if (!/^\d{6}$/.test(password.trim())) {
+        setError("Vui lòng nhập đúng 6 chữ số mã PIN (Ví dụ: 123456)")
+        return
+      }
+    } else {
+      if (!password || password.trim().length < 6) {
+        setError("Vui lòng nhập mật khẩu (tối thiểu 6 ký tự)")
+        return
+      }
     }
 
     setError("")
@@ -96,7 +104,12 @@ export default function AuthOtpBottomSheet({
         if (res.status === 404) {
           setError("Số điện thoại chưa đăng ký. Hãy bấm 'Đăng ký mới' bên dưới để tạo tài khoản.")
         } else {
-          setError(data.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại mật khẩu.")
+          setError(
+            data.message ||
+              (authType === "pin"
+                ? "Mã PIN không chính xác. Vui lòng thử lại."
+                : "Mật khẩu không chính xác. Vui lòng thử lại.")
+          )
         }
         return
       }
@@ -135,9 +148,16 @@ export default function AuthOtpBottomSheet({
     }
     const cleanPhone = phoneCheck.phone
 
-    if (!password || password.trim().length < 6) {
-      setError("Vui lòng tạo mật khẩu hoặc mã PIN tối thiểu 6 ký tự")
-      return
+    if (authType === "pin") {
+      if (!/^\d{6}$/.test(password.trim())) {
+        setError("Vui lòng tạo mã PIN gồm đúng 6 chữ số")
+        return
+      }
+    } else {
+      if (!password || password.trim().length < 6) {
+        setError("Vui lòng tạo mật khẩu tối thiểu 6 ký tự")
+        return
+      }
     }
 
     setError("")
@@ -572,14 +592,14 @@ export default function AuthOtpBottomSheet({
             </div>
           </div>
 
-          {/* Mật khẩu hoặc Mã PIN */}
-          <div style={{ marginBottom: "16px" }}>
+          {/* Lựa chọn hình thức: Mã PIN hoặc Mật khẩu */}
+          <div style={{ marginBottom: "12px" }}>
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginBottom: "5px",
+                marginBottom: "6px",
               }}
             >
               <label
@@ -589,7 +609,7 @@ export default function AuthOtpBottomSheet({
                   color: "#697580",
                 }}
               >
-                {mode === "login" ? "Mật khẩu / Mã PIN" : "Tạo mật khẩu / Mã PIN (tối thiểu 6 ký tự)"}
+                Hình thức xác thực
               </label>
               <button
                 type="button"
@@ -609,6 +629,85 @@ export default function AuthOtpBottomSheet({
             </div>
             <div
               style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "6px",
+                background: "#ebe7dd",
+                padding: "3px",
+                borderRadius: "12px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthType("pin")
+                  setPassword("123456")
+                  setError("")
+                }}
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: "9px",
+                  border: "none",
+                  background: authType === "pin" ? "#ffffff" : "transparent",
+                  color: authType === "pin" ? "var(--brand-600, #1478d4)" : "#697580",
+                  fontWeight: authType === "pin" ? 700 : 500,
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  boxShadow: authType === "pin" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "4px",
+                }}
+              >
+                <span>🔢</span>
+                <span>Mã PIN (6 số)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthType("password")
+                  setError("")
+                }}
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: "9px",
+                  border: "none",
+                  background: authType === "password" ? "#ffffff" : "transparent",
+                  color: authType === "password" ? "var(--brand-600, #1478d4)" : "#697580",
+                  fontWeight: authType === "password" ? 700 : 500,
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  boxShadow: authType === "password" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "4px",
+                }}
+              >
+                <span>🔑</span>
+                <span>Mật khẩu chữ</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Ô nhập Mã PIN hoặc Mật khẩu */}
+          <div style={{ marginBottom: "16px" }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#697580",
+                marginBottom: "5px",
+              }}
+            >
+              {authType === "pin"
+                ? (mode === "login" ? "Nhập mã PIN (6 số)" : "Tạo mã PIN (6 số)")
+                : (mode === "login" ? "Nhập mật khẩu" : "Tạo mật khẩu (tối thiểu 6 ký tự)")}
+            </label>
+            <div
+              style={{
                 display: "flex",
                 alignItems: "center",
                 background: "#fff",
@@ -621,17 +720,29 @@ export default function AuthOtpBottomSheet({
               <input
                 ref={passwordInputRef}
                 type={showPassword ? "text" : "password"}
+                inputMode={authType === "pin" ? "numeric" : "text"}
+                pattern={authType === "pin" ? "[0-9]*" : undefined}
+                maxLength={authType === "pin" ? 6 : 40}
+                autoComplete={authType === "pin" ? "one-time-code" : "current-password"}
                 disabled={loading}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Nhập tối thiểu 6 ký tự"
+                onChange={(e) => {
+                  if (authType === "pin") {
+                    setPassword(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  } else {
+                    setPassword(e.target.value)
+                  }
+                }}
+                placeholder={authType === "pin" ? "123456" : "Nhập mật khẩu của bạn"}
                 style={{
                   width: "100%",
                   height: "44px",
                   border: "none",
                   outline: "none",
-                  fontSize: "15px",
-                  fontWeight: 600,
+                  fontSize: authType === "pin" ? "18px" : "15px",
+                  fontWeight: authType === "pin" ? 700 : 600,
+                  letterSpacing: authType === "pin" ? "4px" : "normal",
+                  textAlign: authType === "pin" ? "center" : "left",
                   color: "#17212b",
                   background: "transparent",
                 }}
@@ -647,7 +758,11 @@ export default function AuthOtpBottomSheet({
                 marginBottom: "16px",
               }}
             >
-              💡 Gợi ý thử nghiệm: Tài khoản test có mật khẩu mặc định là <strong>123456</strong>.
+              {authType === "pin" ? (
+                <>💡 Bàn phím số tự bật. Mã PIN thử nghiệm: <strong>123456</strong></>
+              ) : (
+                <>💡 Bàn phím bình thường. Mật khẩu mẫu: <strong>123456</strong></>
+              )}
             </p>
           )}
 

@@ -1265,6 +1265,7 @@ function LoginOtpPage({
     [],
   )
   const [mode, setMode] = useState<"login" | "register">("login")
+  const [authType, setAuthType] = useState<"pin" | "password">("pin")
   const [phone, setPhone] = useState("0988888888")
   const [fullName, setFullName] = useState("")
   const [password, setPassword] = useState("123456")
@@ -1283,9 +1284,16 @@ function LoginOtpPage({
     }
     const cleanPhone = phoneCheck.phone
 
-    if (!password || password.trim().length < 6) {
-      setError("Vui lòng nhập mật khẩu hoặc mã PIN (tối thiểu 6 ký tự)")
-      return
+    if (authType === "pin") {
+      if (!/^\d{6}$/.test(password.trim())) {
+        setError("Vui lòng nhập đúng 6 chữ số mã PIN (Ví dụ: 123456)")
+        return
+      }
+    } else {
+      if (!password || password.trim().length < 6) {
+        setError("Vui lòng nhập mật khẩu (tối thiểu 6 ký tự)")
+        return
+      }
     }
 
     setError("")
@@ -1313,7 +1321,12 @@ function LoginOtpPage({
         if (res.status === 404) {
           setError("Số điện thoại chưa đăng ký. Hãy chuyển sang tab Đăng ký để tạo tài khoản mới.")
         } else {
-          setError(data.message || "Đăng nhập không thành công. Kiểm tra lại mật khẩu.")
+          setError(
+            data.message ||
+              (authType === "pin"
+                ? "Mã PIN không chính xác. Vui lòng thử lại."
+                : "Mật khẩu không chính xác. Vui lòng thử lại.")
+          )
         }
         return
       }
@@ -1344,9 +1357,16 @@ function LoginOtpPage({
     }
     const cleanPhone = phoneCheck.phone
 
-    if (!password || password.trim().length < 6) {
-      setError("Vui lòng tạo mật khẩu hoặc mã PIN tối thiểu 6 ký tự")
-      return
+    if (authType === "pin") {
+      if (!/^\d{6}$/.test(password.trim())) {
+        setError("Vui lòng tạo mã PIN gồm đúng 6 chữ số")
+        return
+      }
+    } else {
+      if (!password || password.trim().length < 6) {
+        setError("Vui lòng tạo mật khẩu tối thiểu 6 ký tự")
+        return
+      }
     }
 
     setError("")
@@ -1570,10 +1590,11 @@ function LoginOtpPage({
             />
           </label>
 
-          <label className="acc-field" style={{ marginBottom: "16px", display: "block" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+          {/* Lựa chọn phương thức: Mã PIN hoặc Mật khẩu */}
+          <div style={{ marginBottom: "14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
               <span style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>
-                {mode === "login" ? "Mật khẩu / Mã PIN" : "Tạo Mật khẩu / Mã PIN (tối thiểu 6 ký tự)"}
+                Hình thức xác thực
               </span>
               <button
                 type="button"
@@ -1586,29 +1607,116 @@ function LoginOtpPage({
                   cursor: "pointer",
                 }}
               >
-                {showPassword ? "Ẩn" : "Hiện"}
+                {showPassword ? "Ẩn ký tự" : "Hiện ký tự"}
               </button>
             </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "6px",
+                background: "#f1f5f9",
+                padding: "3px",
+                borderRadius: "10px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthType("pin")
+                  setPassword("123456")
+                  setError("")
+                }}
+                style={{
+                  padding: "7px 10px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: authType === "pin" ? "#ffffff" : "transparent",
+                  color: authType === "pin" ? "#2563eb" : "#64748b",
+                  fontWeight: authType === "pin" ? 700 : 500,
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  boxShadow: authType === "pin" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                }}
+              >
+                <span>🔢</span>
+                <span>Mã PIN (6 số)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthType("password")
+                  setError("")
+                }}
+                style={{
+                  padding: "7px 10px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: authType === "password" ? "#ffffff" : "transparent",
+                  color: authType === "password" ? "#2563eb" : "#64748b",
+                  fontWeight: authType === "password" ? 700 : 500,
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  boxShadow: authType === "password" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                }}
+              >
+                <span>🔑</span>
+                <span>Mật khẩu chữ</span>
+              </button>
+            </div>
+          </div>
+
+          <label className="acc-field" style={{ marginBottom: "16px", display: "block" }}>
+            <span style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+              {authType === "pin"
+                ? (mode === "login" ? "Nhập mã PIN (6 số)" : "Tạo mã PIN (6 số)")
+                : (mode === "login" ? "Nhập mật khẩu" : "Tạo mật khẩu (tối thiểu 6 ký tự)")}
+            </span>
             <input
               type={showPassword ? "text" : "password"}
+              inputMode={authType === "pin" ? "numeric" : "text"}
+              pattern={authType === "pin" ? "[0-9]*" : undefined}
+              maxLength={authType === "pin" ? 6 : 40}
+              autoComplete={authType === "pin" ? "one-time-code" : "current-password"}
               disabled={loading}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Nhập tối thiểu 6 ký tự"
+              onChange={(e) => {
+                if (authType === "pin") {
+                  setPassword(e.target.value.replace(/\D/g, "").slice(0, 6))
+                } else {
+                  setPassword(e.target.value)
+                }
+              }}
+              placeholder={authType === "pin" ? "Ví dụ: 123456" : "Nhập mật khẩu của bạn"}
               style={{
                 width: "100%",
                 height: "44px",
                 borderRadius: "10px",
                 border: "1px solid #cbd5e1",
                 padding: "0 14px",
-                fontSize: "14px",
+                fontSize: authType === "pin" ? "18px" : "14px",
+                fontWeight: authType === "pin" ? 700 : 400,
+                letterSpacing: authType === "pin" ? "4px" : "normal",
+                textAlign: authType === "pin" ? "center" : "left",
               }}
             />
           </label>
 
           {mode === "login" && (
             <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 16px" }}>
-              💡 Mật khẩu thử nghiệm mẫu: <strong>123456</strong>
+              {authType === "pin" ? (
+                <>💡 Bàn phím số tự bật. Mã PIN thử nghiệm: <strong>123456</strong></>
+              ) : (
+                <>💡 Bàn phím bình thường. Mật khẩu mẫu: <strong>123456</strong></>
+              )}
             </p>
           )}
 
