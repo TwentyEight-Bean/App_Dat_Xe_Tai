@@ -11,6 +11,7 @@ export interface RequestOtpResponse {
   message: string
   phone: string
   retryAfterSeconds?: number
+  devOtp?: string
 }
 
 export interface VerifyOtpResponse {
@@ -50,7 +51,10 @@ export function generateOtpCode(): string {
 export async function requestOtp(
   rawPhone: string,
   clientIp?: string,
-  options?: { forceStrictGeoIp?: boolean },
+  options?: {
+    forceStrictGeoIp?: boolean
+    purpose?: "register" | "login" | "reset"
+  },
 ): Promise<RequestOtpResponse> {
   // Validate định dạng SĐT Việt Nam
   const phoneValidation = validateAndNormalizePhone(rawPhone)
@@ -60,6 +64,21 @@ export async function requestOtp(
 
   const phone = phoneValidation.standardPhone
   const now = new Date()
+
+  // Chống đăng ký trùng SĐT: Nếu purpose === 'register', kiểm tra xem SĐT đã có tài khoản chưa
+  if (options?.purpose === "register") {
+    const [existing] = await db
+      .select({ id: users.id, passwordHash: users.passwordHash })
+      .from(users)
+      .where(eq(users.phone, phone))
+      .limit(1)
+
+    if (existing && existing.passwordHash) {
+      throw new Error(
+        "Số điện thoại này đã được đăng ký tài khoản. Vui lòng chuyển sang tab Đăng nhập.",
+      )
+    }
+  }
 
   // ------------------------------------------------------------------------
   // TẦNG 1: KIỂM TRA GEO-IP QUỐC TẾ (CHỈ PHỤC VỤ NỘI ĐỊA VIỆT NAM)
@@ -180,22 +199,27 @@ export async function requestOtp(
     ipAddress: clientIp || null,
   })
 
+  const isDevOrMock =
+    process.env.ENABLE_OTP_MOCK === "true" ||
+    (process.env.SMS_PROVIDER || "mock").toLowerCase() === "mock" ||
+    process.env.NODE_ENV !== "production"
+
   return {
     success: true,
     message: "Mã OTP xác thực đã được gửi thành công.",
     phone,
     retryAfterSeconds: 60,
+    ...(isDevOrMock ? { devOtp: otpCode } : {}),
   }
 }
 
 /**
- * 2. Xác thực mã OTP và tự động Đăng ký / Đăng nhập
+ * 2. Xác thực tính hợp lệ của mã OTP (kiểm tra hạn dùng, brute-force protection, đánh dấu đã dùng)
  */
-export async function verifyOtp(
+export async function verifyOtpCodeOnly(
   rawPhone: string,
   inputOtp: string,
-  desiredRole?: "CUSTOMER" | "DRIVER",
-): Promise<VerifyOtpResponse> {
+): Promise<{ phone: string }> {
   const phoneValidation = validateAndNormalizePhone(rawPhone)
   if (!phoneValidation.valid) {
     throw new Error(phoneValidation.error || "Số điện thoại không hợp lệ")
@@ -205,7 +229,7 @@ export async function verifyOtp(
   const cleanOtp = (inputOtp || "").trim()
 
   if (!cleanOtp) {
-    throw new Error("Vui lòng nhập mã OTP")
+    throw new Error("Vui lòng nhập mã OTP 6 chữ số")
   }
 
   const now = new Date()
@@ -231,7 +255,7 @@ export async function verifyOtp(
 
   const otpRecord = records[0]
 
-  // Kiểm tra hạn sử dụng
+  // Kiểm tra hạn sử dụng (5 phút)
   if (otpRecord.expiresAt < now) {
     throw new Error(
       "Mã OTP đã hết hạn (chỉ có hiệu lực trong 5 phút). Vui lòng yêu cầu mã mới.",
@@ -271,6 +295,20 @@ export async function verifyOtp(
     .set({ isUsed: true })
     .where(eq(otpVerifications.id, otpRecord.id))
 
+  return { phone }
+}
+
+/**
+ * 3. Xác thực mã OTP và tự động Đăng ký / Đăng nhập
+ */
+export async function verifyOtp(
+  rawPhone: string,
+  inputOtp: string,
+  desiredRole?: "CUSTOMER" | "DRIVER",
+  fullName?: string,
+): Promise<VerifyOtpResponse> {
+  const { phone } = await verifyOtpCodeOnly(rawPhone, inputOtp)
+
   // Kiểm tra User đã có trong hệ thống chưa
   const existingUsers = await db
     .select()
@@ -288,6 +326,7 @@ export async function verifyOtp(
       .insert(users)
       .values({
         phone,
+        fullName: fullName?.trim() || null,
         role: targetRole,
         status: "ACTIVE",
       })
@@ -297,6 +336,16 @@ export async function verifyOtp(
     isNewUser = true
   } else {
     userRecord = existingUsers[0]
+
+    // Cập nhật fullName nếu tài khoản chưa có tên mà lần này người dùng nhập
+    if (fullName?.trim() && !userRecord.fullName) {
+      const [updated] = await db
+        .update(users)
+        .set({ fullName: fullName.trim(), updatedAt: new Date() })
+        .where(eq(users.id, userRecord.id))
+        .returning()
+      if (updated) userRecord = updated
+    }
 
     // Kiểm tra tài khoản có bị khóa không
     if (userRecord.status === "BLOCKED") {

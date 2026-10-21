@@ -284,12 +284,17 @@
 
 .d-top {
   position: absolute;
-  z-index: 5;
+  z-index: 25;
   top: 0;
   left: 0;
   right: 0;
-  padding: 24px 18px 0;
+  padding: 24px 14px 0;
   padding-top: max(20px, env(safe-area-inset-top));
+  pointer-events: none;
+}
+
+.d-top > * {
+  pointer-events: auto;
 }
 
 .d-top-row {
@@ -345,40 +350,47 @@
 
 .d-today {
   position: relative;
-  margin-top: 12px;
+  margin-top: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  gap: 12px;
+  padding: 8px 14px;
   border-radius: 20px;
+  width: calc(100% - 52px);
+  max-width: calc(100% - 52px);
 }
 
 .d-today small {
   display: block;
   color: var(--ink-500);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .d-today strong {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   color: var(--ink-900);
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .d-today-trips strong {
-  padding: 4px 10px;
+  padding: 4px 9px;
   border-radius: 12px;
   color: var(--d-green-dark);
   background: var(--green-50);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.d-frame .d-tools {
-  top: 168px;
+.d-frame .d-tools,
+.d-frame .floating-map-controls {
+  top: 76px;
 }
 
 .d-frame .d-tools .icon-button {
