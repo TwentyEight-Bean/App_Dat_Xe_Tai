@@ -5201,9 +5201,21 @@ export default function App() {
                           <strong key={price}>{price}</strong>
                         </span>
                         <span className="price-note">
-                          {estimateData?.surchargesTotal
-                            ? `Đã gồm phụ phí +${estimateData.surchargesTotal.toLocaleString("vi-VN")}đ`
-                            : "Vui lòng chọn điểm đón & điểm đến"}
+                          {estimateData ? (
+                            estimateData.surchargesTotal > 0 ? (
+                              `Đã gồm phụ phí +${estimateData.surchargesTotal.toLocaleString("vi-VN")}đ`
+                            ) : (
+                              "Giá trọn gói theo km"
+                            )
+                          ) : !pickup.trim() && !destination.trim() ? (
+                            "Vui lòng chọn điểm đón & điểm đến"
+                          ) : !destination.trim() ? (
+                            "Vui lòng chọn điểm đến"
+                          ) : !pickup.trim() ? (
+                            "Vui lòng chọn điểm đón"
+                          ) : (
+                            "Đang tính cước phí..."
+                          )}
                         </span>
                       </div>
 
@@ -5227,64 +5239,84 @@ export default function App() {
                           <span style={{ color: "#2563eb", fontWeight: 700 }}>
                             {paymentMethod === "CASH"
                               ? "💵 Tiền mặt"
-                              : paymentMethod === "VNPAY"
-                                ? "💳 Cổng VNPay"
-                                : paymentMethod === "MOMO"
-                                  ? "👛 Ví MoMo"
-                                  : "💼 Ví FAST"}
+                              : "💳 Chuyển khoản (QR)"}
                           </span>
                         </div>
                         <div
                           style={{
                             display: "grid",
-
-                            gridTemplateColumns: "repeat(4, 1fr)",
-
-                            gap: 6,
+                            gridTemplateColumns: "repeat(2, 1fr)",
+                            gap: 10,
                           }}
                         >
                           {([
-                            { id: "CASH", label: "Tiền mặt", icon: "💵" },
-
-                            { id: "VNPAY", label: "VNPay-QR", icon: "💳" },
-
-                            { id: "MOMO", label: "Ví MoMo", icon: "👛" },
-
-                            { id: "WALLET", label: "Ví FAST", icon: "💼" },
-                          ] as const)
-
-                            .map((pm) => (
+                            {
+                              id: "CASH",
+                              label: "Tiền mặt",
+                              sub: "Trả khi nhận hàng",
+                              icon: "💵",
+                            },
+                            {
+                              id: "VNPAY",
+                              label: "Chuyển khoản",
+                              sub: "Quét mã VietQR",
+                              icon: "💳",
+                            },
+                          ] as const).map((pm) => {
+                            const isSelected = paymentMethod === pm.id
+                            return (
                               <button
                                 key={pm.id}
                                 type="button"
                                 className="customer-pm-btn"
                                 onClick={() => setPaymentMethod(pm.id)}
                                 style={{
-                                  border:
-                                    paymentMethod === pm.id
-                                      ? "1.5px solid #2563eb"
-                                      : "1px solid #e2e8f0",
-
-                                  backgroundColor:
-                                    paymentMethod === pm.id
-                                      ? "#eff6ff"
-                                      : "#fff",
-
-                                  color:
-                                    paymentMethod === pm.id
-                                      ? "#1d4ed8"
-                                      : "#475569",
-
-                                  boxShadow:
-                                    paymentMethod === pm.id
-                                      ? "0 2px 8px rgba(37,99,235,0.18)"
-                                      : "none",
+                                  border: isSelected
+                                    ? "2px solid #2563eb"
+                                    : "1.5px solid #e2e8f0",
+                                  backgroundColor: isSelected
+                                    ? "#eff6ff"
+                                    : "#ffffff",
+                                  color: isSelected ? "#1d4ed8" : "#334155",
+                                  boxShadow: isSelected
+                                    ? "0 4px 12px rgba(37,99,235,0.18)"
+                                    : "0 1px 3px rgba(0,0,0,0.04)",
+                                  padding: "10px 12px",
+                                  borderRadius: "14px",
+                                  display: "flex",
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: "10px",
+                                  minHeight: "54px",
+                                  transition: "all 0.18s ease",
                                 }}
                               >
-                                <span style={{ fontSize: 18 }}>{pm.icon}</span>
-                                <span>{pm.label}</span>
+                                <span style={{ fontSize: 24 }}>{pm.icon}</span>
+                                <div style={{ textAlign: "left" }}>
+                                  <div
+                                    style={{
+                                      fontSize: "13.5px",
+                                      fontWeight: 700,
+                                      lineHeight: 1.2,
+                                    }}
+                                  >
+                                    {pm.label}
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: "10.5px",
+                                      color: isSelected ? "#3b82f6" : "#64748b",
+                                      marginTop: "2px",
+                                      fontWeight: 500,
+                                    }}
+                                  >
+                                    {pm.sub}
+                                  </div>
+                                </div>
                               </button>
-                            ))}
+                            )
+                          })}
                         </div>
                       </div>
 
@@ -5834,7 +5866,7 @@ export default function App() {
                   }}
                 >
                   {paymentQrData.gateway === "VNPAY"
-                    ? "CỔNG VNPAY-QR"
+                    ? "CHUYỂN KHOẢN (VIETQR)"
                     : "VÍ ĐIỆN TỬ MOMO"}
                 </span>
                 <button

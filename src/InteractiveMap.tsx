@@ -119,17 +119,6 @@ export default function InteractiveMap({
     pinModeRef.current = pinMode
   }, [pinMode])
 
-  const [isResetting, setIsResetting] = useState(false)
-  const [resetToast, setResetToast] = useState<string | null>(null)
-  const resetToastTimerRef = useRef<number | null>(null)
-  const initialMapStateRef = useRef<{
-    center: [number, number]
-    zoom: number
-    pickup: { lat: number; lng: number }
-    dest: { lat: number; lng: number }
-    cityId: string
-  } | null>(null)
-
   const pickupCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
   const bookingFixedMarkerRef = useRef<L.Marker | null>(null)
@@ -520,15 +509,6 @@ export default function InteractiveMap({
       destCoordsRef.current = initialDest
       reverseGeocode(defaultCity.lat - 0.0035, defaultCity.lng + 0.0035, "destination")
     }
-    if (!initialMapStateRef.current) {
-      initialMapStateRef.current = {
-        center: [defaultCity.lat, defaultCity.lng],
-        zoom: defaultCity.zoom,
-        pickup: initialPickup,
-        dest: initialDest,
-        cityId: defaultCity.id,
-      }
-    }
     emitRouteCoordinates()
     setTimeout(() => {
       updateBookingVisualsRef.current?.("pickup")
@@ -570,13 +550,6 @@ export default function InteractiveMap({
             const gpsDest = { lat: latitude - 0.0035, lng: longitude + 0.0035 }
             if (!destCoordsRef.current) {
               destCoordsRef.current = gpsDest
-            }
-            initialMapStateRef.current = {
-              center: [latitude, longitude],
-              zoom: 16,
-              pickup: { lat: latitude, lng: longitude },
-              dest: gpsDest,
-              cityId: defaultCity.id,
             }
             map.flyTo([latitude, longitude], 16, { duration: 1.2 })
             reverseGeocode(latitude, longitude, "pickup")
@@ -739,60 +712,6 @@ export default function InteractiveMap({
       { enableHighAccuracy: true, timeout: 8000 }
     )
   }, [activeCityId, reverseGeocode, updateUserLocationMarker])
-
-  // 4b. Reset Map & Location Back to Initial Position
-  const handleResetToInitial = useCallback(() => {
-    if (!mapRef.current) return
-    setIsResetting(true)
-    setTimeout(() => setIsResetting(false), 600)
-
-    if (mode === "driver") {
-      const center = mapRef.current.getCenter()
-      mapRef.current.flyTo([center.lat, center.lng], 16, { duration: 0.8 })
-      setResetToast("✓ Đã căn giữa vị trí xe")
-      if (resetToastTimerRef.current) window.clearTimeout(resetToastTimerRef.current)
-      resetToastTimerRef.current = window.setTimeout(() => setResetToast(null), 2200)
-      return
-    }
-
-    const defaultCity = VIETNAM_CITIES[0]
-    const state = initialMapStateRef.current || {
-      center: [defaultCity.lat, defaultCity.lng] as [number, number],
-      zoom: defaultCity.zoom,
-      pickup: { lat: defaultCity.lat, lng: defaultCity.lng },
-      dest: { lat: defaultCity.lat - 0.0035, lng: defaultCity.lng + 0.0035 },
-      cityId: defaultCity.id,
-    }
-
-    // 1. Reset map view smoothly
-    mapRef.current.flyTo(state.center, state.zoom, { duration: 1.0 })
-
-    // 2. Reset pin mode to pickup (A)
-    setPinMode("pickup")
-    pinModeRef.current = "pickup"
-
-    // 3. Reset coords
-    pickupCoordsRef.current = { ...state.pickup }
-    destCoordsRef.current = { ...state.dest }
-    emitRouteCoordinates()
-
-    // 4. Reset active city
-    setActiveCityId(state.cityId)
-
-    // 5. Reverse geocode back for both points
-    reverseGeocode(state.pickup.lat, state.pickup.lng, "pickup")
-    reverseGeocode(state.dest.lat, state.dest.lng, "destination")
-
-    // 6. Update visuals (connecting line & fixed marker)
-    updateBookingVisualsRef.current?.("pickup")
-
-    // 7. Show toast feedback
-    if (resetToastTimerRef.current) window.clearTimeout(resetToastTimerRef.current)
-    setResetToast("✓ Đã đặt lại vị trí ban đầu")
-    resetToastTimerRef.current = window.setTimeout(() => {
-      setResetToast(null)
-    }, 2400)
-  }, [mode, reverseGeocode])
 
   // 5. Zoom Handlers
   const handleZoomIn = () => mapRef.current?.zoomIn()
@@ -1069,7 +988,7 @@ export default function InteractiveMap({
   return (
     <div
       aria-label="Bản đồ tương tác toàn quốc 63 tỉnh thành"
-      className={`interactive-map-root leaflet-real-map layer-${layer} ${layerMenuOpen ? "layer-menu-active" : ""}`}
+      className={`interactive-map-root leaflet-real-map mode-${mode} layer-${layer} ${layerMenuOpen ? "layer-menu-active" : ""}`}
     >
       {/* Real Leaflet Map Canvas */}
       <div
@@ -1303,31 +1222,6 @@ export default function InteractiveMap({
           </svg>
         </button>
 
-        {/* Reset to Initial Location Button */}
-        <button
-          aria-label="Đặt lại vị trí từ đầu"
-          className={`icon-button glass reset-location-btn ${isResetting ? "is-resetting" : ""}`}
-          onClick={handleResetToInitial}
-          title="Đặt lại vị trí từ đầu (Reset)"
-          type="button"
-        >
-          <svg
-            aria-hidden="true"
-            fill="none"
-            height={20}
-            viewBox="0 0 24 24"
-            width={20}
-            stroke="currentColor"
-            strokeWidth={2.2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-          </svg>
-        </button>
-
         {/* Zoom In & Out */}
         <div className="zoom-btn-group glass">
           <button
@@ -1358,24 +1252,6 @@ export default function InteractiveMap({
         </div>
       )}
 
-      {/* Reset Confirmation Toast */}
-      {resetToast && (
-        <div className="map-reset-toast glass-strong">
-          <svg
-            fill="none"
-            height={16}
-            stroke="#10b981"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2.5}
-            viewBox="0 0 24 24"
-            width={16}
-          >
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          <span>{resetToast}</span>
-        </div>
-      )}
 
       {children}
     </div>

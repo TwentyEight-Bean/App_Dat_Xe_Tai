@@ -55,8 +55,39 @@ export default function DriverAuthGate({
   const [error, setError] = useState("")
   const [infoMsg, setInfoMsg] = useState("")
 
+  // Trạng thái xác thực OTP khi tài xế đăng ký
+  const [registerOtpSent, setRegisterOtpSent] = useState(false)
+  const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""])
+  const [devOtpCode, setDevOtpCode] = useState<string | null>(null)
+  const [countdown, setCountdown] = useState<number>(0)
+  const timerRef = useRef<number | null>(null)
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([])
+
   const phoneInputRef = useRef<HTMLInputElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (countdown > 0) {
+      timerRef.current = window.setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            if (timerRef.current) window.clearInterval(timerRef.current)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current)
+    }
+  }, [countdown])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -183,13 +214,20 @@ export default function DriverAuthGate({
     }
   }
 
-  const handleRegister = async () => {
+  // Bước 1: Gửi mã OTP xác minh SĐT đối tác
+  const handleSendDriverOtp = async () => {
     const phoneCheck = validateVietnamesePhone(phone)
     if (!phoneCheck.valid) {
       setError(phoneCheck.error || "Số điện thoại đối tác không hợp lệ")
       return
     }
     const cleanPhone = phoneCheck.phone
+
+    if (!fullName.trim()) {
+      setError("Vui lòng nhập Họ và tên Tài xế")
+      nameInputRef.current?.focus()
+      return
+    }
 
     if (authType === "pin") {
       if (!/^\d{6}$/.test(password.trim())) {
@@ -207,6 +245,52 @@ export default function DriverAuthGate({
     setLoading(true)
 
     try {
+      const res = await fetch("/api/v1/auth/request-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: cleanPhone,
+          purpose: "register",
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        if (data.message?.includes("đã được đăng ký")) {
+          setError("Số điện thoại này đã đăng ký đối tác. Vui lòng chuyển sang Đăng nhập.")
+        } else {
+          setError(data.message || "Không thể gửi mã OTP")
+        }
+        return
+      }
+
+      if (data.devOtp) setDevOtpCode(data.devOtp)
+      setInfoMsg("Mã OTP đã được gửi đến số điện thoại tài xế. Vui lòng nhập mã để hoàn tất.")
+      setCountdown(data.retryAfterSeconds || 60)
+      setRegisterOtpSent(true)
+      setOtpDigits(["", "", "", "", "", ""])
+
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 100)
+    } catch (err: any) {
+      setError(err.message || "Không thể gửi mã OTP")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Bước 2: Xác nhận OTP & Hoàn tất Đăng ký
+  const handleCompleteDriverRegister = async (otpOverride?: string) => {
+    const fullOtp = otpOverride || otpDigits.join("").trim()
+    if (fullOtp.length !== 6 || !/^\d{6}$/.test(fullOtp)) {
+      setError("Vui lòng nhập đúng 6 chữ số mã OTP")
+      return
+    }
+
+    const cleanPhone = validateVietnamesePhone(phone).phone
+    setError("")
+    setLoading(true)
+
+    try {
       const res = await fetch("/api/v1/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -215,6 +299,7 @@ export default function DriverAuthGate({
           fullName: fullName.trim() || undefined,
           password: password.trim(),
           role: "DRIVER",
+          otp: fullOtp,
         }),
       })
 
@@ -223,7 +308,7 @@ export default function DriverAuthGate({
         if (res.status === 409) {
           setError("Số điện thoại đối tác đã tồn tại. Vui lòng chuyển sang Đăng nhập.")
         } else {
-          setError(data.message || "Đăng ký đối tác không thành công")
+          setError(data.message || "Đăng ký đối tác không thành công. Vui lòng kiểm tra mã OTP.")
         }
         return
       }
@@ -241,12 +326,33 @@ export default function DriverAuthGate({
     }
   }
 
+  const handleDigitChange = (index: number, val: string) => {
+    const cleanChar = val.replace(/\D/g, "").slice(-1)
+    const newDigits = [...otpDigits]
+    newDigits[index] = cleanChar
+    setOtpDigits(newDigits)
+    setError("")
+
+    if (cleanChar && index < 5) {
+      otpInputRefs.current[index + 1]?.focus()
+    }
+
+    const completeCode = newDigits.join("")
+    if (completeCode.length === 6 && /^\d{6}$/.test(completeCode)) {
+      handleCompleteDriverRegister(completeCode)
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (mode === "login") {
       handleLogin()
     } else {
-      handleRegister()
+      if (!registerOtpSent) {
+        handleSendDriverOtp()
+      } else {
+        handleCompleteDriverRegister()
+      }
     }
   }
 
@@ -777,6 +883,127 @@ export default function DriverAuthGate({
             </p>
           )}
 
+          {/* Nút gửi hoặc các ô OTP khi đăng ký */}
+          {mode === "register" && registerOtpSent && (
+            <div style={{ marginBottom: "18px" }}>
+              <div
+                style={{
+                  background: "rgba(15, 23, 42, 0.8)",
+                  padding: "10px",
+                  borderRadius: "12px",
+                  marginBottom: "12px",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontSize: "12px", color: "#cbd5e1" }}>
+                  Mã gửi tới: <strong>{phone}</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRegisterOtpSent(false)}
+                  style={{ background: "none", border: "none", color: "#fbbf24", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+                >
+                  Sửa SĐT
+                </button>
+              </div>
+
+              {devOtpCode && (
+                <div
+                  style={{
+                    background: "rgba(245, 158, 11, 0.15)",
+                    border: "1px dashed #f59e0b",
+                    padding: "8px 12px",
+                    borderRadius: "10px",
+                    marginBottom: "14px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span style={{ fontSize: "12px", color: "#fef08a" }}>
+                    OTP thử nghiệm: <strong>{devOtpCode}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const chars = devOtpCode.split("").slice(0, 6)
+                      const newD = ["", "", "", "", "", ""]
+                      chars.forEach((c, i) => (newD[i] = c))
+                      setOtpDigits(newD)
+                      handleCompleteDriverRegister(devOtpCode)
+                    }}
+                    style={{
+                      background: "#f59e0b",
+                      color: "#111827",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "3px 8px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Điền nhanh
+                  </button>
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(6, 1fr)",
+                  gap: "6px",
+                  marginBottom: "14px",
+                }}
+              >
+                {otpDigits.map((digit, idx) => (
+                  <input
+                    key={idx}
+                    ref={(el) => {
+                      otpInputRefs.current[idx] = el
+                    }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleDigitChange(idx, e.target.value)}
+                    style={{
+                      width: "100%",
+                      height: "46px",
+                      textAlign: "center",
+                      fontSize: "18px",
+                      fontWeight: 800,
+                      borderRadius: "10px",
+                      border: digit ? "2px solid #f59e0b" : "1.5px solid rgba(255, 255, 255, 0.2)",
+                      background: "rgba(15, 23, 42, 0.9)",
+                      color: "#fff",
+                      outline: "none",
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div style={{ textAlign: "center", marginBottom: "14px" }}>
+                {countdown > 0 ? (
+                  <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                    Gửi lại mã sau: <strong>{countdown}s</strong>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSendDriverOtp}
+                    style={{ background: "none", border: "none", color: "#fbbf24", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+                  >
+                    🔄 Gửi lại mã OTP
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
@@ -805,9 +1032,14 @@ export default function DriverAuthGate({
                 <span>ĐĂNG NHẬP NHẬN CUỐC</span>
                 <span style={{ fontSize: "18px" }}>➔</span>
               </>
+            ) : !registerOtpSent ? (
+              <>
+                <span>XÁC MINH SĐT QUA OTP</span>
+                <span style={{ fontSize: "18px" }}>➔</span>
+              </>
             ) : (
               <>
-                <span>ĐĂNG KÝ HỒ SƠ TÀI XẾ</span>
+                <span>XÁC NHẬN OTP &amp; HOÀN TẤT</span>
                 <span style={{ fontSize: "18px" }}>✓</span>
               </>
             )}

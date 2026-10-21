@@ -4,7 +4,7 @@ import { db } from "../../db"
 import { users, driverProfiles } from "../../db/schema"
 import { comparePassword, hashPassword } from "../../lib/hash"
 import { generateToken } from "../../lib/auth"
-import { requestOtp, verifyOtp } from "../../lib/otpService"
+import { requestOtp, verifyOtp, verifyOtpCodeOnly } from "../../lib/otpService"
 import { validateAndNormalizePhone } from "../../lib/sms/types"
 import { validateVietnamesePhone } from "../../lib/phoneValidation"
 import { getOrCreateWallet } from "../../lib/walletService"
@@ -125,9 +125,19 @@ router.post("/admin/login", async (req, res, next) => {
 
 router.post("/request-otp", async (req, res, next) => {
   try {
+    const rawPhone = req.body?.phone
+    if (!rawPhone || typeof rawPhone !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng cung cấp số điện thoại nhận mã OTP",
+      })
+    }
+
     const clientIp = getClientIp(req)
-    const result = await requestOtp(req.body.phone, clientIp)
-    res.json(result)
+    const result = await requestOtp(rawPhone, clientIp, {
+      purpose: req.body?.purpose,
+    })
+    return res.json(result)
   } catch (err) {
     next(err)
   }
@@ -135,8 +145,16 @@ router.post("/request-otp", async (req, res, next) => {
 
 router.post("/verify-otp", async (req, res, next) => {
   try {
-    const result = await verifyOtp(req.body.phone, req.body.otp, req.body.role)
-    res.json(result)
+    const { phone, otp, role, fullName } = req.body || {}
+    if (!phone || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ Số điện thoại và Mã OTP 6 chữ số",
+      })
+    }
+
+    const result = await verifyOtp(phone, otp, role, fullName)
+    return res.status(result.isNewUser ? 201 : 200).json(result)
   } catch (err) {
     next(err)
   }
@@ -144,16 +162,16 @@ router.post("/verify-otp", async (req, res, next) => {
 
 /**
  * POST /api/v1/auth/register
- * Đăng ký tài khoản Khách hàng / Tài xế bằng Số điện thoại + Mật khẩu / Mã PIN
+ * Đăng ký tài khoản Khách hàng / Tài xế bằng Số điện thoại + Xác thực OTP chính chủ + Thiết lập Mật khẩu / PIN
  */
 router.post("/register", async (req, res, next) => {
   try {
-    const { phone: rawPhone, password, fullName, role } = req.body
+    const { phone: rawPhone, password, fullName, role, otp } = req.body
 
     if (!rawPhone || !password) {
       return res.status(400).json({
         success: false,
-        message: "Vui lòng nhập đầy đủ Số điện thoại và Mật khẩu",
+        message: "Vui lòng nhập đầy đủ Số điện thoại và Mật khẩu / Mã PIN",
       })
     }
 
@@ -165,6 +183,25 @@ router.post("/register", async (req, res, next) => {
       })
     }
     const phone = phoneValidation.phone
+
+    // Cho phép các tài khoản tài xế mẫu (Seed Drivers) tự động khởi tạo khi bấm chọn nhanh
+    const isSeedDriver =
+      role === "DRIVER" &&
+      ["0908815624", "0903124486", "0987452201", "0916348832"].includes(phone)
+
+    if (!isSeedDriver) {
+      // Xác minh mã OTP chính chủ để chống đăng ký số điện thoại ảo
+      if (!otp || typeof otp !== "string" || otp.trim().length !== 6) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Vui lòng nhập mã OTP 6 chữ số để xác minh số điện thoại chính chủ",
+        })
+      }
+
+      // Kiểm tra tính chính xác và hiệu lực của mã OTP
+      await verifyOtpCodeOnly(phone, otp.trim())
+    }
 
     if (typeof password !== "string" || password.trim().length < 6) {
       return res.status(400).json({
