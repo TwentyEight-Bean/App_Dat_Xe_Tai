@@ -2524,7 +2524,7 @@ h2 {
 
 .chat-screen {
   position: absolute;
-  z-index: 20;
+  z-index: 100;
   inset: 0;
   display: flex;
   flex-direction: column;
@@ -3123,31 +3123,53 @@ h2 {
 }
 .acc-scrim {
   position: fixed;
-  z-index: 30;
+  z-index: 1000;
   inset: 0;
-  display: grid;
-  align-items: end;
-  padding: 16px;
-  background: rgba(26, 36, 48, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px calc(80px + env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 .acc-dialog {
-  padding: 18px 16px 16px;
-  border-radius: 20px;
+  width: 100%;
+  max-width: 340px;
+  padding: 22px 20px 20px;
+  border-radius: 24px;
   background: var(--surface);
-  box-shadow: var(--shadow-float);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 .acc-dialog strong {
-  font-size: 16px;
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink-900);
 }
 .acc-dialog p {
-  margin: 4px 0 0;
+  margin: 6px 0 20px;
   color: var(--ink-500);
-  font-size: 13px;
+  font-size: 13.5px;
+  line-height: 1.45;
 }
 .acc-dialog div {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
+}
+.acc-dialog-danger {
+  background: #fee2e2 !important;
+  color: #dc2626 !important;
+  border-color: #fca5a5 !important;
+  font-weight: 700 !important;
+}
+.acc-dialog-danger:hover {
+  background: #fecaca !important;
+}
+.acc-dialog-danger:active {
+  background: #fca5a5 !important;
+  color: #b91c1c !important;
 }
 .acc-empty {
   display: grid;

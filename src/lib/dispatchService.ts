@@ -619,8 +619,19 @@ export async function getDemandHotspots(
 
     const rows = await client.unsafe(query, [currentLng, currentLat, radiusKm * 1000])
 
+    const calcDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const p = 0.017453292519943295 // Math.PI / 180
+      const c = Math.cos
+      const a = 0.5 - c((lat2 - lat1) * p) / 2 + c(lat1 * p) * c(lat2 * p) * (1 - c((lon2 - lon1) * p)) / 2
+      return 12742 * Math.asin(Math.sqrt(a))
+    }
+
     const extractDistrict = (addr: string): string => {
-      if (!addr) return "Khu vực lân cận"
+      if (!addr) return "Khu vực Trung tâm"
+      // Nhận diện cụm phường trung tâm Q.1 để không bị xé nhỏ
+      if (/(Bến Nghé|Bến Thành|Đa Kao|Tân Định|Phường Sài Gòn|Nguyễn Thái Bình|Phạm Ngũ Lão|Cầu Ông Lãnh|Cô Giang|Cầu Kho|Quận 1\b|Q\.?\s*1\b)/i.test(addr)) {
+        return "Khu vực Trung tâm (Q.1)"
+      }
       const match = addr.match(
         /(Quận\s+\w+|Q\.\s*\w+|Huyện\s+\w+|TP\.\s*\w+|Thị xã\s+\w+|Bình Thạnh|Gò Vấp|Tân Bình|Tân Phú|Phú Nhuận|Bình Tân|Củ Chi|Hóc Môn|Nhà Bè|Cần Giờ|Thủ Đức|Sóng Thần|Tân Tạo|Cát Lái|Hoàn Kiếm|Ba Đình|Đống Đa|Hai Bà Trưng|Cầu Giấy|Thanh Xuân|Hải Châu|Sơn Trà|Ngũ Hành Sơn|Ninh Kiều)/i,
       )
@@ -631,7 +642,7 @@ export async function getDemandHotspots(
       }
       const parts = addr.split(",")
       if (parts.length >= 2) return parts[parts.length - 2].trim()
-      return "Khu vực trung tâm"
+      return "Khu vực Trung tâm"
     }
 
     const districtMap: Record<string, { count: number; lats: number[]; lngs: number[] }> = {}
@@ -646,15 +657,36 @@ export async function getDemandHotspots(
       districtMap[distName].lngs.push(Number(r.lng))
     })
 
-    const sortedDistricts = Object.entries(districtMap)
-      .map(([name, val]) => ({
-        district: name,
-        count: val.count,
-        lat: val.lats.reduce((a, b) => a + b, 0) / val.lats.length,
-        lng: val.lngs.reduce((a, b) => a + b, 0) / val.lngs.length,
-        radiusMeters: Math.min(2500, Math.max(1000, val.count * 600)),
-      }))
-      .sort((a, b) => b.count - a.count)
+    const initialDistricts = Object.entries(districtMap).map(([name, val]) => ({
+      district: name,
+      count: val.count,
+      lat: val.lats.reduce((a, b) => a + b, 0) / val.lats.length,
+      lng: val.lngs.reduce((a, b) => a + b, 0) / val.lngs.length,
+      radiusMeters: Math.min(2200, Math.max(1200, val.count * 450)),
+    }))
+
+    // Thuật toán gom cụm không gian (Spatial Clustering): Gộp các điểm nóng cách nhau dưới 3.5km thành 1 vòng tròn duy nhất
+    const mergedHotspots: typeof initialDistricts = []
+    for (const item of initialDistricts) {
+      const nearby = mergedHotspots.find((existing) => {
+        return calcDistanceKm(existing.lat, existing.lng, item.lat, item.lng) < 3.5
+      })
+
+      if (nearby) {
+        const total = nearby.count + item.count
+        nearby.lat = (nearby.lat * nearby.count + item.lat * item.count) / total
+        nearby.lng = (nearby.lng * nearby.count + item.lng * item.count) / total
+        nearby.count = total
+        nearby.radiusMeters = Math.min(2400, Math.max(1400, total * 500))
+        if (item.district.includes("Trung tâm") || item.district.includes("Q.1")) {
+          nearby.district = item.district
+        }
+      } else {
+        mergedHotspots.push({ ...item })
+      }
+    }
+
+    const sortedDistricts = mergedHotspots.sort((a, b) => b.count - a.count)
 
     const totalOrders = rows.length
 

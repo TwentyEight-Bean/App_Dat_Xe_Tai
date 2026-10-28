@@ -118,7 +118,9 @@ export async function authorizeTripCall(dto: AuthorizeCallDto) {
       b.driver_id,
       dp.user_id as driver_user_id,
       cu.full_name as customer_name,
+      cu.phone as customer_phone,
       du.full_name as driver_name,
+      du.phone as driver_phone,
       dp.license_plate,
       vt.name as vehicle_type_name
     FROM bookings b
@@ -269,6 +271,11 @@ export async function authorizeTripCall(dto: AuthorizeCallDto) {
       role: calleeRole,
 
       name: calleeName,
+
+      phone:
+        calleeRole === "DRIVER"
+          ? booking.driver_phone || "0903124486"
+          : booking.customer_phone || "0918234567",
 
       licensePlate: calleeRole === "DRIVER" ? booking.license_plate : null,
 

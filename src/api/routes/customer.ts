@@ -11,6 +11,7 @@ import {
 import {
   getWalletDetails,
   getWalletTransactions,
+  topUpWallet,
 } from "../../lib/walletService"
 
 import { requireAuth, requireRoles, type AuthRequest } from "../middleware"
@@ -32,6 +33,34 @@ router.get("/wallet", async (req: AuthRequest, res, next) => {
       success: true,
 
       data: wallet,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /customer/wallet/topup
+ * Nạp tiền vào ví khách hàng (thanh toán cước xe hoặc trả nợ phạt hủy chuyến)
+ */
+router.post("/wallet/topup", async (req: AuthRequest, res, next) => {
+  try {
+    const { amount, description, referenceCode } = req.body
+
+    const result = await topUpWallet({
+      userId: req.user!.userId,
+      amount: Number(amount),
+      description:
+        description ||
+        `Khách hàng nạp ${Number(amount).toLocaleString("vi-VN")} đ vào ví`,
+      referenceCode,
+      performedByUserId: req.user!.userId,
+    })
+
+    res.json({
+      success: true,
+      message: result.message,
+      data: result.wallet,
     })
   } catch (err) {
     next(err)

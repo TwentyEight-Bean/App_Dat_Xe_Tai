@@ -403,37 +403,15 @@ export async function deductTripCommission(bookingId: string) {
 
     let txDescription: string
 
-    if (paymentMethod === "CASH") {
-      // TRƯỜNG HỢP 1: CUỐC TIỀN MẶT (CASH)
-
-      // Khách trả tiền mặt toàn bộ cước phí cho tài xế.
-
-      // Sàn tự động trừ số tiền hoa hồng từ Ví Ký Quỹ của tài xế.
-
-      txAmount = -commission
-
-      balanceAfter = balanceBefore - commission
-
-      txType = "COMMISSION_DEDUCTION"
-
-      txDescription = `Khấu trừ ${commission.toLocaleString("vi-VN")} đ hoa hồng (${Math.round((commission / totalPrice) * 100)}%) chuyến xe ${booking.booking_code} (Khách trả tiền mặt)`
-    } else {
-      // TRƯỜNG HỢP 2: CUỐC TRẢ BẰNG VÍ / ONLINE (WALLET, VNPAY, MOMO)
-
-      // Khách đã trả tiền vào hệ thống, tài xế không nhận tiền mặt từ khách.
-
-      // Hệ thống cộng tiền thu nhập thực nhận (Doanh thu - Hoa hồng) vào Ví tài xế.
-
-      const netEarnings = totalPrice - commission
-
-      txAmount = netEarnings
-
-      balanceAfter = balanceBefore + netEarnings
-
-      txType = "TRIP_INCOME"
-
-      txDescription = `Cộng doanh thu ${netEarnings.toLocaleString("vi-VN")} đ cho chuyến xe ${booking.booking_code} (Cước: ${totalPrice.toLocaleString("vi-VN")} đ, Hoa hồng sàn: -${commission.toLocaleString("vi-VN")} đ)`
-    }
+    // Khách và tài xế tự thanh toán trực tiếp với nhau (Tiền mặt hoặc chuyển khoản VietQR tài xế).
+    // Ứng dụng không thu hộ tiền cước nên tài xế nhận 100% cước từ khách.
+    // Hệ thống tự động khấu trừ hoa hồng sàn (20%) từ Ví Ký Quỹ của tài xế.
+    txAmount = -commission
+    balanceAfter = balanceBefore - commission
+    txType = "COMMISSION_DEDUCTION"
+    const isCash = paymentMethod === "CASH"
+    const methodDesc = isCash ? "tiền mặt" : "chuyển khoản VietQR"
+    txDescription = `Khấu trừ ${commission.toLocaleString("vi-VN")} đ hoa hồng (${Math.round((commission / totalPrice) * 100)}%) chuyến xe ${booking.booking_code} (Khách trả ${methodDesc} trực tiếp cho tài xế)`
 
     // 3.2 Cập nhật số dư ví tài xế
 
@@ -503,7 +481,7 @@ export async function deductTripCommission(bookingId: string) {
 
       commission,
 
-      netEarnings: paymentMethod === "CASH" ? 0 : totalPrice - commission,
+      netEarnings: 0, // Tài xế đã tự thu 100% tiền cước từ khách
 
       transaction: txRows[0],
 
@@ -519,10 +497,7 @@ export async function deductTripCommission(bookingId: string) {
         isDepositQualified: finalAvailableBalance >= minLimit,
       },
 
-      message:
-        paymentMethod === "CASH"
-          ? `Đã khấu trừ ${commission.toLocaleString("vi-VN")} đ hoa hồng vào ví tài xế`
-          : `Đã cộng thu nhập ${txAmount.toLocaleString("vi-VN")} đ vào ví tài xế`,
+      message: `Đã khấu trừ ${commission.toLocaleString("vi-VN")} đ hoa hồng vào ví tài xế (${isCash ? "Tiền mặt" : "Chuyển khoản"} trực tiếp)`,
     }
   })
 }
@@ -891,4 +866,84 @@ export async function getAllDriverWallets(options?: {
       }
     }),
   }
+}
+
+/**
+ * 8. Tặng 200.000 VNĐ vốn mồi ký quỹ khởi nghiệp khi tài xế được duyệt KYC thành công
+ * Hỗ trợ Chống tặng trùng (Idempotent) thông qua referenceCode.
+ */
+export async function grantKycWelcomeDeposit(driverUserId: string, driverId: string) {
+  if (!driverUserId) {
+    throw new ApiError(400, "Thiếu thông tin driverUserId")
+  }
+
+  const welcomeAmount = 200000
+  const refCode = `KYC_WELCOME_BONUS_${driverId}`
+
+  // 1. Kiểm tra đã tặng thưởng cho tài xế này chưa
+  const existing = await client.unsafe(
+    `SELECT id FROM wallet_transactions WHERE user_id = $1::uuid AND reference_code = $2 LIMIT 1`,
+    [driverUserId, refCode],
+  )
+  if (existing.length > 0) {
+    return { alreadyGranted: true, message: "Tài xế đã nhận vốn ký quỹ khởi nghiệp trước đó" }
+  }
+
+  // 2. Đảm bảo ví tồn tại
+  await getOrCreateWallet(driverUserId)
+
+  // 3. Thực hiện cộng tiền thưởng vào ví ký quỹ
+  return await client.begin(async (sql) => {
+    const walletRows = await sql`
+      SELECT id, balance, min_deposit_limit
+      FROM wallets
+      WHERE user_id = ${driverUserId}::uuid
+      FOR UPDATE
+    `
+    if (walletRows.length === 0) {
+      throw new ApiError(404, "Không tìm thấy ví tài xế")
+    }
+
+    const currentBal = Number(walletRows[0].balance || 0)
+    const newBal = currentBal + welcomeAmount
+
+    await sql`
+      UPDATE wallets
+      SET balance = ${newBal}, updated_at = NOW()
+      WHERE user_id = ${driverUserId}::uuid
+    `
+
+    await sql`
+      INSERT INTO wallet_transactions (
+        wallet_id,
+        user_id,
+        amount,
+        balance_before,
+        balance_after,
+        type,
+        status,
+        description,
+        reference_code,
+        created_at
+      ) VALUES (
+        ${walletRows[0].id}::uuid,
+        ${driverUserId}::uuid,
+        ${welcomeAmount},
+        ${currentBal},
+        ${newBal},
+        'BONUS',
+        'SUCCESS',
+        'Tặng 200.000đ vốn ký quỹ khởi nghiệp (Duyệt hồ sơ KYC thành công)',
+        ${refCode},
+        NOW()
+      )
+    `
+
+    return {
+      success: true,
+      amount: welcomeAmount,
+      balanceAfter: newBal,
+      message: `Đã tặng thành công ${welcomeAmount.toLocaleString("vi-VN")} đ vốn ký quỹ cho tài xế`,
+    }
+  })
 }

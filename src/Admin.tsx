@@ -14,7 +14,7 @@ import Drivers, { type Decision } from "./admin/Drivers"
 
 import Users from "./admin/Users"
 
-import Complaints from "./admin/Complaints"
+import RatingsAndComplaints from "./admin/RatingsAndComplaints"
 
 import Pricing from "./admin/Pricing"
 
@@ -34,6 +34,7 @@ type Section =
   | "wallets"
   | "b2b"
   | "users"
+  | "ratings"
   | "complaints"
   | "cron"
   | "settings"
@@ -49,7 +50,7 @@ const nav: { id: Section; label: string; icon: IconName }[] = [
   { id: "wallets", label: "Ví tài xế", icon: "wallet" },
   { id: "b2b", label: "Khách B2B", icon: "shield" },
   { id: "users", label: "Người dùng", icon: "users" },
-  { id: "complaints", label: "Khiếu nại", icon: "alert" },
+  { id: "ratings", label: "Đánh giá", icon: "star" },
   { id: "cron", label: "Hệ thống", icon: "clock" },
 ]
 
@@ -62,7 +63,8 @@ const crumb: Record<Section, string> = {
   wallets: "Quản lý ví tài xế",
   b2b: "Khách hàng Doanh nghiệp B2B",
   users: "Người dùng",
-  complaints: "Khiếu nại",
+  ratings: "Đánh giá & Khiếu nại",
+  complaints: "Đánh giá & Khiếu nại",
   cron: "Tác vụ nền & CSDL",
   settings: "Cài đặt",
 }
@@ -263,6 +265,8 @@ export default function Admin() {
 
   const [csFocus, setCsFocus] = useState<string | undefined>()
 
+  const [ratingsTab, setRatingsTab] = useState<"ratings" | "complaints">("ratings")
+
   const [palette, setPalette] = useState(false)
 
   const [q, setQ] = useState("")
@@ -322,12 +326,18 @@ export default function Admin() {
   const badge: Partial<Record<Section, number>> = {
     drivers: pendingLeft,
 
+    ratings: newCs,
+
     complaints: newCs,
   }
 
   const idx = nav.findIndex((n) => n.id === section)
 
   const go = (s: Section) => {
+    if (s === "ratings") {
+      setRatingsTab("ratings")
+    }
+
     setView(s)
 
     setDriverFocus(undefined)
@@ -354,9 +364,11 @@ export default function Admin() {
   const goComplaints = (id?: string) => {
     setCsFocus(id)
 
+    setRatingsTab("complaints")
+
     setTick((t) => t + 1)
 
-    setView("complaints")
+    setView("ratings")
   }
 
   const cmds: Cmd[] = [
@@ -609,13 +621,14 @@ export default function Admin() {
           {view === "wallets" && <Wallets />}
           {view === "b2b" && <B2B />}
           {view === "users" && <Users openOrder={openFull} />}
-          {view === "complaints" && (
-            <Complaints
+          {(view === "ratings" || view === "complaints") && (
+            <RatingsAndComplaints
               key={tick}
-              items={cs}
-              setItems={setCs}
-              focus={csFocus}
+              complaints={cs}
+              setComplaints={setCs}
+              complaintsFocus={csFocus}
               openOrder={openFull}
+              initialTab={ratingsTab}
             />
           )}
           {view === "cron" && <SystemCron />}

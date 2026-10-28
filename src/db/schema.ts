@@ -319,6 +319,13 @@ export const bookings = pgTable(
     pickupProofImage: text("pickup_proof_image"),
     deliveryProofImage: text("delivery_proof_image"),
 
+    // Sprint 3.5: Chống gian lận hoàn thành cuốc (Anti-Fraud)
+    deliveryOtp: varchar("delivery_otp", { length: 10 }),
+    completedLat: decimal("completed_lat", { precision: 10, scale: 7 }),
+    completedLng: decimal("completed_lng", { precision: 10, scale: 7 }),
+    inTransitAt: timestamp("in_transit_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
@@ -480,3 +487,34 @@ export const callLogs = pgTable(
     }
   },
 )
+
+// 4.8 DRIVER_RATINGS (Đánh giá & nhận xét của khách hàng về tài xế)
+export const driverRatings = pgTable(
+  "driver_ratings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    driverId: uuid("driver_id")
+      .notNull()
+      .references(() => driverProfiles.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    rating: integer("rating").notNull(),
+    tags: text("tags").array().default(sql`'{}'::text[]`),
+    comment: text("comment"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => {
+    return {
+      driverIdx: index("idx_driver_ratings_driver_id").on(table.driverId),
+      customerIdx: index("idx_driver_ratings_customer_id").on(table.customerId),
+      ratingIdx: index("idx_driver_ratings_rating").on(table.rating),
+      createdIdx: index("idx_driver_ratings_created_at").on(table.createdAt),
+    }
+  },
+)
+

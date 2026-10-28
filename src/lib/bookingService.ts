@@ -5,6 +5,7 @@ import { ApiError } from "./errors"
 import { findNearbyDrivers } from "./dispatchService"
 
 import {
+  triggerEvent,
   triggerDriverNewOffer,
   triggerBookingAccepted,
   triggerOfferCancelled,
@@ -169,13 +170,36 @@ export async function createBooking(
     }
   }
 
+  // Phương án 1: Kiểm tra nợ xấu của khách hàng (phí phạt hủy chuyến chưa thanh toán)
+  const customerWallet = await getOrCreateWallet(customerId)
+  const custBalance = Number(customerWallet?.balance || 0)
+
+  if (custBalance < 0) {
+    const debtFormatted = Math.abs(custBalance).toLocaleString("vi-VN")
+    throw new ApiError(
+      400,
+      `Tài khoản của bạn đang có khoản nợ phí hủy chuyến chưa thanh toán (${debtFormatted}đ). Vui lòng thanh toán khoản nợ vào ví trước khi tiếp tục đặt chuyến mới.`,
+    )
+  }
+
+  const paymentMethod = data.paymentMethod || "CASH"
+
+  // Nếu chọn thanh toán bằng ví (WALLET), bắt buộc số dư ví phải đủ trả cước chuyến
+  if (paymentMethod === "WALLET" && custBalance < totalPrice) {
+    const balanceFormatted = custBalance.toLocaleString("vi-VN")
+    const priceFormatted = totalPrice.toLocaleString("vi-VN")
+    throw new ApiError(
+      400,
+      `Số dư ví (${balanceFormatted}đ) không đủ để thanh toán cước chuyến (${priceFormatted}đ). Vui lòng nạp thêm tiền hoặc chọn phương thức Tiền mặt / Chuyển khoản.`,
+    )
+  }
+
   // Hoa hồng sàn (20%)
 
   const driverCommission = Math.round(totalPrice * 0.2)
 
   const bookingCode = generateBookingCode()
-
-  const paymentMethod = data.paymentMethod || "CASH"
+  const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString()
 
   // 3. Tạo đơn hàng vào Database với tọa độ PostGIS GEOMETRY(Point, 4326)
 
@@ -197,6 +221,7 @@ export async function createBooking(
       driver_commission,
       payment_method,
       payment_status,
+      delivery_otp,
       created_at,
       updated_at
     ) VALUES (
@@ -215,6 +240,7 @@ export async function createBooking(
       $14::numeric,
       $15,
       'UNPAID',
+      $16,
       NOW(),
       NOW()
     )
@@ -228,6 +254,7 @@ export async function createBooking(
       destination_address,
       distance_km,
       total_price,
+      delivery_otp,
       created_at
     `,
 
@@ -261,6 +288,8 @@ export async function createBooking(
       driverCommission,
 
       paymentMethod,
+
+      deliveryOtp,
     ],
   )
 
@@ -325,6 +354,7 @@ export async function createBooking(
     status: booking.status,
     distanceKm: Number(booking.distance_km),
     totalPrice: Number(booking.total_price),
+    deliveryOtp: booking.delivery_otp,
     dispatchRound,
     matchedDriversCount: nearbyDrivers.length,
     matchedDrivers: nearbyDrivers.map((d) => ({
@@ -538,6 +568,8 @@ export async function acceptBooking(driverUserId: string, bookingId: string) {
   }
 
   return {
+    id: acceptedBooking.id,
+
     bookingId: acceptedBooking.id,
 
     bookingCode: acceptedBooking.booking_code,
@@ -592,6 +624,11 @@ export async function getBookingById(bookingId: string) {
       b.cancelled_at,
       b.pickup_proof_image,
       b.delivery_proof_image,
+      b.delivery_otp,
+      b.completed_lat,
+      b.completed_lng,
+      b.in_transit_at,
+      b.completed_at,
       b.created_at,
       b.updated_at,
       u.full_name as customer_name,
@@ -716,6 +753,12 @@ export async function getBookingById(bookingId: string) {
       pickup: r.pickup_proof_image || null,
       delivery: r.delivery_proof_image || null,
     },
+
+    deliveryOtp: r.delivery_otp || null,
+    completedLat: r.completed_lat !== null ? Number(r.completed_lat) : null,
+    completedLng: r.completed_lng !== null ? Number(r.completed_lng) : null,
+    inTransitAt: r.in_transit_at || null,
+    completedAt: r.completed_at || null,
 
     createdAt: r.created_at,
 
@@ -862,6 +905,70 @@ export async function getDriverActiveBooking(driverId: string) {
 }
 
 /**
+ * 4.2 Lấy danh sách các chuyến xe thực tế đang chờ tài xế (SEARCHING)
+ */
+export async function getAvailableBookings(driverUserId?: string) {
+  const rows = await client.unsafe(
+    `
+    SELECT 
+      b.id,
+      b.booking_code,
+      b.status,
+      b.origin_address,
+      ST_Y(b.origin_point) as origin_lat,
+      ST_X(b.origin_point) as origin_lng,
+      b.destination_address,
+      ST_Y(b.destination_point) as dest_lat,
+      ST_X(b.destination_point) as dest_lng,
+      b.distance_km,
+      b.base_price,
+      b.surcharge_price,
+      b.total_price,
+      b.driver_commission,
+      b.payment_method,
+      b.payment_status,
+      b.created_at,
+      u.full_name as customer_name,
+      u.phone as customer_phone,
+      u.avatar_url as customer_avatar,
+      vt.name as vehicle_type_name
+    FROM bookings b
+    JOIN users u ON u.id = b.customer_id
+    LEFT JOIN vehicle_types vt ON vt.id = b.vehicle_type_id
+    WHERE b.status = 'SEARCHING'
+      AND b.driver_id IS NULL
+    ORDER BY b.created_at DESC
+    LIMIT 10
+    `,
+  )
+
+  return rows.map((r: any) => ({
+    bookingId: r.id,
+    id: r.id,
+    bookingCode: r.booking_code,
+    status: r.status,
+    originAddress: r.origin_address,
+    originLat: Number(r.origin_lat),
+    originLng: Number(r.origin_lng),
+    destinationAddress: r.destination_address,
+    destLat: Number(r.dest_lat),
+    destLng: Number(r.dest_lng),
+    distanceKm: Number(r.distance_km),
+    totalPrice: Number(r.total_price),
+    driverEarning: Math.round(Number(r.total_price) * 0.8),
+    paymentMethod: r.payment_method,
+    paymentStatus: r.payment_status,
+    vehicleTypeName: r.vehicle_type_name || "Xe tải",
+    customerName: r.customer_name || "Khách hàng",
+    customerPhone: r.customer_phone || "",
+    customerAvatar: r.customer_avatar || null,
+    receiverName: "Người nhận hàng",
+    expiresInSeconds: 30,
+    createdAt: r.created_at,
+  }))
+}
+
+/**
  * Bảng ánh xạ các bước chuyển trạng thái hợp lệ của chuyến xe (Finite State Machine)
  * Đã nhận (ACCEPTED) -> Tới lấy (ARRIVED_AT_PICKUP) -> Đang giao (IN_TRANSIT) -> Hoàn thành (COMPLETED)
  */
@@ -894,13 +1001,23 @@ const STATUS_MESSAGES: Record<string, string> = {
  * Luồng: Đã nhận -> Tới lấy -> Đang giao -> Hoàn thành
  */
 
+export interface UpdateBookingStatusOptions {
+  requireProof?: boolean
+  requireOtp?: boolean
+  driverLat?: number
+  driverLng?: number
+  deliveryOtp?: string
+  bypassGeofence?: boolean
+  bypassReason?: string
+}
+
 export async function updateBookingStatus(
   driverUserId: string,
   bookingId: string,
   newStatus: string,
   note?: string,
   proofImageUrl?: string,
-  options?: { requireProof?: boolean } | boolean,
+  options?: UpdateBookingStatusOptions | boolean,
 ) {
   if (!driverUserId) {
     throw new ApiError(401, "Yêu cầu đăng nhập tài khoản tài xế")
@@ -937,9 +1054,11 @@ export async function updateBookingStatus(
 
   const driverId = driverProfile[0].id
 
-  // 2. Lấy thông tin chuyến xe hiện tại
+  // 2. Lấy thông tin chuyến xe hiện tại và tọa độ điểm giao hàng để kiểm tra Geofence
   const bookingRows = await client.unsafe(
-    `SELECT id, booking_code, status, driver_id, customer_id, total_price, payment_method FROM bookings WHERE id = $1::uuid LIMIT 1`,
+    `SELECT id, booking_code, status, driver_id, customer_id, total_price, payment_method, delivery_otp,
+            ST_Y(destination_point) as dest_lat, ST_X(destination_point) as dest_lng
+     FROM bookings WHERE id = $1::uuid LIMIT 1`,
     [bookingId],
   )
 
@@ -975,19 +1094,89 @@ export async function updateBookingStatus(
     )
   }
 
-  // 3.1 Ràng buộc ảnh bằng chứng giao hàng (POD) khi chuyển sang COMPLETED
   const cleanProof = proofImageUrl ? String(proofImageUrl).trim() : null
-  const requireProof =
-    typeof options === "boolean" ? options : options?.requireProof
-  if (cleanStatus === "COMPLETED" && requireProof && !cleanProof) {
-    throw new ApiError(
-      400,
-      "Vui lòng chụp hoặc tải ảnh bằng chứng giao hàng (Proof of Delivery) trước khi hoàn tất cuốc xe.",
-      "MISSING_DELIVERY_PROOF",
-    )
+  const opts: UpdateBookingStatusOptions =
+    typeof options === "boolean" ? { requireProof: options } : options || {}
+
+  // 3.0 RÀNG BUỘC BẮT BUỘC ẢNH KIỆN HÀNG LÊN XE KHI BẮT ĐẦU VẬN CHUYỂN (IN_TRANSIT)
+  if (cleanStatus === "IN_TRANSIT") {
+    if (opts.requireProof && !cleanProof) {
+      throw new ApiError(
+        400,
+        "Vui lòng chụp hoặc tải ảnh kiện hàng bốc lên xe trước khi bắt đầu vận chuyển.",
+        "MISSING_PICKUP_PROOF",
+      )
+    }
   }
 
-  // 4. Cập nhật Database (hỗ trợ ảnh bằng chứng giao nhận POD)
+  // 3.1 & 3.2 & 3.3 HỆ THỐNG KIỂM TRA CHỐNG GIAN LẬN KHI HOÀN THÀNH CUỐC (COMPLETED)
+  if (cleanStatus === "COMPLETED") {
+    // [Lớp 1]: Ràng buộc bắt buộc ảnh bằng chứng giao hàng (POD)
+    if (opts.requireProof && !cleanProof) {
+      throw new ApiError(
+        400,
+        "Vui lòng chụp hoặc tải ảnh bằng chứng giao hàng (Proof of Delivery) trước khi hoàn tất cuốc xe.",
+        "MISSING_DELIVERY_PROOF",
+      )
+    }
+
+    // [Lớp 2]: Ràng buộc mã OTP xác nhận từ người nhận hàng
+    if (opts.requireOtp && booking.delivery_otp) {
+      const providedOtp = opts.deliveryOtp ? String(opts.deliveryOtp).trim() : ""
+      const expectedOtp = String(booking.delivery_otp).trim()
+      if (!providedOtp || providedOtp !== expectedOtp) {
+        throw new ApiError(
+          400,
+          "Mã xác nhận giao hàng (OTP) không chính xác. Vui lòng hỏi người nhận hàng.",
+          "INVALID_DELIVERY_OTP",
+        )
+      }
+    }
+
+    // [Lớp 3]: Ràng buộc định vị GPS Geofencing (Khoảng cách ≤ 500m quanh điểm giao)
+    if (
+      opts.driverLat !== undefined &&
+      opts.driverLng !== undefined &&
+      booking.dest_lat !== null &&
+      booking.dest_lng !== null &&
+      !opts.bypassGeofence
+    ) {
+      const destLat = Number(booking.dest_lat)
+      const destLng = Number(booking.dest_lng)
+      const dLat = Number(opts.driverLat)
+      const dLng = Number(opts.driverLng)
+
+      // Công thức Haversine tính khoảng cách đường chim bay (mét)
+      const R = 6371000 // bán kính Trái Đất theo mét
+      const radLat1 = (destLat * Math.PI) / 180
+      const radLat2 = (dLat * Math.PI) / 180
+      const deltaLat = ((dLat - destLat) * Math.PI) / 180
+      const deltaLng = ((dLng - destLng) * Math.PI) / 180
+
+      const a =
+        Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+        Math.cos(radLat1) *
+          Math.cos(radLat2) *
+          Math.sin(deltaLng / 2) *
+          Math.sin(deltaLng / 2)
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+      const distanceMeters = Math.round(R * c)
+
+      if (distanceMeters > 500) {
+        const distText =
+          distanceMeters >= 1000
+            ? `${(distanceMeters / 1000).toFixed(1)} km`
+            : `${distanceMeters} m`
+        throw new ApiError(
+          400,
+          `Bạn đang cách điểm giao hàng ${distText}. Vui lòng di chuyển đến điểm giao (trong phạm vi 500m) để hoàn tất.`,
+          "GEOFENCE_TOO_FAR",
+        )
+      }
+    }
+  }
+
+  // 4. Cập nhật Database (hỗ trợ ảnh bằng chứng POD, mốc thời gian và tọa độ hoàn thành)
   const updatedRows = await client.unsafe(
     `
     UPDATE bookings
@@ -996,11 +1185,22 @@ export async function updateBookingStatus(
       payment_status = CASE WHEN $1 = 'COMPLETED' THEN 'PAID'::payment_status ELSE payment_status END,
       pickup_proof_image = CASE WHEN $1 = 'IN_TRANSIT' AND $4::text IS NOT NULL THEN $4 ELSE pickup_proof_image END,
       delivery_proof_image = CASE WHEN $1 = 'COMPLETED' AND $4::text IS NOT NULL THEN $4 ELSE delivery_proof_image END,
+      in_transit_at = CASE WHEN $1 = 'IN_TRANSIT' AND in_transit_at IS NULL THEN NOW() ELSE in_transit_at END,
+      completed_at = CASE WHEN $1 = 'COMPLETED' THEN NOW() ELSE completed_at END,
+      completed_lat = CASE WHEN $1 = 'COMPLETED' AND $5::numeric IS NOT NULL THEN $5::numeric ELSE completed_lat END,
+      completed_lng = CASE WHEN $1 = 'COMPLETED' AND $6::numeric IS NOT NULL THEN $6::numeric ELSE completed_lng END,
       updated_at = NOW()
     WHERE id = $2::uuid AND driver_id = $3::uuid
-    RETURNING id, booking_code, status, payment_status, pickup_proof_image, delivery_proof_image, updated_at
+    RETURNING id, booking_code, status, payment_status, pickup_proof_image, delivery_proof_image, delivery_otp, completed_lat, completed_lng, in_transit_at, completed_at, updated_at
     `,
-    [cleanStatus, bookingId, driverId, cleanProof],
+    [
+      cleanStatus,
+      bookingId,
+      driverId,
+      cleanProof,
+      opts.driverLat !== undefined ? opts.driverLat : null,
+      opts.driverLng !== undefined ? opts.driverLng : null,
+    ],
   )
 
   const updatedBooking = updatedRows[0]
@@ -1162,7 +1362,19 @@ export async function cancelBooking(
   // Task 2.1: Phí bồi thường nếu khách hủy khi tài xế đã đến điểm lấy hàng (ARRIVED_AT_PICKUP)
   let cancellationFee = 0
   if (isCustomer && b.status === "ARRIVED_AT_PICKUP") {
-    cancellationFee = 30000 // 30.000đ bồi thường xăng xe tài xế
+    // Miễn trừ phí phạt nếu lý do hủy xuất phát từ lỗi tài xế (trễ hẹn, không đến, không di chuyển, không liên lạc được)
+    const reasonLower = (cancelReason || "").toLowerCase()
+    const isDriverFault =
+      reasonLower.includes("trễ") ||
+      reasonLower.includes("quá lâu") ||
+      reasonLower.includes("không di chuyển") ||
+      reasonLower.includes("không liên lạc") ||
+      reasonLower.includes("không tới") ||
+      reasonLower.includes("đổi tài xế")
+
+    if (!isDriverFault) {
+      cancellationFee = 30000 // 30.000đ bồi thường xăng xe tài xế khi lỗi do khách
+    }
   }
 
   // Cập nhật sang CANCELLED và lưu vết đầy đủ vào Database
@@ -1373,6 +1585,109 @@ export async function escalateBookingDispatch(bookingId: string) {
 }
 
 /**
+ * 7.1 Khách hàng đổi sang tài xế khác do tài xế hiện tại đến trễ hoặc không di chuyển
+ */
+export async function reassignBookingDriver(
+  customerId: string,
+  bookingId: string,
+  reason?: string,
+) {
+  if (!customerId || !bookingId) {
+    throw new ApiError(400, "Thiếu thông tin người dùng hoặc chuyến xe")
+  }
+
+  const rows = await client.unsafe(
+    `
+    SELECT b.id, b.booking_code, b.status, b.customer_id, b.driver_id, b.vehicle_type_id,
+           ST_Y(b.origin_point) as origin_lat, ST_X(b.origin_point) as origin_lng,
+           b.origin_address, b.destination_address, b.distance_km, b.total_price,
+           dp.user_id as driver_user_id
+    FROM bookings b
+    LEFT JOIN driver_profiles dp ON dp.id = b.driver_id
+    WHERE b.id = $1::uuid
+    LIMIT 1
+    `,
+    [bookingId],
+  )
+
+  if (rows.length === 0) {
+    throw new ApiError(404, "Chuyến xe không tồn tại")
+  }
+
+  const b = rows[0]
+
+  if (b.customer_id !== customerId) {
+    throw new ApiError(403, "Bạn không có quyền đổi tài xế cho chuyến xe này")
+  }
+
+  if (b.status !== "ACCEPTED" && b.status !== "ARRIVED_AT_PICKUP") {
+    throw new ApiError(
+      400,
+      `Không thể đổi tài xế khi đơn đang ở trạng thái ${b.status}`,
+    )
+  }
+
+  const oldDriverId = b.driver_id
+
+  // 1. Giải phóng tài xế cũ và chuyển đơn về SEARCHING
+  await client.unsafe(
+    `
+    UPDATE bookings
+    SET 
+      status = 'SEARCHING'::booking_status,
+      driver_id = NULL,
+      updated_at = NOW()
+    WHERE id = $1::uuid
+    `,
+    [bookingId],
+  )
+
+  // 2. Bắn sự kiện Pusher thông báo cho tài xế cũ
+  if (oldDriverId) {
+    await triggerEvent(`driver-${oldDriverId}`, "booking:cancelled", {
+      bookingId,
+      cancelledBy: "SYSTEM",
+      reason: reason || "Khách hàng đổi tài xế do thời gian chờ quá lâu",
+    }).catch(() => {})
+  }
+
+  // 3. Bắn sự kiện Pusher cập nhật kênh chuyến đi
+  await triggerEvent(`trip-${bookingId}`, "booking:reassigned", {
+    bookingId,
+    status: "SEARCHING",
+    message: "Đang tìm kiếm tài xế xe tải khác gần bạn...",
+  }).catch(() => {})
+
+  // 4. Quét tìm tài xế mới quanh điểm đón (loại trừ tài xế cũ)
+  const nearby = await findNearbyDrivers({
+    originLat: Number(b.origin_lat),
+    originLng: Number(b.origin_lng),
+    radiusKm: 6,
+    vehicleTypeId: b.vehicle_type_id,
+    excludeDriverIds: oldDriverId ? [oldDriverId] : [],
+    limit: 15,
+  })
+
+  for (const driver of nearby) {
+    await triggerDriverNewOffer(driver.driverId, {
+      bookingId,
+      bookingCode: b.booking_code,
+      originAddress: b.origin_address,
+      destinationAddress: b.destination_address,
+      distanceKm: Number(b.distance_km),
+      totalPrice: Number(b.total_price),
+      vehicleTypeName: driver.vehicleTypeName || undefined,
+    }).catch(() => {})
+  }
+
+  return {
+    bookingId,
+    status: "SEARCHING",
+    message: "Đã hủy tài xế trễ và đang tự động tìm tài xế xe tải mới quanh bạn",
+  }
+}
+
+/**
  * 7. Khách hàng đánh giá cuốc xe (Rating & Feedback)
  */
 export async function rateBooking(
@@ -1407,15 +1722,27 @@ export async function rateBooking(
     throw new ApiError(400, "Chỉ có thể đánh giá chuyến xe khi đã hoàn thành")
   }
 
-  // 2. Cập nhật ratingAvg của tài xế nếu có
+  // 2. Lưu chi tiết đánh giá vào bảng driver_ratings
   if (b.driver_id) {
     await client.unsafe(
       `
-      UPDATE driver_profiles
-      SET rating_avg = ROUND(CAST((COALESCE(rating_avg, 5.0) * 4 + $1) / 5 AS numeric), 2)
-      WHERE id = $2::uuid
+      INSERT INTO driver_ratings (booking_id, driver_id, customer_id, rating, tags, comment, updated_at)
+      VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::text[], $6, NOW())
+      ON CONFLICT (booking_id, customer_id)
+      DO UPDATE SET rating = EXCLUDED.rating, tags = EXCLUDED.tags, comment = EXCLUDED.comment, updated_at = NOW()
       `,
-      [rating, b.driver_id],
+      [b.id, b.driver_id, customerId, rating, tags || [], comment || null],
+    )
+
+    // 3. Tính toán lại rating_avg chính xác dựa trên toàn bộ đánh giá thực tế
+    const avgRes = await client.unsafe(
+      `SELECT ROUND(AVG(rating)::numeric, 2) as avg_rating FROM driver_ratings WHERE driver_id = $1::uuid`,
+      [b.driver_id],
+    )
+    const newAvg = avgRes[0]?.avg_rating ? Number(avgRes[0].avg_rating) : rating
+    await client.unsafe(
+      `UPDATE driver_profiles SET rating_avg = $1 WHERE id = $2::uuid`,
+      [newAvg, b.driver_id],
     )
   }
 

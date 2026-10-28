@@ -6,9 +6,11 @@ export interface TopUpModalProps {
   onSuccess: (newBalance: number) => void
   userRole?: "DRIVER" | "CUSTOMER"
   authToken?: string
+  initialAmount?: number
+  debtTitle?: string
 }
 
-const PRESET_AMOUNTS = [100000, 200000, 500000, 1000000]
+const PRESET_AMOUNTS = [30000, 50000, 100000, 200000, 500000, 1000000]
 
 export default function TopUpModal({
   isOpen,
@@ -16,30 +18,27 @@ export default function TopUpModal({
   onSuccess,
   userRole = "DRIVER",
   authToken,
+  initialAmount,
+  debtTitle,
 }: TopUpModalProps) {
-  const [amount, setAmount] = useState<number>(200000)
-  const [gateway, setGateway] = useState<"VNPAY" | "MOMO" | "CASH">("VNPAY")
+  const [amount, setAmount] = useState<number>(initialAmount || 200000)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null)
-  const [paymentUrl, setPaymentUrl] = useState<string | null>(null)
   const [transactionCode, setTransactionCode] = useState<string | null>(null)
   const [isSuccess, setIsSuccess] = useState(false)
-  const [isConfirmingSimulated, setIsConfirmingSimulated] = useState(false)
 
   // Reset khi mở lại modal
   useEffect(() => {
     if (isOpen) {
-      setAmount(200000)
-      setGateway("VNPAY")
+      setAmount(initialAmount && initialAmount > 0 ? initialAmount : 200000)
       setLoading(false)
       setError(null)
       setQrCodeUrl(null)
-      setPaymentUrl(null)
       setTransactionCode(null)
       setIsSuccess(false)
     }
-  }, [isOpen])
+  }, [isOpen, initialAmount])
 
   // Polling kiểm tra trạng thái thanh toán khi có transactionCode
   useEffect(() => {
@@ -67,121 +66,20 @@ export default function TopUpModal({
 
   if (!isOpen) return null
 
-  const token =
-    authToken ||
-    (typeof window !== "undefined"
-      ? localStorage.getItem("driver_auth_token") ||
-        localStorage.getItem("token") ||
-        localStorage.getItem("auth_token")
-      : "")
 
-  const handleConfirmSimulated = async () => {
-    setIsConfirmingSimulated(true)
-    try {
-      if (transactionCode) {
-        await fetch("/api/v1/payments/confirm-simulated", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transactionCode }),
-        }).catch(() => {})
-      }
-    } finally {
-      setIsConfirmingSimulated(false)
-      setIsSuccess(true)
-      setTimeout(() => {
-        onSuccess(amount)
-        onClose()
-      }, 1200)
-    }
-  }
 
   const handleStartTopup = async () => {
     setLoading(true)
     setError(null)
 
     try {
-      if (gateway === "CASH") {
-        // Nạp tiền mặt trực tiếp
-        const endpoint =
-          userRole === "DRIVER" ? "/api/v1/driver/wallet/topup" : "/api/v1/customer/wallet/topup"
-
-        try {
-          const res = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              amount,
-              description: `${userRole === "DRIVER" ? "Tài xế" : "Khách hàng"} nạp ${amount.toLocaleString("vi-VN")} đ tiền mặt tại quầy`,
-            }),
-          })
-          const data = await res.json()
-          if (!data.success) {
-            console.warn("Cash topup warning:", data.message)
-          }
-        } catch (cashErr) {
-          console.warn("Cash topup network warning:", cashErr)
-        }
-
-        setIsSuccess(true)
-        setTimeout(() => {
-          onSuccess(amount)
-          onClose()
-        }, 1200)
-      } else {
-        // Nạp qua VNPay hoặc MoMo
-        let data: any = null
-        try {
-          const res = await fetch("/api/v1/payments/create-url", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              amount,
-              gateway,
-              purpose: "TOPUP_WALLET",
-              description: `Nạp ${amount.toLocaleString("vi-VN")} đ vào ví ký quỹ qua ${gateway}`,
-            }),
-          })
-          data = await res.json()
-        } catch (fetchErr) {
-          console.warn("Lỗi gọi create-url:", fetchErr)
-        }
-
-        if (!data || !data.success || !data.data) {
-          const demoCode = `${gateway}_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`
-          const demoUrl =
-            gateway === "VNPAY"
-              ? `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=${amount * 100}&vnp_TxnRef=${demoCode}&vnp_OrderInfo=Nap+vi+ky+quy`
-              : `https://test-payment.momo.vn/v2/gateway/pay?orderId=${demoCode}&amount=${amount}`
-          data = {
-            success: true,
-            data: {
-              transactionCode: demoCode,
-              paymentUrl: demoUrl,
-              qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(demoUrl)}`,
-            },
-          }
-        }
-
-        const txCode = data.data.transactionCode
-        const pUrl = data.data.paymentUrl || null
-        const qrUrl =
-          data.data.qrCodeUrl ||
-          (pUrl
-            ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pUrl)}`
-            : null)
-
-        setTransactionCode(txCode)
-        setPaymentUrl(pUrl)
-        setQrCodeUrl(qrUrl)
-      }
+      // Chuyển khoản ngân hàng trực tiếp qua mã QR Vietcombank
+      const txCode = `CK${Date.now().toString().slice(-6)}${Math.floor(100 + Math.random() * 900)}`
+      const qrUrl = `https://img.vietqr.io/image/VCB-1049761056-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(txCode)}`
+      setTransactionCode(txCode)
+      setQrCodeUrl(qrUrl)
     } catch (err: any) {
-      setError(err.message || "Đã xảy ra lỗi khi nạp tiền")
+      setError(err.message || "Đã xảy ra lỗi khi tạo mã chuyển khoản")
     } finally {
       setLoading(false)
     }
@@ -214,13 +112,13 @@ export default function TopUpModal({
         }}
       >
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: debtTitle ? "12px" : "20px" }}>
           <div>
             <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>
-              {userRole === "DRIVER" ? "Nạp Tiền Ví Ký Quỹ" : "Nạp Tiền Ví Điện Tử"}
+              {debtTitle ? "Thanh Toán Nợ Phí Hủy" : userRole === "DRIVER" ? "Nạp Tiền Ví Ký Quỹ" : "Nạp Tiền Ví Điện Tử"}
             </h3>
             <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#94a3b8" }}>
-              Nạp tiền để duy trì nhận chuyến và giao dịch an toàn
+              {debtTitle ? "Thanh toán khoản nợ để khôi phục quyền đặt xe" : "Nạp tiền để duy trì nhận chuyến và giao dịch an toàn"}
             </p>
           </div>
           <button
@@ -269,34 +167,34 @@ export default function TopUpModal({
               Đã cộng +{amount.toLocaleString("vi-VN")} đ vào ví của bạn.
             </p>
           </div>
-        ) : (qrCodeUrl || paymentUrl) ? (
-          /* Màn hình hiển thị QR Code cổng thanh toán */
+        ) : qrCodeUrl ? (
+          /* Màn hình hiển thị QR Code Chuyển khoản ngân hàng */
           <div style={{ textAlign: "center", padding: "8px 0" }}>
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "6px",
-                background: gateway === "VNPAY" ? "rgba(37, 99, 235, 0.2)" : "rgba(217, 70, 239, 0.2)",
-                padding: "4px 12px",
+                background: "rgba(37, 99, 235, 0.2)",
+                padding: "4px 14px",
                 borderRadius: "999px",
                 marginBottom: "10px",
-                border: gateway === "VNPAY" ? "1px solid #3b82f6" : "1px solid #d946ef",
+                border: "1px solid #3b82f6",
                 fontSize: "12px",
                 fontWeight: 700,
-                color: gateway === "VNPAY" ? "#60a5fa" : "#f472b6",
+                color: "#60a5fa",
               }}
             >
-              <span>{gateway === "VNPAY" ? "🏦 Cổng VNPay-QR" : "👛 Ví MoMo QR"}</span>
+              <span>🏦 Chuyển khoản ngân hàng trực tiếp</span>
             </div>
 
             <p style={{ fontSize: "13px", color: "#cbd5e1", margin: "0 0 10px" }}>
-              Mở App ngân hàng hoặc {gateway} quét mã QR bên dưới để nạp tiền:
+              Mở ứng dụng ngân hàng bất kỳ để quét mã QR chuyển khoản:
             </p>
             <div
               style={{
                 background: "#ffffff",
-                padding: "14px",
+                padding: "10px",
                 borderRadius: "14px",
                 display: "inline-block",
                 marginBottom: "10px",
@@ -304,68 +202,88 @@ export default function TopUpModal({
               }}
             >
               <img
-                src={
-                  qrCodeUrl ||
-                  `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentUrl || "")}`
-                }
-                alt="Mã QR thanh toán"
-                style={{ width: "190px", height: "190px", display: "block" }}
+                src={qrCodeUrl}
+                alt="Mã QR Chuyển khoản"
+                style={{ width: "220px", height: "auto", display: "block", borderRadius: "8px" }}
               />
             </div>
-            <div style={{ fontSize: "16px", fontWeight: 800, color: "#38bdf8", marginBottom: "4px" }}>
-              Số tiền: {amount.toLocaleString("vi-VN")} đ
+
+            {/* Khối thông tin số tài khoản chi tiết */}
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.05)",
+                borderRadius: "12px",
+                padding: "12px 16px",
+                textAlign: "left",
+                fontSize: "12.5px",
+                maxWidth: "340px",
+                margin: "0 auto 14px",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ color: "#94a3b8" }}>Ngân hàng:</span>
+                <strong style={{ color: "#ffffff" }}>Vietcombank (Ngoại thương)</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ color: "#94a3b8" }}>Số tài khoản:</span>
+                <strong style={{ color: "#38bdf8", fontSize: "14px", letterSpacing: "0.5px" }}>1049761056</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ color: "#94a3b8" }}>Chủ tài khoản:</span>
+                <strong style={{ color: "#ffffff" }}>Chủ TK: 1049761056 (App ngân hàng tự nhận tên)</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ color: "#94a3b8" }}>Số tiền:</span>
+                <strong style={{ color: "#4ade80", fontSize: "14px" }}>{amount.toLocaleString("vi-VN")} đ</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#94a3b8" }}>Nội dung CK:</span>
+                <strong style={{ color: "#facc15" }}>{transactionCode}</strong>
+              </div>
             </div>
-            <p style={{ fontSize: "11px", color: "#94a3b8", margin: "0 0 14px" }}>
-              Mã giao dịch: <strong>{transactionCode}</strong>
-            </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "340px", margin: "0 auto 12px" }}>
-              {paymentUrl && (
-                <a
-                  href={paymentUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                    padding: "10px",
-                    borderRadius: "10px",
-                    background: "linear-gradient(135deg, #0284c7, #2563eb)",
-                    color: "#ffffff",
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    textDecoration: "none",
-                    boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
-                  }}
-                >
-                  <span>🌐 Mở trang thanh toán {gateway}</span>
-                  <span style={{ fontSize: "15px" }}>→</span>
-                </a>
-              )}
+            {/* Hộp trạng thái chờ hệ thống nhận tiền thực tế */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                maxWidth: "340px",
+                margin: "0 auto 14px",
+                padding: "14px 16px",
+                borderRadius: "12px",
+                background: "rgba(30, 58, 138, 0.25)",
+                border: "1px dashed #3b82f6",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: "#60a5fa", fontSize: "13px", fontWeight: 700 }}>
+                <span style={{ display: "inline-block", animation: "spin 2s linear infinite" }}>🔄</span>
+                <span>Hệ thống đang chờ nhận chuyển khoản...</span>
+              </div>
+              <p style={{ margin: 0, fontSize: "12px", color: "#cbd5e1", lineHeight: 1.45 }}>
+                Vui lòng mở ứng dụng ngân hàng quét mã QR trên và giữ đúng <strong>Nội dung CK</strong>. Khi tiền vào tài khoản, hệ thống sẽ <strong>tự động duyệt & cộng tiền vào ví</strong>.
+              </p>
+            </div>
 
+            <div style={{ display: "flex", gap: "10px", maxWidth: "340px", margin: "0 auto 12px" }}>
               <button
                 type="button"
-                onClick={handleConfirmSimulated}
-                disabled={isConfirmingSimulated}
+                onClick={onClose}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "6px",
+                  flex: 1,
                   padding: "11px",
                   borderRadius: "10px",
-                  background: "linear-gradient(135deg, #059669, #10b981)",
+                  background: "rgba(255, 255, 255, 0.1)",
+                  border: "none",
                   color: "#ffffff",
                   fontSize: "13px",
-                  fontWeight: 700,
-                  border: "none",
+                  fontWeight: 600,
                   cursor: "pointer",
-                  boxShadow: "0 4px 12px rgba(16, 185, 129, 0.35)",
                 }}
               >
-                <span>✓ {isConfirmingSimulated ? "ĐANG XÁC NHẬN..." : "Tôi đã quét mã & thanh toán (Xác nhận ngay)"}</span>
+                Đóng (Tự động cộng ngầm)
               </button>
             </div>
 
@@ -374,7 +292,6 @@ export default function TopUpModal({
                 type="button"
                 onClick={() => {
                   setQrCodeUrl(null)
-                  setPaymentUrl(null)
                   setTransactionCode(null)
                 }}
                 style={{
@@ -393,10 +310,27 @@ export default function TopUpModal({
         ) : (
           /* Form chọn số tiền & phương thức */
           <div>
+            {debtTitle && (
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.15)",
+                  border: "1px solid #ef4444",
+                  borderRadius: "10px",
+                  padding: "10px 12px",
+                  marginBottom: "16px",
+                  fontSize: "12px",
+                  color: "#fca5a5",
+                  lineHeight: 1.45,
+                }}
+              >
+                <strong>⚠️ Thông báo nợ:</strong> {debtTitle}
+              </div>
+            )}
+
             {/* Chọn số tiền */}
             <div style={{ marginBottom: "16px" }}>
               <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "8px", color: "#cbd5e1" }}>
-                Chọn số tiền nạp:
+                {debtTitle ? "Chọn số tiền thanh toán nợ / nạp ví:" : "Chọn số tiền nạp:"}
               </label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
                 {PRESET_AMOUNTS.map((val) => (
@@ -439,75 +373,25 @@ export default function TopUpModal({
               />
             </div>
 
-            {/* Chọn cổng thanh toán */}
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", fontSize: "13px", fontWeight: 600, marginBottom: "8px", color: "#cbd5e1" }}>
-                Phương thức nạp:
-              </label>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    padding: "10px 14px",
-                    borderRadius: "8px",
-                    background: gateway === "VNPAY" ? "rgba(37, 99, 235, 0.2)" : "rgba(255, 255, 255, 0.04)",
-                    border: gateway === "VNPAY" ? "1px solid #3b82f6" : "1px solid transparent",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="gateway"
-                    checked={gateway === "VNPAY"}
-                    onChange={() => setGateway("VNPAY")}
-                  />
-                  <span>🏦 <strong>Cổng VNPay</strong> (VNPAY-QR / Thẻ ATM nội địa)</span>
-                </label>
-
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    padding: "10px 14px",
-                    borderRadius: "8px",
-                    background: gateway === "MOMO" ? "rgba(217, 70, 239, 0.2)" : "rgba(255, 255, 255, 0.04)",
-                    border: gateway === "MOMO" ? "1px solid #d946ef" : "1px solid transparent",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="gateway"
-                    checked={gateway === "MOMO"}
-                    onChange={() => setGateway("MOMO")}
-                  />
-                  <span>👛 <strong>Ví MoMo</strong> (Quét mã MoMo QR)</span>
-                </label>
-
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    padding: "10px 14px",
-                    borderRadius: "8px",
-                    background: gateway === "CASH" ? "rgba(34, 197, 94, 0.2)" : "rgba(255, 255, 255, 0.04)",
-                    border: gateway === "CASH" ? "1px solid #22c55e" : "1px solid transparent",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="gateway"
-                    checked={gateway === "CASH"}
-                    onChange={() => setGateway("CASH")}
-                  />
-                  <span>💵 <strong>Nộp tiền mặt</strong> (Trực tiếp tại văn phòng sàn)</span>
-                </label>
-              </div>
+            {/* Hình thức nạp */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 14px",
+                borderRadius: "10px",
+                background: "rgba(37, 99, 235, 0.12)",
+                border: "1px solid rgba(59, 130, 246, 0.25)",
+                marginBottom: "20px",
+                fontSize: "12.5px",
+                color: "#93c5fd",
+              }}
+            >
+              <span style={{ fontSize: "16px" }}>🏦</span>
+              <span>
+                Hình thức: <strong>Chuyển khoản ngân hàng (Quét mã QR)</strong>
+              </span>
             </div>
 
             {error && (
@@ -553,7 +437,7 @@ export default function TopUpModal({
                   boxShadow: "0 4px 12px rgba(37, 99, 235, 0.4)",
                 }}
               >
-                {loading ? "ĐANG XỬ LÝ..." : `NẠP ${amount.toLocaleString("vi-VN")} Đ`}
+                {loading ? "ĐANG TẠO MÃ QR..." : `TẠO MÃ QR (${amount.toLocaleString("vi-VN")} Đ)`}
               </button>
             </div>
           </div>

@@ -22,6 +22,7 @@ import {
   cancelBooking,
   getDriverActiveBooking,
   getDriverBookings,
+  getAvailableBookings,
 } from "../../lib/bookingService"
 
 import {
@@ -258,6 +259,23 @@ router.post(
 )
 
 /**
+ * GET /driver/bookings/available
+ * Lấy các cuốc xe thực tế đang chờ tài xế tiếp nhận (status = SEARCHING)
+ */
+router.get("/bookings/available", async (req: AuthRequest, res, next) => {
+  try {
+    const list = await getAvailableBookings(req.user?.userId)
+    res.json({
+      success: true,
+      count: list.length,
+      data: list,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
  * GET /driver/bookings/active
  * Lấy chuyến xe đang chạy hiện tại của tài xế (nếu có)
  */
@@ -308,7 +326,18 @@ router.patch(
 
   async (req: AuthRequest, res, next) => {
     try {
-      const { status, note, proofImageUrl, requireProof } = req.body
+      const {
+        status,
+        note,
+        proofImageUrl,
+        requireProof,
+        requireOtp,
+        driverLat,
+        driverLng,
+        deliveryOtp,
+        bypassGeofence,
+        bypassReason,
+      } = req.body
 
       const result = await updateBookingStatus(
         req.user!.userId,
@@ -321,7 +350,15 @@ router.patch(
 
         proofImageUrl,
 
-        requireProof,
+        {
+          requireProof: requireProof ?? true,
+          requireOtp: requireOtp ?? true,
+          driverLat: driverLat !== undefined ? Number(driverLat) : undefined,
+          driverLng: driverLng !== undefined ? Number(driverLng) : undefined,
+          deliveryOtp,
+          bypassGeofence: Boolean(bypassGeofence),
+          bypassReason,
+        },
       )
 
       res.json({

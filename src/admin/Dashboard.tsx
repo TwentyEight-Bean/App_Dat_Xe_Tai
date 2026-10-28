@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 import { Icon, Status } from "./ui"
 
@@ -631,7 +631,90 @@ export default function Dashboard({
 
   const [tableFilter, setTableFilter] = useState("Tất cả")
 
-  const lateOrders = orders
+  const [liveOrders, setLiveOrders] = useState<Order[]>([])
+
+  useEffect(() => {
+    const token = localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"
+    fetch("/api/v1/admin/bookings?limit=8", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: Order[] = res.data.map((b: any) => {
+            let tone: "green" | "amber" | "blue" | "sky" | "red" = "blue"
+            let statusText = "Chờ tài xế"
+            let stage = 0
+            let cancelled = false
+
+            if (b.status === "PENDING" || b.status === "SEARCHING") {
+              tone = "amber"
+              statusText = "Chờ tài xế"
+              stage = 0
+            } else if (b.status === "ACCEPTED") {
+              tone = "blue"
+              statusText = "Đã nhận"
+              stage = 1
+            } else if (b.status === "ARRIVED_AT_PICKUP" || b.status === "IN_TRANSIT") {
+              tone = "sky"
+              statusText = "Đang giao"
+              stage = 2
+            } else if (b.status === "COMPLETED") {
+              tone = "green"
+              statusText = "Hoàn thành"
+              stage = 4
+            } else if (b.status === "CANCELLED") {
+              tone = "red"
+              statusText = "Đã hủy"
+              stage = 2
+              cancelled = true
+            }
+
+            const d = new Date(b.createdAt || Date.now())
+            const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+
+            const fromShort = b.originAddress?.split(",")[0] || "Điểm nhận"
+            const toShort = b.destinationAddress?.split(",")[0] || "Điểm giao"
+
+            return {
+              id: b.bookingCode || b.id?.slice(0, 8) || "DH0000",
+              customer: b.customerName || "Khách hàng FastDrop",
+              phone: b.customerPhone || "0900000000",
+              driver: b.driverName ? `${b.driverName}${b.licensePlate ? ` · ${b.licensePlate}` : ""}` : (b.driverId ? "Tài xế nhận chuyến" : "—"),
+              driverPhone: b.driverPhone || "1900-8888",
+              from: fromShort,
+              to: toShort,
+              fromAddr: b.originAddress || "",
+              toAddr: b.destinationAddress || "",
+              vehicle: b.vehicleName || "Xe tải",
+              status: statusText,
+              tone,
+              value: Number(b.totalPrice || 0),
+              time: timeStr,
+              t: d.getTime(),
+              p: [10.7769, 106.7009],
+              d: [10.7769, 106.7009],
+              km: Number(b.distanceKm || 5),
+              stage,
+              cancelled,
+              pickupProofImage: b.pickupProofImage || null,
+              deliveryProofImage: b.deliveryProofImage || null,
+              cancellationReason: b.cancellationReason || null,
+              cancelledBy: b.cancelledBy || null,
+            } as Order
+          })
+          setLiveOrders(mapped)
+          if (mapped.length > 0 && (!sel || sel === "DH1024")) {
+            setSel(mapped[0].id)
+          }
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const currentOrderList = liveOrders.length > 0 ? liveOrders : orders
+
+  const lateOrders = currentOrderList
 
     .filter((o) => o.late)
 
@@ -769,7 +852,7 @@ export default function Dashboard({
       : []),
   ]
 
-  const rows = orders.filter(
+  const rows = currentOrderList.filter(
     (o) =>
       tableFilter === "Tất cả" ||
       (tableFilter === "Có vấn đề" ? !!o.late : o.status === tableFilter),
