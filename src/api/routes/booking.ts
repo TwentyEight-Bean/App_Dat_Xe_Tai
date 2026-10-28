@@ -7,6 +7,7 @@ import {
   cancelBooking,
   escalateBookingDispatch,
   rateBooking,
+  reassignBookingDriver,
 } from "../../lib/bookingService"
 
 import { requireAuth, type AuthRequest } from "../middleware"
@@ -98,6 +99,18 @@ router.get("/:id/track", async (req: AuthRequest, res, next) => {
         destination: booking.destination,
 
         distanceKm: booking.distanceKm,
+
+        totalPrice: booking.pricing?.totalPrice,
+
+        pricing: booking.pricing,
+
+        deliveryOtp: booking.deliveryOtp,
+
+        proofImages: booking.proofImages,
+
+        deliveryProofImage: booking.proofImages?.delivery,
+
+        completedAt: booking.completedAt,
 
         driver: booking.driver
           ? {
@@ -201,6 +214,28 @@ router.post("/:id/rate", async (req: AuthRequest, res, next) => {
       req.params.id as string,
       req.user!.userId,
       req.body,
+    )
+    res.json({
+      success: true,
+      message: result.message,
+      data: result,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /api/v1/bookings/:id/reassign
+ * Khách hàng đổi sang tài xế khác do tài xế hiện tại đến trễ hoặc không di chuyển
+ */
+router.post("/:id/reassign", async (req: AuthRequest, res, next) => {
+  try {
+    const { reason } = req.body
+    const result = await reassignBookingDriver(
+      req.user!.userId,
+      req.params.id as string,
+      reason,
     )
     res.json({
       success: true,

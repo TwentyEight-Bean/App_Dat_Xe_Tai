@@ -725,6 +725,7 @@ export default function OrdersPage({
   const [totalDb, setTotalDb] = useState(0)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [tableLightbox, setTableLightbox] = useState<{ src: string; title: string } | null>(null)
   const limit = 10
 
   const getBackendStatus = (uiStatus: string) => {
@@ -810,8 +811,8 @@ export default function OrdersPage({
               id: b.bookingCode || b.id?.slice(0, 8) || "DH0000",
               customer: b.customerName || "Khách hàng FastDrop",
               phone: b.customerPhone || "0900000000",
-              driver: b.driverId ? "Tài xế nhận chuyến" : "—",
-              driverPhone: "1900-8888",
+              driver: b.driverName ? `${b.driverName}${b.licensePlate ? ` · ${b.licensePlate}` : ""}` : (b.driverId ? "Tài xế nhận chuyến" : "—"),
+              driverPhone: b.driverPhone || "1900-8888",
               from: fromShort,
               to: toShort,
               fromAddr: b.originAddress || "",
@@ -947,6 +948,7 @@ export default function OrdersPage({
                 <th>Tài xế</th>
                 <th>Tuyến đường</th>
                 <th>Loại xe</th>
+                <th>Ảnh POD</th>
                 <th>Trạng thái</th>
                 <th className="num">Giá trị</th>
                 <th>Thời gian</th>
@@ -985,6 +987,37 @@ export default function OrdersPage({
                   </td>
                   <td>{o.vehicle}</td>
                   <td>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      {o.pickupProofImage ? (
+                        <img
+                          src={o.pickupProofImage}
+                          alt="Lấy hàng"
+                          title="Ảnh bốc hàng lên xe (Bấm xem phóng to)"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setTableLightbox({ src: o.pickupProofImage!, title: `Ảnh bốc hàng lên xe #${o.id}` })
+                          }}
+                          style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 6, border: "1.5px solid #0284c7", cursor: "pointer" }}
+                        />
+                      ) : null}
+                      {o.deliveryProofImage ? (
+                        <img
+                          src={o.deliveryProofImage}
+                          alt="Giao hàng"
+                          title="Ảnh giao hàng POD (Bấm xem phóng to)"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setTableLightbox({ src: o.deliveryProofImage!, title: `Ảnh giao hàng POD #${o.id}` })
+                          }}
+                          style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 6, border: "1.5px solid #16a34a", cursor: "pointer" }}
+                        />
+                      ) : null}
+                      {!o.pickupProofImage && !o.deliveryProofImage && (
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}>—</span>
+                      )}
+                    </div>
+                  </td>
+                  <td>
                     <div className="st-cell">
                       <Status tone={o.tone}>{o.status}</Status>
                       {o.late && <small className="late">+{o.late}′</small>}
@@ -998,7 +1031,7 @@ export default function OrdersPage({
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="empty-row">
+                  <td colSpan={10} className="empty-row">
                     Không có đơn phù hợp bộ lọc
                   </td>
                 </tr>
@@ -1054,6 +1087,13 @@ export default function OrdersPage({
           onFull={() => openFull(active.id)}
         />
       )}
+      {tableLightbox && (
+        <LightboxModal
+          src={tableLightbox.src}
+          title={tableLightbox.title}
+          onClose={() => setTableLightbox(null)}
+        />
+      )}
     </div>
   )
 }
@@ -1065,11 +1105,6 @@ export function OrderDetail({ id, back }: { id: string; back: () => void }) {
   )
 
   useEffect(() => {
-    const mock = orders.find((x) => x.id === id)
-    if (mock) {
-      setDbOrder(mock)
-      return
-    }
     const token = localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"
     fetch(`/api/v1/admin/bookings?search=${encodeURIComponent(id)}&limit=1`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -1084,8 +1119,8 @@ export function OrderDetail({ id, back }: { id: string; back: () => void }) {
             id: b.bookingCode || b.id?.slice(0, 8) || "DH0000",
             customer: b.customerName || "Khách hàng FastDrop",
             phone: b.customerPhone || "0900000000",
-            driver: b.driverId ? "Tài xế nhận chuyến" : "—",
-            driverPhone: "1900-8888",
+            driver: b.driverName ? `${b.driverName}${b.licensePlate ? ` · ${b.licensePlate}` : ""}` : (b.driverId ? "Tài xế nhận chuyến" : "—"),
+            driverPhone: b.driverPhone || "1900-8888",
             from: b.originAddress?.split(",")[0] || "Điểm nhận",
             to: b.destinationAddress?.split(",")[0] || "Điểm giao",
             fromAddr: b.originAddress || "",
@@ -1096,7 +1131,11 @@ export function OrderDetail({ id, back }: { id: string; back: () => void }) {
                 ? "Hoàn thành"
                 : b.status === "CANCELLED"
                   ? "Đã hủy"
-                  : "Đang xử lý",
+                  : b.status === "IN_TRANSIT"
+                    ? "Đang giao"
+                    : b.status === "ARRIVED_AT_PICKUP"
+                      ? "Đang bốc hàng"
+                      : "Đang xử lý",
             tone:
               b.status === "COMPLETED"
                 ? "green"
@@ -1109,16 +1148,22 @@ export function OrderDetail({ id, back }: { id: string; back: () => void }) {
             p: [10.7769, 106.7009],
             d: [10.7769, 106.7009],
             km: Number(b.distanceKm || 5),
-            stage: b.status === "COMPLETED" ? 4 : 2,
+            stage: b.status === "COMPLETED" ? 4 : b.status === "IN_TRANSIT" ? 3 : 2,
             cancelled: b.status === "CANCELLED",
             pickupProofImage: b.pickupProofImage || null,
             deliveryProofImage: b.deliveryProofImage || null,
             cancellationReason: b.cancellationReason || null,
             cancelledBy: b.cancelledBy || null,
           } as Order)
+        } else {
+          const mock = orders.find((x) => x.id === id)
+          if (mock) setDbOrder(mock)
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        const mock = orders.find((x) => x.id === id)
+        if (mock) setDbOrder(mock)
+      })
   }, [id])
 
   const o = dbOrder || (orders.find((x) => x.id === id) ?? orders[0])

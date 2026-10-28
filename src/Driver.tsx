@@ -27,10 +27,12 @@ import InteractiveMap from "./InteractiveMap"
 import { subscribeRealtime, emitLocalRealtime } from "./lib/pusherClient"
 import CallingModal from "./CallingModal"
 import TopUpModal from "./TopUpModal"
+import InsurancePolicyModal from "./InsurancePolicyModal"
+import ComplaintModal from "./ComplaintModal"
 
 /* ---------- icons ---------- */
 
-type IconName = "home" | "route" | "wallet" | "user" | "bell" | "layers" | "target" | "check" | "chevron" | "chevron-up" | "chevron-down" | "back" | "phone" | "message" | "pin" | "flag" | "camera" | "upload" | "shield" | "box" | "clock" | "navigate" | "truck" | "plus"
+type IconName = "home" | "route" | "wallet" | "user" | "bell" | "layers" | "target" | "check" | "chevron" | "chevron-up" | "chevron-down" | "back" | "phone" | "message" | "pin" | "flag" | "camera" | "upload" | "shield" | "box" | "clock" | "navigate" | "truck" | "plus" | "search"
 
 function Icon({
   name,
@@ -176,6 +178,12 @@ function Icon({
     ),
 
     plus: <path d="M12 5v14M5 12h14" />,
+    search: (
+      <>
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.35-4.35" />
+      </>
+    ),
   }
 
   return (
@@ -202,32 +210,6 @@ const money = (n: number) => `${n.toLocaleString("vi-VN")}đ`
 type Job = "none" | "incoming" | "toPickup" | "atPickup" | "delivering" | "complete"
 
 type Tab = "home" | "trips" | "earnings" | "account"
-
-const JOB = {
-  customer: "Chị Lan Anh",
-
-  receiver: "Anh Hải",
-
-  pickup: "21 Nguyễn Đình Chiểu, Q.1",
-
-  destination: "128 Hoàng Diệu, Q.4",
-
-  pickupKm: "2,4 km",
-
-  tripKm: "6,8 km",
-
-  tripMin: "24 phút",
-
-  vehicle: "Xe van",
-
-  goods: "Thùng hàng · khoảng 40kg",
-
-  earning: 95000,
-
-  fee: 110000,
-
-  platform: 15000,
-}
 
 type Entry = {
   id: number
@@ -485,9 +467,13 @@ function ContactRow({
         <small>{role}</small>
       </span>
       <button
+        id="driver-btn-chat"
         aria-label={`Nhắn tin cho ${name}`}
         className="d-round"
-        onClick={onMessage}
+        onClick={(e) => {
+          e.stopPropagation()
+          onMessage()
+        }}
         type="button"
       >
         <Icon name="message" size={24} />
@@ -752,8 +738,19 @@ const vehicleChoices = [
   { id: "1000", name: "Tải 1 tấn", load: "Thùng 3m" },
 ]
 
-function Onboarding({ onDone }: { onDone: () => void }) {
+function Onboarding({
+  onDone,
+  onExit,
+  onBackToCustomer,
+  onLogout,
+}: {
+  onDone: () => void
+  onExit?: () => void
+  onBackToCustomer?: () => void
+  onLogout?: () => void
+}) {
   const [step, setStep] = useState(0)
+  const [exitModalOpen, setExitModalOpen] = useState(false)
 
   const [submitted, setSubmitted] = useState(false)
 
@@ -934,6 +931,22 @@ function Onboarding({ onDone }: { onDone: () => void }) {
           <span>{approved ? "VÀO TRANG CHỦ" : "ĐANG KIỂM TRA…"}</span>
           {approved && <Icon name="chevron" size={26} strokeWidth={2.6} />}
         </button>
+        <button
+          type="button"
+          onClick={onDone}
+          style={{
+            marginTop: "14px",
+            background: "none",
+            border: "none",
+            color: "var(--ink-500, #64748b)",
+            fontSize: "13px",
+            fontWeight: 600,
+            cursor: "pointer",
+            textDecoration: "underline",
+          }}
+        >
+          ← Vào Trang chủ Tài xế
+        </button>
       </section>
     )
   }
@@ -951,12 +964,44 @@ function Onboarding({ onDone }: { onDone: () => void }) {
             <Icon name="back" size={24} />
           </button>
         ) : (
-          <span className="d-round-spacer" />
+          <button
+            aria-label="Về trang chủ tài xế"
+            className="d-round"
+            onClick={() => {
+              if (onExit) onExit()
+              else onDone()
+            }}
+            type="button"
+            title="Vào trang chủ Tài xế"
+          >
+            <Icon name="back" size={24} />
+          </button>
         )}
         <span className="d-step-count">
           Bước {step + 1}/{steps.length}
         </span>
-        <span className="d-round-spacer" />
+        <button
+          aria-label="Bỏ qua vào trang chủ"
+          type="button"
+          onClick={() => setExitModalOpen(true)}
+          style={{
+            background: "rgba(0, 0, 0, 0.05)",
+            border: "1px solid rgba(0, 0, 0, 0.08)",
+            borderRadius: "10px",
+            padding: "6px 12px",
+            fontSize: "12px",
+            fontWeight: 700,
+            color: "var(--ink-700, #334155)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <span>Bỏ qua</span>
+          <span style={{ fontSize: "12px" }}>➔</span>
+        </button>
       </header>
       <div
         className="d-progress"
@@ -1255,7 +1300,193 @@ function Onboarding({ onDone }: { onDone: () => void }) {
             Hoàn tất các mục trên để tiếp tục
           </small>
         )}
+        <div style={{ textAlign: "center", marginTop: "10px" }}>
+          <button
+            type="button"
+            onClick={() => {
+              if (onExit) onExit()
+              else onDone()
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#64748b",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+              textDecoration: "underline",
+              padding: "4px 8px",
+            }}
+          >
+            ← Bỏ qua, vào thẳng Trang chủ Tài xế
+          </button>
+        </div>
       </footer>
+
+      {exitModalOpen && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 99,
+            backgroundColor: "rgba(15, 23, 42, 0.75)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            padding: "16px",
+          }}
+          onClick={() => setExitModalOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "360px",
+              background: "#ffffff",
+              borderRadius: "20px",
+              padding: "20px",
+              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.25)",
+              color: "#1e293b",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "12px",
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
+                Tạm dừng thiết lập hồ sơ?
+              </h3>
+              <button
+                type="button"
+                onClick={() => setExitModalOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "18px",
+                  color: "#64748b",
+                  cursor: "pointer",
+                  padding: "4px",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#64748b", lineHeight: 1.4 }}>
+              Bạn có thể vào thẳng <strong>Trang chủ Tài xế</strong> để xem đơn hàng, bản đồ và bổ sung hồ sơ giấy tờ sau trong mục Tài khoản.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {/* Nút 1: Vào trang chủ tài xế (Nổi bật) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setExitModalOpen(false)
+                  if (onExit) onExit()
+                  else onDone()
+                }}
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: "12px",
+                  border: "none",
+                  background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                  color: "#111827",
+                  fontSize: "14px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  boxShadow: "0 4px 14px rgba(245, 158, 11, 0.35)",
+                }}
+              >
+                <span>🚚</span>
+                <span>Vào trang chủ Tài xế ngay</span>
+              </button>
+
+              {/* Nút 2: Chuyển sang khách hàng */}
+              <button
+                type="button"
+                onClick={() => {
+                  setExitModalOpen(false)
+                  if (onBackToCustomer) onBackToCustomer()
+                  else window.location.hash = ""
+                }}
+                style={{
+                  width: "100%",
+                  padding: "11px 14px",
+                  borderRadius: "12px",
+                  border: "1.5px solid #e2e8f0",
+                  background: "#f8fafc",
+                  color: "#334155",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                }}
+              >
+                <span>🏠</span>
+                <span>Chuyển sang giao diện Khách hàng</span>
+              </button>
+
+              {/* Nút 3: Đăng xuất */}
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExitModalOpen(false)
+                    onLogout()
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: "12px",
+                    border: "1px solid #fee2e2",
+                    background: "#fff5f5",
+                    color: "#dc2626",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>🚪</span>
+                  <span>Đăng xuất tài xế</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setExitModalOpen(false)}
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: "none",
+                  color: "#64748b",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Tiếp tục điền hồ sơ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
@@ -1287,13 +1518,17 @@ function Incoming({
     return () => window.clearTimeout(t)
   }, [left, onSkip])
 
-  const earning = offer?.totalPrice
-    ? Math.round(offer.totalPrice * 0.8)
-    : JOB.earning
-  const pickup = offer?.originAddress || JOB.pickup
-  const destination = offer?.destinationAddress || JOB.destination
-  const tripKm = offer?.distanceKm ? `${offer.distanceKm} km` : JOB.tripKm
-  const vehicle = offer?.vehicleTypeName || JOB.vehicle
+  const earning = offer?.driverEarning
+    ? offer.driverEarning
+    : offer?.totalPrice
+    ? Math.round(Number(offer.totalPrice) * 0.8)
+    : 0
+  const pickup = offer?.originAddress || "Chưa xác định điểm đón"
+  const destination = offer?.destinationAddress || "Chưa xác định điểm giao"
+  const tripKm = offer?.distanceKm ? `${offer.distanceKm} km` : "Đang tính..."
+  const vehicle = offer?.vehicleTypeName || "Xe tải"
+  const estMin = offer?.distanceKm ? `${Math.max(10, Math.round(Number(offer.distanceKm) * 3))} phút` : "Dự kiến 20 phút"
+  const pickupDist = offer?.pickupDistanceKm ? `${offer.pickupDistanceKm} km đến điểm lấy` : "Gần bạn · sẵn sàng đón"
 
   return (
     <section className="d-screen d-incoming" aria-live="assertive">
@@ -1321,17 +1556,18 @@ function Incoming({
       </div>
 
       <div className="d-earn-hero">
-        <small>Thu nhập thực nhận</small>
+        <small>Thu nhập thực nhận (80%)</small>
         <strong>{money(earning)}</strong>
         <span>
-          {tripKm} · {JOB.tripMin}
+          {tripKm} · ~{estMin}
+          {offer?.totalPrice ? ` · Cước khách: ${money(offer.totalPrice)}` : ""}
         </span>
       </div>
 
       <div className="d-inc-card">
         <div className="d-pickup-dist">
           <Icon name="navigate" size={20} />
-          <strong>{JOB.pickupKm} đến điểm lấy</strong>
+          <strong>{pickupDist}</strong>
         </div>
         <div className="d-stops">
           <span className="d-stop-line" />
@@ -1357,7 +1593,8 @@ function Incoming({
             <Icon name="truck" size={18} /> Yêu cầu: <strong>{vehicle}</strong>
           </span>
           <span>
-            <Icon name="box" size={18} /> {JOB.goods}
+            {offer?.paymentMethod === "CASH" ? "💵 Thu tiền mặt: " : "💳 Khách chuyển khoản: "}
+            <strong>{money(offer?.totalPrice || (earning ? Math.round(earning / 0.8) : 0))}</strong>
           </span>
         </div>
       </div>
@@ -1393,21 +1630,68 @@ function ActiveJob({
   onCancelTrip,
   onMessage,
   onCall,
+  onOpenInsurance,
+  onOpenComplaint,
   updating = false,
 }: {
   job: "toPickup" | "atPickup" | "delivering"
   booking?: any
-  onNext: (proofUrl?: string) => void
+  onNext: (
+    proofUrl?: string,
+    otp?: string,
+    coords?: { lat: number; lng: number },
+    bypass?: boolean,
+  ) => void
   onCancelTrip: () => void
   onMessage: () => void
   onCall?: () => void
+  onOpenInsurance?: () => void
+  onOpenComplaint?: () => void
   updating?: boolean
 }) {
   const [expanded, setExpanded] = useState(true)
-  const [proofUrl, setProofUrl] = useState<string>("")
-  const [uploadingPhoto, setUploadingPhoto] = useState(false)
-  const photoInputRef = useRef<HTMLInputElement>(null)
+  const [pickupProofUrl, setPickupProofUrl] = useState<string>(booking?.pickupProofImage || "")
+  const [deliveryProofUrl, setDeliveryProofUrl] = useState<string>(booking?.deliveryProofImage || "")
+  const [deliveryOtpInput, setDeliveryOtpInput] = useState<string>("")
+  const [driverCoords, setDriverCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [bypassGeofence, setBypassGeofence] = useState(false)
+  const [uploadingPickupPhoto, setUploadingPickupPhoto] = useState(false)
+  const [uploadingDeliveryPhoto, setUploadingDeliveryPhoto] = useState(false)
+  const pickupPhotoInputRef = useRef<HTMLInputElement>(null)
+  const deliveryPhotoInputRef = useRef<HTMLInputElement>(null)
   const [tripCallLogs, setTripCallLogs] = useState<any[]>([])
+
+  // Đếm ngược 15 phút thời gian chờ bốc hàng miễn phí tại điểm đón
+  const [waitingSeconds, setWaitingSeconds] = useState(900)
+  useEffect(() => {
+    if (job !== "atPickup") return
+    const timer = window.setInterval(() => {
+      setWaitingSeconds((prev) => Math.max(0, prev - 1))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [job])
+
+  // Lấy tọa độ GPS thực tế của tài xế khi giao hàng
+  useEffect(() => {
+    if (typeof window !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setDriverCoords({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          })
+        },
+        () => {
+          const destLat = booking?.destination?.latitude || booking?.destLat
+          const destLng = booking?.destination?.longitude || booking?.destLng
+          if (destLat && destLng) {
+            setDriverCoords({ lat: Number(destLat), lng: Number(destLng) })
+          }
+        },
+        { enableHighAccuracy: true, timeout: 5000 },
+      )
+    }
+  }, [booking?.destination, booking?.destLat, booking?.destLng])
 
   useEffect(() => {
     const token =
@@ -1427,22 +1711,25 @@ function ActiveJob({
       .catch(() => {})
   }, [booking?.id])
 
-  const pickupAddr = booking?.originAddress || JOB.pickup
-  const destAddr = booking?.destinationAddress || JOB.destination
-  const earning = booking?.totalPrice
-    ? Math.round(booking.totalPrice * 0.8)
-    : JOB.earning
+  const pickupAddr = booking?.originAddress || booking?.origin?.address || "Điểm đón hàng"
+  const destAddr = booking?.destinationAddress || booking?.destination?.address || "Điểm giao hàng"
+  const earning = booking?.driverEarning
+    ? booking.driverEarning
+    : booking?.totalPrice
+    ? Math.round(Number(booking.totalPrice) * 0.8)
+    : 0
   const customerName =
-    booking?.customerName || booking?.customer?.fullName || JOB.customer
-  const receiverName = booking?.receiverName || JOB.receiver
-  const tripKm = booking?.distanceKm ? `${booking.distanceKm} km` : "6,8 km"
+    booking?.customerName || booking?.customer?.fullName || booking?.customer?.name || "Khách hàng"
+  const receiverName = booking?.receiverName || "Người nhận hàng"
+  const tripKm = booking?.distanceKm ? `${booking.distanceKm} km` : "Đang tính..."
+  const tripMin = booking?.distanceKm ? `${Math.max(10, Math.round(Number(booking.distanceKm) * 3))} phút` : "20 phút"
 
   const banner = {
     toPickup: {
       cls: "",
       title: "Đang đến điểm lấy",
-      dist: "2,4 km",
-      eta: "9 phút",
+      dist: booking?.pickupDistanceKm ? `${booking.pickupDistanceKm} km` : "1,5 km",
+      eta: "5 phút",
       addr: pickupAddr,
     },
     atPickup: {
@@ -1456,7 +1743,7 @@ function ActiveJob({
       cls: "",
       title: "Đang vận chuyển giao hàng",
       dist: tripKm,
-      eta: "24 phút",
+      eta: tripMin,
       addr: destAddr,
     },
   }[job]
@@ -1467,22 +1754,41 @@ function ActiveJob({
     delivering: "Bước 3/3 · Giao hàng tại đích",
   }[job]
 
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePickupPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setUploadingPhoto(true)
+    setUploadingPickupPhoto(true)
     try {
       const res = await uploadImageWithFallback(file)
-      setProofUrl((res as any)?.url || res)
+      setPickupProofUrl((res as any)?.url || res)
     } catch (err) {
-      console.warn("Upload proof photo error:", err)
+      console.warn("Upload pickup photo error:", err)
       const reader = new FileReader()
       reader.onload = () => {
-        if (typeof reader.result === "string") setProofUrl(reader.result)
+        if (typeof reader.result === "string") setPickupProofUrl(reader.result)
       }
       reader.readAsDataURL(file)
     } finally {
-      setUploadingPhoto(false)
+      setUploadingPickupPhoto(false)
+    }
+  }
+
+  const handleDeliveryPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingDeliveryPhoto(true)
+    try {
+      const res = await uploadImageWithFallback(file)
+      setDeliveryProofUrl((res as any)?.url || res)
+    } catch (err) {
+      console.warn("Upload delivery photo error:", err)
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === "string") setDeliveryProofUrl(reader.result)
+      }
+      reader.readAsDataURL(file)
+    } finally {
+      setUploadingDeliveryPhoto(false)
     }
   }
 
@@ -1559,7 +1865,7 @@ function ActiveJob({
           </div>
         </div>
       ) : (
-        <section className="d-sheet glass-liquid expanded">
+        <section className="d-sheet expanded">
           <div className="sheet-handle" onClick={() => setExpanded(false)} />
           <div className="d-sheet-head">
             <span className="d-status">
@@ -1599,102 +1905,396 @@ function ActiveJob({
             </div>
           )}
 
+          {/* Đồng hồ đếm ngược thời gian chờ bốc hàng miễn phí (15 phút) */}
           {job === "atPickup" && (
-            <div style={{ margin: "6px 0 10px" }}>
-              <p className="d-note" style={{ margin: "0 0 8px" }}>
-                Gặp khách tại điểm lấy. Chụp ảnh kiện hàng lên xe để bảo vệ quyền
-                lợi.
-              </p>
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={handlePhotoSelect}
-              />
-              <button
-                type="button"
-                onClick={() => photoInputRef.current?.click()}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "10px",
-                  border: "1px dashed rgba(255,255,255,0.3)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "#e2e8f0",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                }}
-              >
-                <Icon name="camera" size={18} />
-                <span>
-                  {uploadingPhoto
-                    ? "Đang tải ảnh..."
-                    : proofUrl
-                    ? "✓ Đã có ảnh bốc hàng (Đổi ảnh)"
-                    : "+ Chụp/Đính kèm ảnh hàng hóa"}
-                </span>
-              </button>
+            <div
+              style={{
+                margin: "6px 0 10px",
+                padding: "10px 14px",
+                borderRadius: "14px",
+                background: waitingSeconds <= 0 ? "#fef2f2" : "#f0fdf4",
+                border: waitingSeconds <= 0 ? "1.5px solid #fecaca" : "1.5px solid #bbf7d0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "10px",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "18px" }}>{waitingSeconds <= 0 ? "⚠️" : "⏱️"}</span>
+                <div>
+                  <div
+                    style={{
+                      fontSize: "12.5px",
+                      fontWeight: 800,
+                      color: waitingSeconds <= 0 ? "#b91c1c" : "#166534",
+                    }}
+                  >
+                    {waitingSeconds <= 0
+                      ? "Đã hết 15 phút chờ hàng miễn phí!"
+                      : `Thời gian chờ hàng miễn phí: ${Math.floor(waitingSeconds / 60)}:${(waitingSeconds % 60).toString().padStart(2, "0")}`}
+                  </div>
+                  <div style={{ fontSize: "11px", color: waitingSeconds <= 0 ? "#991b1b" : "#15803d", marginTop: "1px" }}>
+                    {waitingSeconds <= 0
+                      ? "Nếu khách không ra và không nghe máy, bạn có quyền báo vắng mặt nhận 30k"
+                      : "Khách có tối đa 15 phút để chuẩn bị bốc hàng lên xe"}
+                  </div>
+                </div>
+              </div>
+              {waitingSeconds <= 0 && (
+                <button
+                  type="button"
+                  onClick={onCancelTrip}
+                  style={{
+                    background: "#dc2626",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "6px 10px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  Báo vắng mặt
+                </button>
+              )}
             </div>
           )}
 
-          {job === "delivering" && (
-            <div style={{ margin: "6px 0 10px" }}>
-              <div className="d-trip-stats">
-                <span>
-                  <small>Quãng đường</small>
-                  <strong>{tripKm}</strong>
-                </span>
-                <span>
-                  <small>Dự kiến đến</small>
-                  <strong>11:14</strong>
-                </span>
-                <span>
-                  <small>Thu nhập</small>
-                  <strong className="g">+{money(earning)}</strong>
-                </span>
+          {job === "atPickup" && (
+            <div
+              style={{
+                margin: "6px 0 10px",
+                padding: "12px 14px",
+                borderRadius: "14px",
+                background: "#ffffff",
+                border: "1.5px solid #0284c7",
+                boxShadow: "0 2px 8px rgba(2, 132, 199, 0.08)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <strong style={{ color: "#0369a1", fontSize: "13px", fontWeight: 800 }}>
+                  📸 1. Ảnh kiện hàng lên xe <span style={{ color: "#dc2626" }}>* Bắt buộc</span>
+                </strong>
+                {pickupProofUrl && <span style={{ color: "#16a34a", fontSize: "12px", fontWeight: 800 }}>✓ Đã chụp</span>}
               </div>
+              <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#475569", lineHeight: 1.4 }}>
+                Gặp khách tại điểm lấy. Chụp ảnh kiện hàng đã sắp xếp an toàn trên thùng xe để làm căn cứ bảo vệ quyền lợi:
+              </p>
               <input
-                ref={photoInputRef}
+                ref={pickupPhotoInputRef}
                 type="file"
                 accept="image/*"
                 style={{ display: "none" }}
-                onChange={handlePhotoSelect}
+                onChange={handlePickupPhotoSelect}
               />
-              <button
-                type="button"
-                onClick={() => photoInputRef.current?.click()}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  width: "100%",
-                  marginTop: "8px",
-                  padding: "8px 12px",
-                  borderRadius: "10px",
-                  border: "1px dashed rgba(34,197,94,0.4)",
-                  background: "rgba(34,197,94,0.08)",
-                  color: "#86efac",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                }}
-              >
-                <Icon name="camera" size={18} />
-                <span>
-                  {uploadingPhoto
-                    ? "Đang tải ảnh POD..."
-                    : proofUrl
-                    ? "✓ Đã chụp ảnh giao hàng POD (Đổi ảnh)"
-                    : "+ Chụp ảnh bằng chứng giao hàng (POD)"}
-                </span>
-              </button>
+              {pickupProofUrl ? (
+                <div style={{ position: "relative", borderRadius: "10px", overflow: "hidden", border: "2px solid #0284c7", maxHeight: "130px" }}>
+                  <img src={pickupProofUrl} alt="Ảnh bốc hàng" style={{ width: "100%", height: "130px", objectFit: "cover" }} />
+                  <button
+                    type="button"
+                    onClick={() => pickupPhotoInputRef.current?.click()}
+                    style={{
+                      position: "absolute",
+                      bottom: "6px",
+                      right: "6px",
+                      padding: "6px 12px",
+                      background: "rgba(15, 23, 42, 0.88)",
+                      color: "#ffffff",
+                      borderRadius: "8px",
+                      fontSize: "11.5px",
+                      border: "none",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Đổi ảnh khác
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => pickupPhotoInputRef.current?.click()}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "11px 14px",
+                    borderRadius: "10px",
+                    border: "1.5px dashed #0284c7",
+                    background: "#f0f9ff",
+                    color: "#0369a1",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Icon name="camera" size={18} strokeWidth={2.4} />
+                  <span>{uploadingPickupPhoto ? "Đang tải ảnh..." : "+ Chụp/Đính kèm ảnh hàng lên xe"}</span>
+                </button>
+              )}
             </div>
           )}
+
+          {job === "delivering" && (() => {
+            const destLat = booking?.destination?.latitude || booking?.destLat
+            const destLng = booking?.destination?.longitude || booking?.destLng
+            let distanceMeters: number | null = null
+            if (driverCoords && destLat && destLng) {
+              const R = 6371000
+              const radLat1 = (Number(destLat) * Math.PI) / 180
+              const radLat2 = (driverCoords.lat * Math.PI) / 180
+              const deltaLat = ((driverCoords.lat - Number(destLat)) * Math.PI) / 180
+              const deltaLng = ((driverCoords.lng - Number(destLng)) * Math.PI) / 180
+              const a =
+                Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+                Math.cos(radLat1) * Math.cos(radLat2) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2)
+              const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+              distanceMeters = Math.round(R * c)
+            }
+            const isGeofenceOk = distanceMeters !== null ? distanceMeters <= 500 || bypassGeofence : true
+
+            return (
+              <div style={{ margin: "6px 0 10px" }}>
+                <div className="d-trip-stats">
+                  <span>
+                    <small>Cước thu khách</small>
+                    <strong style={{ color: "#0284c7" }}>{money(booking?.totalPrice || earning)}</strong>
+                  </span>
+                  <span>
+                    <small>Hình thức</small>
+                    <strong style={{ fontSize: 12, color: "#92400e", fontWeight: 700 }}>
+                      {booking?.paymentMethod === "CASH" ? "💵 Tiền mặt" : "💳 Chuyển khoản"}
+                    </strong>
+                  </span>
+                  <span>
+                    <small>Thực nhận (80%)</small>
+                    <strong style={{ color: "#166534" }}>+{money(earning)}</strong>
+                  </span>
+                </div>
+
+                {/* [Lớp 1]: Định vị GPS Geofence */}
+                <div
+                  style={{
+                    margin: "10px 0",
+                    padding: "10px 14px",
+                    borderRadius: "14px",
+                    background: isGeofenceOk ? "#ecfdf5" : "#fffbeb",
+                    border: isGeofenceOk ? "1.5px solid #a7f3d0" : "1.5px solid #fde68a",
+                    boxShadow: isGeofenceOk ? "0 2px 8px rgba(16, 185, 129, 0.12)" : "0 2px 8px rgba(245, 158, 11, 0.12)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "8px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "16px" }}>{isGeofenceOk ? "📍" : "⚠️"}</span>
+                    <span
+                      style={{
+                        color: isGeofenceOk ? "#065f46" : "#92400e",
+                        fontWeight: 700,
+                        fontSize: "12.5px",
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {distanceMeters !== null
+                        ? isGeofenceOk
+                          ? `Đã đến vị trí giao (cách ${distanceMeters}m)`
+                          : `Cách điểm giao ${distanceMeters >= 1000 ? (distanceMeters / 1000).toFixed(1) + "km" : distanceMeters + "m"} (yêu cầu ≤ 500m)`
+                        : "Đang dò tọa độ GPS xe tải..."}
+                    </span>
+                  </div>
+                  {!isGeofenceOk && distanceMeters !== null && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm("Xác nhận bạn đã đến gần điểm giao (đỗ xe ngoài đường lớn / chung cư cấm xe tải vào trong)?")) {
+                          setBypassGeofence(true)
+                        }
+                      }}
+                      style={{
+                        flexShrink: 0,
+                        background: "#fef3c7",
+                        border: "1px solid #f59e0b",
+                        color: "#b45309",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "5px 10px",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {bypassGeofence ? "✓ Đã mở" : "Báo đỗ xa"}
+                    </button>
+                  )}
+                </div>
+
+                {/* [Lớp Bảo Hiểm]: Nhắc nhở quy chế lộ trình & bảo hiểm hàng hóa cho tài xế */}
+                <div
+                  style={{
+                    margin: "6px 0 10px",
+                    padding: "8px 12px",
+                    borderRadius: "12px",
+                    background: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    fontSize: "11.5px",
+                    color: "#166534",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "6px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>🛡️</span>
+                    <span>
+                      <strong>Bảo hiểm hàng hóa:</strong> Chỉ giao đúng điểm đến trên app để bảo vệ quyền lợi.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onOpenInsurance}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#059669",
+                      fontWeight: 700,
+                      fontSize: "11px",
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      padding: 0,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Điều khoản
+                  </button>
+                </div>
+
+                {/* [Lớp 2]: Bắt buộc ảnh POD */}
+                <div
+                  style={{
+                    margin: "10px 0",
+                    padding: "12px 14px",
+                    borderRadius: "14px",
+                    background: "#ffffff",
+                    border: "1.5px solid #e2e8f0",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <strong style={{ color: "#0f172a", fontSize: "13px", fontWeight: 800 }}>
+                      📸 1. Ảnh bằng chứng giao hàng (POD) <span style={{ color: "#dc2626" }}>* Bắt buộc</span>
+                    </strong>
+                    {deliveryProofUrl && <span style={{ color: "#16a34a", fontSize: "12px", fontWeight: 800 }}>✓ Đã chụp</span>}
+                  </div>
+                  <input
+                    ref={deliveryPhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={handleDeliveryPhotoSelect}
+                  />
+                  {deliveryProofUrl ? (
+                    <div style={{ position: "relative", borderRadius: "10px", overflow: "hidden", border: "2px solid #16a34a", maxHeight: "130px" }}>
+                      <img src={deliveryProofUrl} alt="POD" style={{ width: "100%", height: "130px", objectFit: "cover" }} />
+                      <button
+                        type="button"
+                        onClick={() => deliveryPhotoInputRef.current?.click()}
+                        style={{
+                          position: "absolute",
+                          bottom: "6px",
+                          right: "6px",
+                          padding: "6px 12px",
+                          background: "rgba(15, 23, 42, 0.88)",
+                          color: "#ffffff",
+                          borderRadius: "8px",
+                          fontSize: "11.5px",
+                          border: "none",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Đổi ảnh khác
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => deliveryPhotoInputRef.current?.click()}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                        width: "100%",
+                        padding: "11px 14px",
+                        borderRadius: "10px",
+                        border: "1.5px dashed #16a34a",
+                        background: "#f0fdf4",
+                        color: "#15803d",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Icon name="camera" size={18} />
+                      <span>{uploadingDeliveryPhoto ? "Đang xử lý ảnh POD..." : "+ Chụp ảnh kiện hàng giao khách"}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* [Lớp 3]: Mã OTP người nhận */}
+                <div
+                  style={{
+                    margin: "10px 0 6px",
+                    padding: "12px 14px",
+                    borderRadius: "14px",
+                    background: "#ffffff",
+                    border: "1.5px solid #e2e8f0",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <strong style={{ color: "#0f172a", fontSize: "13px", fontWeight: 800 }}>
+                      🔐 2. Mã xác nhận nhận hàng (OTP) <span style={{ color: "#dc2626" }}>* Bắt buộc</span>
+                    </strong>
+                  </div>
+                  <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#475569", lineHeight: 1.4 }}>
+                    Hỏi người nhận hàng 4 chữ số bảo mật hiển thị trên ứng dụng của họ:
+                  </p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={4}
+                    placeholder="Nhập 4 số OTP"
+                    value={deliveryOtpInput}
+                    onChange={(e) => setDeliveryOtpInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    style={{
+                      width: "100%",
+                      padding: "11px 14px",
+                      borderRadius: "12px",
+                      border: deliveryOtpInput.length === 4 ? "2px solid #16a34a" : "2px solid #cbd5e1",
+                      background: "#f8fafc",
+                      color: "#0f172a",
+                      fontSize: "22px",
+                      fontWeight: 800,
+                      letterSpacing: "6px",
+                      textAlign: "center",
+                      outline: "none",
+                      boxShadow: "inset 0 1px 3px rgba(0,0,0,0.06)",
+                    }}
+                  />
+                </div>
+              </div>
+            )
+          })()}
 
           <ContactRow
             onMessage={onMessage}
@@ -1707,14 +2307,14 @@ function ActiveJob({
             <div
               style={{
                 margin: "4px 0 10px",
-                padding: "8px 10px",
-                borderRadius: "8px",
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                fontSize: "11px",
+                padding: "10px 12px",
+                borderRadius: "12px",
+                background: "#f1f5f9",
+                border: "1.5px solid #cbd5e1",
+                fontSize: "12px",
               }}
             >
-              <div style={{ color: "#94a3b8", marginBottom: "4px", fontWeight: 600 }}>
+              <div style={{ color: "#334155", marginBottom: "6px", fontWeight: 700 }}>
                 📞 Đàm thoại giấu số cuốc này ({tripCallLogs.length}):
               </div>
               {tripCallLogs.map((c: any) => (
@@ -1723,12 +2323,13 @@ function ActiveJob({
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    color: "#e2e8f0",
-                    padding: "2px 0",
+                    color: "#0f172a",
+                    fontWeight: 600,
+                    padding: "3px 0",
                   }}
                 >
                   <span>{c.caller_role === "DRIVER" ? "Bạn gọi" : "Khách gọi"}</span>
-                  <span style={{ color: c.status === "ANSWERED" ? "#4ade80" : "#f87171" }}>
+                  <span style={{ color: c.status === "ANSWERED" ? "#16a34a" : "#dc2626", fontWeight: 700 }}>
                     {c.status === "ANSWERED" ? `${c.duration_seconds || 0}s` : "Nhỡ"}
                   </span>
                 </div>
@@ -1751,13 +2352,58 @@ function ActiveJob({
             {job === "atPickup" && (
               <ConfirmButton
                 label={updating ? "ĐANG XỬ LÝ..." : "BẮT ĐẦU VẬN CHUYỂN"}
-                onConfirm={() => onNext(proofUrl)}
+                onConfirm={() => {
+                  if (!pickupProofUrl) {
+                    alert("Vui lòng chụp hoặc đính kèm ảnh kiện hàng đã lên xe trước khi bắt đầu vận chuyển!")
+                    pickupPhotoInputRef.current?.click()
+                    return
+                  }
+                  onNext(pickupProofUrl)
+                }}
               />
             )}
             {job === "delivering" && (
               <ConfirmButton
                 label={updating ? "ĐANG XỬ LÝ..." : "HOÀN THÀNH GIAO HÀNG"}
-                onConfirm={() => onNext(proofUrl)}
+                onConfirm={() => {
+                  if (!deliveryProofUrl) {
+                    alert("Vui lòng chụp hoặc đính kèm ảnh bằng chứng giao hàng (POD) trước khi hoàn tất cuốc xe!")
+                    deliveryPhotoInputRef.current?.click()
+                    return
+                  }
+                  if (deliveryOtpInput.trim().length !== 4) {
+                    alert("Vui lòng nhập đủ 4 số mã OTP xác nhận từ người nhận hàng!")
+                    return
+                  }
+
+                  const destLat = booking?.destination?.latitude || booking?.destLat
+                  const destLng = booking?.destination?.longitude || booking?.destLng
+                  let distM: number | null = null
+                  if (driverCoords && destLat && destLng) {
+                    const R = 6371000
+                    const radLat1 = (Number(destLat) * Math.PI) / 180
+                    const radLat2 = (driverCoords.lat * Math.PI) / 180
+                    const deltaLat = ((driverCoords.lat - Number(destLat)) * Math.PI) / 180
+                    const deltaLng = ((driverCoords.lng - Number(destLng)) * Math.PI) / 180
+                    const a =
+                      Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+                      Math.cos(radLat1) * Math.cos(radLat2) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2)
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+                    distM = Math.round(R * c)
+                  }
+
+                  if (distM !== null && distM > 500 && !bypassGeofence) {
+                    const allow = confirm(
+                      `Bạn đang cách điểm giao hàng ${
+                        distM >= 1000 ? (distM / 1000).toFixed(1) + " km" : distM + " m"
+                      }. Bạn có chắc chắn muốn xác nhận hoàn tất? (Hệ thống sẽ ghi nhận ngoại lệ đối soát)`
+                    )
+                    if (!allow) return
+                    onNext(deliveryProofUrl, deliveryOtpInput.trim(), driverCoords || undefined, true)
+                    return
+                  }
+                  onNext(deliveryProofUrl, deliveryOtpInput.trim(), driverCoords || undefined, bypassGeofence)
+                }}
               />
             )}
 
@@ -1767,15 +2413,40 @@ function ActiveJob({
               style={{
                 background: "transparent",
                 border: "none",
-                color: "#f87171",
-                fontSize: "12px",
+                color: "#dc2626",
+                fontSize: "12.5px",
+                fontWeight: 700,
                 padding: "6px 0",
                 cursor: "pointer",
                 textAlign: "center",
                 textDecoration: "underline",
               }}
             >
-              Báo sự cố / Hủy chuyến xe này
+              Hủy nhận chuyến xe này
+            </button>
+
+            {/* Báo sự cố khẩn cấp dành cho tài xế */}
+            <button
+              type="button"
+              onClick={onOpenComplaint}
+              style={{
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                borderRadius: "10px",
+                color: "#b91c1c",
+                fontSize: "12px",
+                fontWeight: 700,
+                padding: "8px 12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                marginTop: "2px",
+              }}
+            >
+              <span>🚨</span>
+              <span>Báo sự cố khẩn cấp (Tai nạn / Hàng hỏng / Sai lộ trình)</span>
             </button>
           </div>
         </section>
@@ -1785,15 +2456,38 @@ function ActiveJob({
 }
 
 function Complete({
+  booking,
+  wallet,
+  onTopup,
   onContinue,
-
   onEarnings,
 }: {
+  booking?: any
+  wallet?: any
+  onTopup?: () => void
   onContinue: () => void
-
   onEarnings: () => void
 }) {
   const [more, setMore] = useState(false)
+
+  const currentBal = wallet ? Number(wallet.balance || 0) : 0
+  const minLimit = wallet ? Number(wallet.minDepositLimit || 200000) : 200000
+  const isQualified = wallet ? Boolean(wallet.isDepositQualified) : currentBal >= minLimit
+  const shortfall = wallet ? Number(wallet.shortfall || 0) : Math.max(0, minLimit - currentBal)
+
+  const earning = booking?.driverEarning
+    ? booking.driverEarning
+    : booking?.totalPrice
+    ? Math.round(Number(booking.totalPrice) * 0.8)
+    : 0
+  const fee = booking?.totalPrice ? Number(booking.totalPrice) : 0
+  const platform = Math.round(fee * 0.2)
+  const tripKm = booking?.distanceKm ? `${booking.distanceKm} km` : "--"
+  const tripMin = booking?.distanceKm
+    ? `${Math.max(10, Math.round(Number(booking.distanceKm) * 3))} phút`
+    : "20 phút"
+  const pickup = booking?.originAddress || booking?.origin?.address || "Điểm lấy hàng"
+  const destination = booking?.destinationAddress || booking?.destination?.address || "Điểm giao hàng"
 
   return (
     <section className="d-screen d-complete">
@@ -1803,16 +2497,16 @@ function Complete({
       <h1>Hoàn thành cuốc 🎉</h1>
       <div className="d-earn-hero small">
         <small>Thu nhập chuyến này</small>
-        <strong>+{money(JOB.earning)}</strong>
+        <strong>+{money(earning)}</strong>
       </div>
       <div className="d-done-stats">
         <span>
           <small>Quãng đường</small>
-          <strong>{JOB.tripKm}</strong>
+          <strong>{tripKm}</strong>
         </span>
         <span>
           <small>Thời gian</small>
-          <strong>{JOB.tripMin}</strong>
+          <strong>{tripMin}</strong>
         </span>
       </div>
       <div className="d-inc-card plain">
@@ -1822,7 +2516,7 @@ function Complete({
             <span className="d-stop-dot pickup" />
             <span>
               <small>Điểm lấy</small>
-              <strong>{JOB.pickup}</strong>
+              <strong>{pickup}</strong>
             </span>
           </div>
           <div>
@@ -1831,7 +2525,7 @@ function Complete({
             </span>
             <span>
               <small>Điểm giao</small>
-              <strong>{JOB.destination}</strong>
+              <strong>{destination}</strong>
             </span>
           </div>
         </div>
@@ -1839,19 +2533,72 @@ function Complete({
           <dl className="d-breakdown">
             <div>
               <dt>Cước chuyến</dt>
-              <dd>{money(JOB.fee)}</dd>
+              <dd>{money(fee)}</dd>
             </div>
             <div>
-              <dt>Phí nền tảng</dt>
-              <dd>-{money(JOB.platform)}</dd>
+              <dt>Phí nền tảng (20%)</dt>
+              <dd>-{money(platform)}</dd>
             </div>
             <div className="t">
               <dt>Bạn nhận</dt>
-              <dd>{money(JOB.earning)}</dd>
+              <dd>{money(earning)}</dd>
             </div>
           </dl>
         )}
       </div>
+
+      {!isQualified && (
+        <div
+          style={{
+            width: "100%",
+            margin: "12px 0 14px",
+            padding: "14px 16px",
+            borderRadius: "16px",
+            background: "linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(239, 68, 68, 0.08))",
+            border: "1px solid rgba(245, 158, 11, 0.35)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+            <span style={{ fontSize: "20px", lineHeight: 1 }}>⚠️</span>
+            <div>
+              <strong style={{ fontSize: "14px", color: "#b45309", display: "block" }}>
+                Số dư ký quỹ sau cuốc: {money(currentBal)}
+              </strong>
+              <span style={{ fontSize: "12px", color: "#78350f", lineHeight: 1.4, display: "block", marginTop: "3px" }}>
+                Hệ thống yêu cầu tối thiểu <strong>{money(minLimit)}</strong> để tiếp tục gửi đơn mới. Vui lòng nạp thêm <strong>{money(shortfall || (minLimit - currentBal))}</strong> ngay!
+              </span>
+            </div>
+          </div>
+          {onTopup && (
+            <button
+              type="button"
+              onClick={onTopup}
+              style={{
+                width: "100%",
+                padding: "11px 16px",
+                borderRadius: "12px",
+                background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: "13px",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                boxShadow: "0 4px 12px rgba(245, 158, 11, 0.25)",
+              }}
+            >
+              <span>⚡ Nạp tiền ký quỹ ngay (VietQR)</span>
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="d-done-actions">
         <button className="d-cta primary" onClick={onContinue} type="button">
           <span>Tiếp tục nhận cuốc</span>
@@ -1961,7 +2708,17 @@ function Earnings({
         </div>
 
         {/* Filter Chips cho loại giao dịch */}
-        <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "6px", marginBottom: "10px" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: "6px",
+            overflowX: "auto",
+            paddingBottom: "6px",
+            marginBottom: "10px",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
+        >
           {[
             { id: "ALL", label: "Tất cả" },
             { id: "COMMISSION_DEDUCTION", label: "Hoa hồng (20%)" },
@@ -2338,6 +3095,21 @@ export default function DriverApp() {
       .catch((err) => console.warn("Could not load driver wallet transactions:", err))
   }
 
+  const loadDriverWallet = () => {
+    if (!driverToken) return
+    fetch("/api/v1/driver/wallet", {
+      headers: { Authorization: `Bearer ${driverToken}` },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data) {
+          setDriverWallet(data.data)
+          setBalance(Number(data.data.balance || 0))
+        }
+      })
+      .catch((err) => console.warn("Could not load driver wallet:", err))
+  }
+
   useEffect(() => {
     if (!driverToken) return
     fetch("/api/v1/driver/profile", {
@@ -2355,17 +3127,7 @@ export default function DriverApp() {
       .catch((err) => console.warn("Could not load driver profile:", err))
 
     // Tải thông tin Ví Ký Quỹ thực tế từ DB
-    fetch("/api/v1/driver/wallet", {
-      headers: { Authorization: `Bearer ${driverToken}` },
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success && data.data) {
-          setDriverWallet(data.data)
-          setBalance(Number(data.data.balance || 0))
-        }
-      })
-      .catch((err) => console.warn("Could not load driver wallet:", err))
+    loadDriverWallet()
 
     // Tải lịch sử cuốc xe thật từ DB
     loadDriverBookings()
@@ -2421,9 +3183,13 @@ export default function DriverApp() {
 
   const [activeOffer, setActiveOffer] = useState<any>(null)
   const [activeBooking, setActiveBooking] = useState<any>(null)
+  const [lastCompletedBooking, setLastCompletedBooking] = useState<any>(null)
+  const skippedBookingIdsRef = useRef<Set<string>>(new Set())
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [cancelModalOpen, setCancelModalOpen] = useState(false)
+  const [driverInsuranceModalOpen, setDriverInsuranceModalOpen] = useState(false)
+  const [driverComplaintModalOpen, setDriverComplaintModalOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState("Xe gặp sự cố kỹ thuật")
   const [isCancelling, setIsCancelling] = useState(false)
 
@@ -2487,6 +3253,7 @@ export default function DriverApp() {
       `driver-${driverId}`,
       "booking:new-offer",
       (data) => {
+        if (data?.bookingId && skippedBookingIdsRef.current.has(data.bookingId)) return
         console.log("🔔 [Driver UI] Nổ cuốc mới:", data)
         setActiveOffer(data)
         setJob("incoming")
@@ -2552,6 +3319,52 @@ export default function DriverApp() {
       })
       .catch((err) => console.warn("Check active booking error:", err))
   }, [driverToken])
+
+  // 2.1 Tự động quét và tìm cuốc xe thực tế đang chờ tài xế (SEARCHING)
+  const checkAvailableBookings = useCallback(
+    async (manual = false) => {
+      if (!driverToken || !online || job !== "none") return
+      try {
+        const res = await fetch("/api/v1/driver/bookings/available", {
+          headers: { Authorization: `Bearer ${driverToken}` },
+        })
+        const json = await res.json()
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          // Lọc bỏ những cuốc xe mà tài xế này đã bấm "Bỏ qua"
+          const candidateOffers = json.data.filter(
+            (b: any) => !skippedBookingIdsRef.current.has(b.bookingId || b.id),
+          )
+
+          if (candidateOffers.length > 0) {
+            const nextOffer = candidateOffers[0]
+            setActiveOffer(nextOffer)
+            setJob("incoming")
+            setTab("home")
+            setNotice(`Có cuốc xe thực tế mới #${nextOffer.bookingCode}`)
+            return
+          } else if (manual) {
+            setNotice("Các cuốc xe hiện có bạn đã bỏ qua. Đang chờ đơn hàng mới…")
+            return
+          }
+        }
+        if (manual) {
+          setNotice("Hiện chưa có cuốc xe nào đang chờ tìm tài xế gần bạn.")
+        }
+      } catch (err) {
+        if (manual) console.warn("Lỗi quét đơn khả dụng:", err)
+      }
+    },
+    [driverToken, online, job],
+  )
+
+  useEffect(() => {
+    if (!online || job !== "none" || !driverToken) return
+    checkAvailableBookings(false)
+    const timer = window.setInterval(() => {
+      checkAvailableBookings(false)
+    }, 6000)
+    return () => window.clearInterval(timer)
+  }, [online, job, driverToken, checkAvailableBookings])
 
   // 3. GPS Background Location Worker tự động truyền tọa độ lên Server
   useEffect(() => {
@@ -2628,10 +3441,16 @@ export default function DriverApp() {
         const errorMsg =
           data.message || "Không thể cập nhật trạng thái trực tuyến."
         setNotice(errorMsg)
+        if (errorMsg.includes("ký quỹ") || errorMsg.includes("deposit") || errorMsg.includes("hạn mức")) {
+          setTopupModalOpen(true)
+        }
         return
       }
 
       setOnline(nextState)
+      if (nextState) {
+        skippedBookingIdsRef.current.clear()
+      }
       setNotice(
         nextState
           ? "Đã bật trực tuyến. Sẵn sàng nhận cuốc xe mới!"
@@ -2646,17 +3465,21 @@ export default function DriverApp() {
   }
 
   const skip = () => {
+    const skippedId = activeOffer?.bookingId || activeOffer?.id
+    if (skippedId) {
+      skippedBookingIdsRef.current.add(skippedId)
+    }
     setActiveOffer(null)
-    setNotice("Bạn đã bỏ qua một cuốc. Đang tìm cuốc khác…")
+    setNotice("Bạn đã bỏ qua cuốc xe. Đang quét tìm đơn khác gần bạn…")
     setJob("none")
   }
 
   const handleAcceptOffer = async () => {
     if (!driverToken) return
-    const bookingId = activeOffer?.bookingId
+    const bookingId = activeOffer?.bookingId || activeOffer?.id
     if (!bookingId) {
-      // Demo fallback nếu bấm nút thử nghiệm cục bộ
-      setJob("toPickup")
+      alert("Không tìm thấy thông tin chuyến xe hợp lệ.")
+      setJob("none")
       return
     }
 
@@ -2679,16 +3502,24 @@ export default function DriverApp() {
         return
       }
 
-      setActiveBooking(data.data.booking)
+      const accepted = data.data?.booking || data.data || {
+        ...activeOffer,
+        id: bookingId,
+        status: "ACCEPTED",
+      }
+      setActiveBooking(accepted)
       setActiveOffer(null)
       setJob("toPickup")
       emitLocalRealtime(`trip-${bookingId}`, "booking:accepted", {
         bookingId,
         driver: {
           id: driverProfile?.id,
-          name: driverProfile?.fullName,
-          phone: driverProfile?.phone,
-          licensePlate: driverProfile?.licensePlate,
+          name: driverProfile?.fullName || driverProfile?.name || "Nguyễn Văn Hùng",
+          phone: driverProfile?.phone || "0912345678",
+          licensePlate: driverProfile?.licensePlate || "51D-892.41",
+          avatarUrl: driverProfile?.avatarUrl,
+          vehicleTypeName: driverProfile?.vehicleTypeName || "Xe tải 1.25 tấn",
+          ratingAvg: driverProfile?.ratingAvg || "4.9",
         },
       })
     } catch (err: any) {
@@ -2698,7 +3529,12 @@ export default function DriverApp() {
     }
   }
 
-  const handleUpdateStatus = async (proofUrl?: string) => {
+  const handleUpdateStatus = async (
+    proofUrl?: string,
+    otp?: string,
+    coords?: { lat: number; lng: number },
+    bypassGeofence = false,
+  ) => {
     if (!driverToken || !activeBooking) {
       // Fallback cho demo nội bộ
       if (job === "toPickup") setJob("atPickup")
@@ -2725,6 +3561,10 @@ export default function DriverApp() {
           body: JSON.stringify({
             status: nextStatus,
             proofImageUrl: proofUrl || undefined,
+            deliveryOtp: otp || undefined,
+            driverLat: coords?.lat,
+            driverLng: coords?.lng,
+            bypassGeofence,
           }),
         },
       )
@@ -2744,6 +3584,8 @@ export default function DriverApp() {
       emitLocalRealtime(`trip-${activeBooking.id}`, "booking:status-change", {
         bookingId: activeBooking.id,
         status: nextStatus,
+        pickupProofImage: nextStatus === "IN_TRANSIT" ? proofUrl : undefined,
+        deliveryProofImage: nextStatus === "COMPLETED" ? proofUrl : undefined,
       })
     } catch (err: any) {
       alert("Lỗi khi cập nhật trạng thái: " + err.message)
@@ -2796,21 +3638,27 @@ export default function DriverApp() {
   }
 
   const complete = () => {
+    if (activeBooking) {
+      setLastCompletedBooking(activeBooking)
+    }
     setJob("complete")
 
-    const earnAmount = activeBooking?.totalPrice
-      ? Math.round(activeBooking.totalPrice * 0.8)
-      : JOB.earning
+    const earnAmount = activeBooking?.driverEarning
+      ? activeBooking.driverEarning
+      : activeBooking?.totalPrice
+      ? Math.round(Number(activeBooking.totalPrice) * 0.8)
+      : 0
+
+    const originShort = (activeBooking?.originAddress || "Điểm đón").split(",")[0]
+    const destShort = (activeBooking?.destinationAddress || "Điểm giao").split(",")[0]
 
     setHistory((h) => [
       {
         id: Date.now(),
         when: "Vừa xong",
-        route: activeBooking
-          ? `${activeBooking.originAddress.slice(0, 15)} → ${activeBooking.destinationAddress.slice(0, 15)}`
-          : "Q.1 → Q.4",
+        route: `${originShort} → ${destShort}`,
         amount: earnAmount,
-        status: "Chờ đối soát",
+        status: "Đã nhận",
       },
       ...h,
     ])
@@ -2822,7 +3670,8 @@ export default function DriverApp() {
     setTimeout(() => {
       loadDriverBookings()
       loadDriverTxs()
-    }, 1200)
+      loadDriverWallet()
+    }, 800)
   }
 
   const changeTab = (nextTab: Tab) => {
@@ -2860,7 +3709,14 @@ export default function DriverApp() {
     return (
       <main className="app-shell">
         <section className="phone-frame d-frame">
-          <Onboarding onDone={() => setRegistered(true)} />
+          <Onboarding
+            onDone={() => setRegistered(true)}
+            onExit={() => setRegistered(true)}
+            onBackToCustomer={() => {
+              window.location.hash = ""
+            }}
+            onLogout={handleLogout}
+          />
         </section>
       </main>
     )
@@ -2894,7 +3750,7 @@ export default function DriverApp() {
               <div className="map-area">
                 <InteractiveMap
                   demandHotspots={demandData.hotspots}
-                  destAddr={JOB.destination}
+                  destAddr={activeBooking?.destinationAddress || activeOffer?.destinationAddress || undefined}
                   driverName={driverDisplayName}
                   driverPlate={
                     driverProfile?.vehicle?.licensePlate ||
@@ -2904,7 +3760,7 @@ export default function DriverApp() {
                   jobState={job}
                   mode="driver"
                   online={online}
-                  pickupAddr={JOB.pickup}
+                  pickupAddr={activeBooking?.originAddress || activeOffer?.originAddress || undefined}
                 />
                 {!working && job !== "incoming" && job !== "complete" && (
                   <>
@@ -2951,6 +3807,8 @@ export default function DriverApp() {
                     onCall={() => setCallModalOpen(true)}
                     onNext={handleUpdateStatus}
                     onCancelTrip={() => setCancelModalOpen(true)}
+                    onOpenInsurance={() => setDriverInsuranceModalOpen(true)}
+                    onOpenComplaint={() => setDriverComplaintModalOpen(true)}
                   />
                 )}
               </div>
@@ -2997,6 +3855,51 @@ export default function DriverApp() {
                     </button>
                   </div>
 
+                  {driverWallet && !driverWallet.isDepositQualified && (
+                    <div
+                      style={{
+                        margin: "10px 12px 6px",
+                        padding: "11px 14px",
+                        borderRadius: "14px",
+                        background: "linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(239, 68, 68, 0.08))",
+                        border: "1px solid rgba(245, 158, 11, 0.35)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "10px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                        <span style={{ fontSize: "18px" }}>🔔</span>
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ fontSize: "12.5px", color: "#b45309", display: "block" }}>
+                            Ví ký quỹ chưa đủ 200.000đ (Hiện còn {money(driverWallet.balance || 0)})
+                          </strong>
+                          <span style={{ fontSize: "11px", color: "#78350f" }}>
+                            Nạp thêm {money(driverWallet.shortfall || Math.max(0, 200000 - Number(driverWallet.balance || 0)))} để sẵn sàng nhận cuốc mới
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTopupModalOpen(true)}
+                        style={{
+                          flexShrink: 0,
+                          padding: "7px 12px",
+                          borderRadius: "10px",
+                          background: "#d97706",
+                          color: "#fff",
+                          fontWeight: 700,
+                          fontSize: "11.5px",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Nạp ngay
+                      </button>
+                    </div>
+                  )}
+
                   <div className="d-control-body">
                     {online ? (
                       <div className="d-online-bar">
@@ -3018,13 +3921,13 @@ export default function DriverApp() {
                           className="d-test-order-btn"
                           onClick={() => {
                             setTab("home")
-                            setJob("incoming")
+                            checkAvailableBookings(true)
                           }}
-                          title="Thử nghiệm nhận cuốc ngay lập tức"
+                          title="Quét tìm đơn thực tế từ khách hàng"
                           type="button"
                         >
-                          <span>Nhận cuốc ngay</span>
-                          <Icon name="plus" size={14} strokeWidth={2.6} />
+                          <span>Quét tìm đơn</span>
+                          <Icon name="search" size={14} strokeWidth={2.6} />
                         </button>
                       </div>
                     ) : (
@@ -3084,10 +3987,16 @@ export default function DriverApp() {
               )}
               {job === "complete" && (
                 <Complete
-                  onContinue={() => setJob("none")}
+                  booking={lastCompletedBooking || activeBooking}
+                  wallet={driverWallet}
+                  onTopup={() => setTopupModalOpen(true)}
+                  onContinue={() => {
+                    setJob("none")
+                    setLastCompletedBooking(null)
+                  }}
                   onEarnings={() => {
                     setJob("none")
-
+                    setLastCompletedBooking(null)
                     setTab("earnings")
                   }}
                 />
@@ -3145,6 +4054,15 @@ export default function DriverApp() {
             onOpenMap={() => setChatOpen(false)}
             onCall={() => setCallModalOpen(true)}
             side="driver"
+            customerName={
+              job === "delivering"
+                ? (activeBooking?.receiverName || "Người nhận hàng")
+                : (activeBooking?.customerName ||
+                    activeBooking?.customer?.fullName ||
+                    activeBooking?.customer?.name ||
+                    "Khách hàng")
+            }
+            orderCode={activeBooking?.bookingCode || activeBooking?.code || "#DH1024"}
           />
         )}
 
@@ -3282,8 +4200,22 @@ export default function DriverApp() {
           isOpen={callModalOpen}
           onClose={() => setCallModalOpen(false)}
           bookingId={activeBooking?.id}
-          partnerName={activeBooking?.customerName || "Khách hàng"}
+          partnerName={
+            job === "delivering"
+              ? (activeBooking?.receiverName || "Người nhận hàng")
+              : (activeBooking?.customerName ||
+                  activeBooking?.customer?.fullName ||
+                  activeBooking?.customer?.name ||
+                  "Khách hàng")
+          }
           partnerRole="CUSTOMER"
+          partnerPhone={
+            activeBooking?.customer?.phone ||
+            activeBooking?.customerPhone ||
+            activeBooking?.receiverPhone ||
+            activeBooking?.phone ||
+            "0903124486"
+          }
           authToken={driverToken || undefined}
         />
 
@@ -3292,6 +4224,31 @@ export default function DriverApp() {
           onClose={() => setTopupModalOpen(false)}
           onSuccess={(added) => {
             setBalance((b) => b + added)
+            setDriverWallet((prev: any) =>
+              prev
+                ? {
+                    ...prev,
+                    balance: Number(prev.balance || 0) + added,
+                    isDepositQualified:
+                      Number(prev.balance || 0) + added >= Number(prev.minDepositLimit || 200000),
+                    shortfall: Math.max(
+                      0,
+                      Number(prev.minDepositLimit || 200000) -
+                        (Number(prev.balance || 0) + added),
+                    ),
+                  }
+                : prev,
+            )
+            setWalletTxs((prevTxs) => [
+              {
+                id: `topup_${Date.now()}`,
+                type: "TOPUP",
+                amount: added,
+                description: `Nạp ${added.toLocaleString("vi-VN")} đ vào ví ký quỹ`,
+                created_at: new Date().toISOString(),
+              },
+              ...(prevTxs || []),
+            ])
             if (driverToken) {
               fetch("/api/v1/driver/wallet", {
                 headers: { Authorization: `Bearer ${driverToken}` },
@@ -3305,6 +4262,19 @@ export default function DriverApp() {
           }}
           userRole="DRIVER"
           authToken={driverToken || undefined}
+        />
+
+        <InsurancePolicyModal
+          isOpen={driverInsuranceModalOpen}
+          onClose={() => setDriverInsuranceModalOpen(false)}
+        />
+
+        <ComplaintModal
+          isOpen={driverComplaintModalOpen}
+          onClose={() => setDriverComplaintModalOpen(false)}
+          bookingCode={activeBooking?.bookingCode || activeBooking?.code}
+          bookingId={activeBooking?.id}
+          driverName={driverProfile?.fullName || "Tài xế"}
         />
 
         {showNav && <DriverNav onChange={changeTab} tab={tab} />}

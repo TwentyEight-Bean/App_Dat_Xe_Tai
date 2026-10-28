@@ -65,6 +65,8 @@ export default function DriverAuthGate({
 
   const phoneInputRef = useRef<HTMLInputElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const otpSectionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     return () => {
@@ -270,7 +272,10 @@ export default function DriverAuthGate({
       setRegisterOtpSent(true)
       setOtpDigits(["", "", "", "", "", ""])
 
-      setTimeout(() => otpInputRefs.current[0]?.focus(), 100)
+      setTimeout(() => {
+        otpSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+        otpInputRefs.current[0]?.focus()
+      }, 150)
     } catch (err: any) {
       setError(err.message || "Không thể gửi mã OTP")
     } finally {
@@ -358,16 +363,37 @@ export default function DriverAuthGate({
 
   return (
     <div
+      ref={containerRef}
+      className="driver-auth-screen"
       style={{
-        minHeight: "100dvh",
+        position: "absolute",
+        inset: 0,
+        overflowY: "auto",
+        overflowX: "hidden",
+        WebkitOverflowScrolling: "touch",
         display: "flex",
         flexDirection: "column",
         background: "linear-gradient(180deg, #0e1726 0%, #172338 100%)",
         color: "#fff",
-        padding: "24px 20px",
-        justifyContent: "space-between",
+        padding: "24px 20px 48px",
+        scrollBehavior: "smooth",
       }}
     >
+      <style>{`
+        .driver-auth-screen::-webkit-scrollbar {
+          width: 5px;
+        }
+        .driver-auth-screen::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+        }
+        .driver-auth-screen::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+        }
+        .driver-auth-screen::-webkit-scrollbar-thumb:hover {
+          background: rgba(245, 158, 11, 0.5);
+        }
+      `}</style>
       {/* Top Header */}
       <div>
         <div
@@ -885,7 +911,7 @@ export default function DriverAuthGate({
 
           {/* Nút gửi hoặc các ô OTP khi đăng ký */}
           {mode === "register" && registerOtpSent && (
-            <div style={{ marginBottom: "18px" }}>
+            <div ref={otpSectionRef} style={{ marginBottom: "18px" }}>
               <div
                 style={{
                   background: "rgba(15, 23, 42, 0.8)",
@@ -1161,7 +1187,7 @@ export default function DriverAuthGate({
       </div>
 
       {/* Footer Info */}
-      <div style={{ textAlign: "center", paddingTop: "24px" }}>
+      <div style={{ marginTop: "auto", textAlign: "center", paddingTop: "32px", paddingBottom: "16px" }}>
         <p style={{ fontSize: "11px", color: "#64748b", margin: 0 }}>
           Hỗ trợ đối tác 24/7: <strong>1900 1234</strong> · FastDrop Logistics Vietnam
         </p>

@@ -9,6 +9,7 @@ import {
   setDriverActiveStatus,
   getAllUsers,
   getAdminBookings,
+  getAllDriverRatings,
 } from "../../lib/adminService"
 
 import { requireAuth, requireRoles, type AuthRequest } from "../middleware"
@@ -33,6 +34,42 @@ import b2bRouter from "./b2b"
 const router = Router()
 
 router.use(requireAuth, requireRoles(["ADMIN"]))
+
+/**
+ * GET /api/v1/admin/ratings
+ * Lấy danh sách toàn bộ đánh giá của tài xế từ khách hàng kèm bộ lọc và thống kê
+ */
+router.get("/ratings", async (req, res, next) => {
+  try {
+    const rating = req.query.rating ? parseInt(req.query.rating as string, 10) : undefined
+    const driverId = req.query.driverId as string | undefined
+    const search = req.query.search as string | undefined
+    const page = parseInt((req.query.page as string) || "1", 10)
+    const limit = parseInt((req.query.limit as string) || "20", 10)
+
+    const result = await getAllDriverRatings({
+      rating,
+      driverId,
+      search,
+      page,
+      limit,
+    })
+
+    res.json({
+      success: true,
+      data: result.ratings,
+      summary: result.summary,
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: result.totalPages,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
 
 router.get("/users", async (req, res, next) => {
   try {

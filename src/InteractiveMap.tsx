@@ -93,6 +93,7 @@ export default function InteractiveMap({
   const tileLayerRef = useRef<L.TileLayer | null>(null)
   const markersLayerRef = useRef<L.LayerGroup | null>(null)
   const bookingLayerRef = useRef<L.LayerGroup | null>(null)
+  const tripTrackingLayerRef = useRef<L.LayerGroup | null>(null)
   const routeLayerRef = useRef<L.Polyline | null>(null)
   const movingTruckMarkerRef = useRef<L.Marker | null>(null)
   const userLocationMarkerRef = useRef<L.Marker | null>(null)
@@ -493,11 +494,13 @@ export default function InteractiveMap({
 
     const markersLayer = L.layerGroup().addTo(map)
     const bookingLayer = L.layerGroup().addTo(map)
+    const tripTrackingLayer = L.layerGroup().addTo(map)
 
     mapRef.current = map
     tileLayerRef.current = tileLayer
     markersLayerRef.current = markersLayer
     bookingLayerRef.current = bookingLayer
+    tripTrackingLayerRef.current = tripTrackingLayer
 
     // Setup initial coordinates
     const initialPickup = { lat: defaultCity.lat, lng: defaultCity.lng }
@@ -778,26 +781,40 @@ export default function InteractiveMap({
       `)
       markersLayer.addLayer(myMarker)
 
-      // If online, render radar circle & demand hotspots
+      // If online, render radar circle & demand hotspots (chỉ 1 vòng tròn duy nhất cho mỗi cụm địa bàn)
       if (isOnline && demandHotspots && demandHotspots.length > 0) {
+        // Lọc chống trùng cụm gần nhau trên client side (< 3km)
+        const uniqueHotspots: typeof demandHotspots = []
         demandHotspots.forEach((h) => {
           if (!h.lat || !h.lng) return
+          const isNearby = uniqueHotspots.some((u) => {
+            const dLat = Math.abs(u.lat - h.lat)
+            const dLng = Math.abs(u.lng - h.lng)
+            return dLat < 0.027 && dLng < 0.027 // ~3km
+          })
+          if (!isNearby) {
+            uniqueHotspots.push(h)
+          }
+        })
+
+        uniqueHotspots.forEach((h) => {
           const isSurge = h.count > 0
           const circleColor = isSurge ? "#f59e0b" : "#10b981"
           const circle = L.circle([h.lat, h.lng], {
-            radius: h.radiusMeters || 1500,
+            radius: h.radiusMeters || 1600,
             color: circleColor,
             fillColor: circleColor,
-            fillOpacity: isSurge ? 0.16 : 0.08,
-            weight: 1.5,
-            dashArray: "6, 6",
+            fillOpacity: isSurge ? 0.12 : 0.06,
+            weight: 2,
           })
           const tooltipContent = isSurge
-            ? `<b>🔥 ${h.district}</b><br/>${h.count} đơn hàng chờ (+15% cước)`
-            : `<b>🟢 ${h.district}</b><br/>Bán kính quét đơn ưu tiên (~${Math.round((h.radiusMeters || 1500) / 1000)} km)`
+            ? `<div style="text-align:center;font-size:12px;padding:2px 4px;"><b>🔥 ${h.district}</b><div style="font-weight:600;margin-top:2px;font-size:11px;color:#b45309;">${h.count} đơn hàng chờ (+15% cước)</div></div>`
+            : `<div style="text-align:center;font-size:12px;padding:2px 4px;"><b>🟢 ${h.district}</b><div style="font-weight:600;margin-top:2px;font-size:11px;color:#047857;">Bán kính quét đơn ưu tiên (~${Math.round((h.radiusMeters || 1500) / 1000)} km)</div></div>`
           circle.bindTooltip(tooltipContent, {
             permanent: false,
             direction: "top",
+            offset: [0, -32],
+            className: "demand-hotspot-pill-tooltip",
           })
           markersLayer.addLayer(circle)
         })
@@ -859,37 +876,58 @@ export default function InteractiveMap({
 
   // 7. Route and Truck Animation during Active Trip (Tracking mode)
   useEffect(() => {
-    if (!mapRef.current || !markersLayerRef.current) return
+    if (!mapRef.current || !tripTrackingLayerRef.current) return
     const map = mapRef.current
-    const markersLayer = markersLayerRef.current
+    const trackingLayer = tripTrackingLayerRef.current
+
+    // Always clear old trip markers to prevent duplicate stacking
+    trackingLayer.clearLayers()
+    if (routeLayerRef.current) {
+      routeLayerRef.current.remove()
+      routeLayerRef.current = null
+    }
+    if (movingTruckMarkerRef.current) {
+      movingTruckMarkerRef.current.remove()
+      movingTruckMarkerRef.current = null
+    }
 
     if (isCustomerTracking || isDriverWorking) {
-      // Pick coordinates based on map center and route offset
       const center = map.getCenter()
-      const pickupLatLng: [number, number] = [center.lat - 0.006, center.lng - 0.008]
-      const destLatLng: [number, number] = [center.lat + 0.012, center.lng + 0.014]
+      const pickupLatLng: [number, number] = [
+        pickupCoordsRef.current?.lat ?? center.lat - 0.006,
+        pickupCoordsRef.current?.lng ?? center.lng - 0.008,
+      ]
+      const destLatLng: [number, number] = [
+        destCoordsRef.current?.lat ?? center.lat + 0.010,
+        destCoordsRef.current?.lng ?? center.lng + 0.012,
+      ]
 
-      // L.Polyline along real route coordinates
+      const midLat = (pickupLatLng[0] + destLatLng[0]) / 2
+      const midLng = (pickupLatLng[1] + destLatLng[1]) / 2
+
       const waypoints: [number, number][] = [
         pickupLatLng,
-        [center.lat - 0.001, center.lng - 0.003],
-        [center.lat + 0.005, center.lng + 0.006],
+        [midLat - 0.001, midLng - 0.002],
+        [midLat + 0.002, midLng + 0.001],
         destLatLng,
       ]
 
-      if (routeLayerRef.current) {
-        routeLayerRef.current.remove()
-      }
+      // Outer glow line for high contrast
+      L.polyline(waypoints, {
+        color: "#0284c7",
+        weight: 10,
+        opacity: 0.25,
+      }).addTo(trackingLayer)
 
+      // Vibrant polyline along real route coordinates
       const polyline = L.polyline(waypoints, {
-        color: "#1478d4",
+        color: "#2563eb",
         weight: 6,
-        opacity: 0.9,
-        dashArray: "8, 6",
-      }).addTo(map)
+        opacity: 0.95,
+      }).addTo(trackingLayer)
       routeLayerRef.current = polyline
 
-      // Pickup Marker
+      // Pickup Marker (Only ONE)
       const pickupIcon = L.divIcon({
         className: "route-marker-pin",
         html: `
@@ -897,13 +935,13 @@ export default function InteractiveMap({
             <span class="pulse-core"></span>
           </div>
         `,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
       })
-      const pickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(markersLayer)
+      const pickupMarker = L.marker(pickupLatLng, { icon: pickupIcon }).addTo(trackingLayer)
       pickupMarker.bindPopup(`<b>Điểm Lấy Hàng</b><br/>${pickupAddr || "Vị trí nhận hàng"}`)
 
-      // Destination Marker
+      // Destination Marker (Only ONE)
       const destIcon = L.divIcon({
         className: "route-marker-pin",
         html: `
@@ -911,13 +949,13 @@ export default function InteractiveMap({
             <span>🏁</span>
           </div>
         `,
-        iconSize: [30, 30],
-        iconAnchor: [15, 15],
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
       })
-      const destMarker = L.marker(destLatLng, { icon: destIcon }).addTo(markersLayer)
+      const destMarker = L.marker(destLatLng, { icon: destIcon }).addTo(trackingLayer)
       destMarker.bindPopup(`<b>Điểm Giao Hàng</b><br/>${destAddr || "Vị trí giao hàng"}`)
 
-      // Moving Truck Marker
+      // Moving Truck Marker (Only ONE)
       const truckIcon = L.divIcon({
         className: "route-moving-truck",
         html: `
@@ -930,25 +968,17 @@ export default function InteractiveMap({
         iconAnchor: [22, 22],
       })
 
-      const movingTruck = L.marker(pickupLatLng, { icon: truckIcon }).addTo(markersLayer)
+      const movingTruck = L.marker(pickupLatLng, { icon: truckIcon }).addTo(trackingLayer)
       movingTruckMarkerRef.current = movingTruck
 
       // Fit bounds nicely with padding
-      map.fitBounds(polyline.getBounds(), { padding: [70, 70] })
+      try {
+        map.fitBounds(polyline.getBounds(), { padding: [80, 80], maxZoom: 16 })
+      } catch {}
 
       return () => {
-        polyline.remove()
+        trackingLayer.clearLayers()
         routeLayerRef.current = null
-        movingTruck.remove()
-        movingTruckMarkerRef.current = null
-      }
-    } else {
-      if (routeLayerRef.current) {
-        routeLayerRef.current.remove()
-        routeLayerRef.current = null
-      }
-      if (movingTruckMarkerRef.current) {
-        movingTruckMarkerRef.current.remove()
         movingTruckMarkerRef.current = null
       }
     }

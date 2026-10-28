@@ -183,7 +183,7 @@ export const syncAddressesFromApi = async () => {
   }
 }
 
-const payStore = makeStore<"cash" | "wallet" | "vnpay" | "momo">("cash")
+const payStore = makeStore<"cash" | "vnpay">("cash")
 export const usePaymentPreference = payStore.use
 
 const notifStore = makeStore({ orders: true, messages: true, promos: false })
@@ -567,11 +567,14 @@ export default function AccountScreen({
 
   useEffect(() => {
     onNavHidden(
-      page === "profile" || page === "addressEdit" || page === "loginOtp",
+      page === "profile" ||
+        page === "addressEdit" ||
+        page === "loginOtp" ||
+        confirmOut,
     )
 
     return () => onNavHidden(false)
-  }, [page])
+  }, [page, confirmOut])
 
   useEffect(() => {
     if (!toast) return
@@ -655,11 +658,7 @@ export default function AccountScreen({
             value={
               pay === "cash"
                 ? "Tiền mặt"
-                : pay === "vnpay"
-                  ? "VNPay"
-                  : pay === "momo"
-                    ? "MoMo"
-                    : "Ví điện tử"
+                : "Chuyển khoản"
             }
           />
         </ul>
@@ -746,7 +745,7 @@ export default function AccountScreen({
                   Hủy
                 </button>
                 <button
-                  className="secondary-button"
+                  className="secondary-button acc-dialog-danger"
                   onClick={async () => {
                     setConfirmOut(false)
 
@@ -2923,9 +2922,9 @@ function PaymentPageWithHistory({
 
   toast,
 }: {
-  pay: "cash" | "wallet" | "vnpay" | "momo"
+  pay: "cash" | "vnpay"
 
-  onSelect: (m: "cash" | "wallet" | "vnpay" | "momo") => void
+  onSelect: (m: "cash" | "vnpay") => void
 
   onBack: () => void
 
@@ -3068,7 +3067,7 @@ function PaymentPageWithHistory({
 
       name: "Tiền mặt (CASH)",
 
-      hint: "Thanh toán trực tiếp cho tài xế",
+      hint: "Thanh toán trực tiếp cho tài xế khi giao hàng",
     },
 
     {
@@ -3076,35 +3075,15 @@ function PaymentPageWithHistory({
 
       icon: "card" as AI,
 
-      name: "Cổng VNPay (VNPAY-QR)",
+      name: "Chuyển khoản",
 
-      hint: "Quét mã VNPAY-QR, Thẻ ATM & Mobile Banking",
-    },
-
-    {
-      id: "momo" as const,
-
-      icon: "card" as AI,
-
-      name: "Ví điện tử MoMo",
-
-      hint: "Thanh toán qua ứng dụng MoMo",
-    },
-
-    {
-      id: "wallet" as const,
-
-      icon: "wallet" as AI,
-
-      name: "Ví tài khoản FastDrop",
-
-      hint: "Khấu trừ từ số dư tài khoản",
+      hint: "Chuyển khoản trực tiếp cho tài xế",
     },
   ]
 
   return (
     <section className="orders-screen account-screen">
-      <SubHead onBack={onBack} title="Thanh toán & Ví FastDrop" />
+      <SubHead onBack={onBack} title="Phương thức thanh toán" />
       {loadError && (
         <div role="alert">
           <p className="field-error">{loadError}</p>
@@ -3119,89 +3098,106 @@ function PaymentPageWithHistory({
         </div>
       )}
 
-      {/* Thẻ Ví Khách Hàng FastDrop */}
-      <div
-        style={{
-          margin: "12px 16px 20px",
-
-          padding: "20px",
-
-          borderRadius: "16px",
-
-          background: "linear-gradient(135deg, #0f172a, #1e293b)",
-
-          color: "#fff",
-
-          boxShadow: "0 8px 24px rgba(15, 23, 42, 0.25)",
-
-          border: "1px solid rgba(255, 255, 255, 0.1)",
-        }}
-      >
+      {/* Thẻ Trạng thái tài khoản & Nợ phí phạt */}
+      {walletData && Number(walletData.balance || 0) < 0 ? (
         <div
           style={{
+            margin: "12px 16px 20px",
+            padding: "18px 20px",
+            borderRadius: "16px",
+            background: "linear-gradient(135deg, #450a0a, #7f1d1d)",
+            color: "#fff",
+            boxShadow: "0 8px 24px rgba(239, 68, 68, 0.25)",
+            border: "1.5px solid #ef4444",
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "flex-start",
+            alignItems: "center",
+            gap: "12px",
           }}
         >
           <div>
             <div
               style={{
                 fontSize: "11px",
-                color: "#94a3b8",
+                color: "#fca5a5",
                 textTransform: "uppercase",
                 letterSpacing: "0.5px",
                 fontWeight: 600,
               }}
             >
-              Ví điện tử FastDrop
+              Nợ phí phạt hủy chuyến
             </div>
             <div
               style={{
-                fontSize: "26px",
+                fontSize: "24px",
                 fontWeight: 800,
-                margin: "6px 0 2px",
-                color: "#f8fafc",
+                margin: "4px 0 2px",
+                color: "#fef2f2",
               }}
             >
-              {walletData
-                ? Number(walletData.balance || 0).toLocaleString("vi-VN")
-                : "0"}{" "}
-              đ
+              -{Math.abs(Number(walletData.balance)).toLocaleString("vi-VN")} đ
             </div>
-            <div
-              style={{ fontSize: "12px", color: "#38bdf8", fontWeight: 500 }}
-            >
-              ✓ Sẵn sàng thanh toán mọi chuyến xe
+            <div style={{ fontSize: "12px", color: "#fecaca" }}>
+              ⚠️ Vui lòng thanh toán để mở khóa quyền đặt xe
             </div>
           </div>
           <button
             type="button"
             onClick={() => setShowTopUp(true)}
             style={{
-              padding: "8px 16px",
-
+              padding: "10px 18px",
               borderRadius: "10px",
-
               border: "none",
-
-              background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-
+              background: "#ef4444",
               color: "#fff",
-
               fontWeight: 700,
-
               fontSize: "13px",
-
               cursor: "pointer",
-
-              boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
+              boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
+              whiteSpace: "nowrap",
             }}
           >
-            + Nạp ví
+            💳 Trả nợ ngay
           </button>
         </div>
-      </div>
+      ) : (
+        <div
+          style={{
+            margin: "12px 16px 20px",
+            padding: "16px 20px",
+            borderRadius: "16px",
+            background: "linear-gradient(135deg, #0f172a, #1e293b)",
+            color: "#fff",
+            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.25)",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "11px",
+              color: "#94a3b8",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              fontWeight: 600,
+            }}
+          >
+            Tình trạng tài khoản
+          </div>
+          <div
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              margin: "4px 0 2px",
+              color: "#4ade80",
+            }}
+          >
+            ✓ Hoạt động tốt • Không có nợ
+          </div>
+          <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+            Thanh toán linh hoạt bằng Tiền mặt hoặc Chuyển khoản cho tài xế
+          </div>
+        </div>
+      )}
 
       <h2 className="conv-section">Chọn phương thức mặc định</h2>
       <ul className="acc-list">
@@ -3717,6 +3713,16 @@ function PaymentPageWithHistory({
           loadAll()
         }}
         userRole="CUSTOMER"
+        initialAmount={
+          walletData && Number(walletData.balance || 0) < 0
+            ? Math.abs(Number(walletData.balance))
+            : undefined
+        }
+        debtTitle={
+          walletData && Number(walletData.balance || 0) < 0
+            ? `Tài khoản đang nợ ${Math.abs(Number(walletData.balance)).toLocaleString("vi-VN")}đ phí phạt hủy chuyến. Hãy nạp tiền để xóa nợ.`
+            : undefined
+        }
       />
     </section>
   )
