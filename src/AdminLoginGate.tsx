@@ -9,8 +9,8 @@ export default function AdminLoginGate({
   onSuccess,
   onBackToCustomer,
 }: AdminLoginGateProps) {
-  const [email, setEmail] = useState("admin@fastdrop.vn")
-  const [password, setPassword] = useState("admin123")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -65,12 +65,6 @@ export default function AdminLoginGate({
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleFillDemo = () => {
-    setEmail("admin@fastdrop.vn")
-    setPassword("admin123")
-    setError("")
   }
 
   return (
@@ -188,28 +182,6 @@ export default function AdminLoginGate({
           </p>
         </div>
 
-        {/* Quick Demo Info Pill */}
-        <div className="mb-4 p-2.5 rounded-xl bg-blue-950/50 border border-blue-800/40 flex items-center justify-between text-xs text-blue-300">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">🔑</span>
-            <div>
-              <p className="font-semibold text-blue-200 text-[11.5px]">
-                Tài khoản mẫu:
-              </p>
-              <p className="text-[10.5px] text-blue-400/90 font-mono">
-                admin@fastdrop.vn / admin123
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleFillDemo}
-            className="text-[10.5px] font-medium text-blue-300 hover:text-white bg-blue-900/70 hover:bg-blue-800 px-2 py-1 rounded-md transition"
-          >
-            Điền nhanh
-          </button>
-        </div>
-
         {/* Error Banner */}
         {error && (
           <div className="mb-3.5 p-2.5 rounded-xl bg-red-950/70 border border-red-800/70 text-red-300 text-xs flex items-start gap-2">
@@ -262,7 +234,7 @@ export default function AdminLoginGate({
                 autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@fastdrop.vn"
+                placeholder="email-quan-tri@congty.vn"
                 className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-9 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
             </div>

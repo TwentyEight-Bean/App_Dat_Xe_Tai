@@ -1,11 +1,16 @@
 import jwt from "jsonwebtoken"
 
-// Mật khẩu bí mật để ký JWT. Trong thực tế, chuỗi này phải được cấu hình trong file .env
-
-// Ví dụ: process.env.JWT_SECRET
-
-const JWT_SECRET =
-  process.env.JWT_SECRET || "super-secret-key-for-truck-booking-app"
+// Mật khẩu bí mật để ký JWT. Bắt buộc cấu hình trong .env ở môi trường production.
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim()
+  if (secret) return secret
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "FATAL: JWT_SECRET chưa được cấu hình trong biến môi trường (.env) cho production",
+    )
+  }
+  return "super-secret-key-for-truck-booking-app"
+}
 
 const JWT_EXPIRES_IN = "7d" // Token có hạn 7 ngày
 
@@ -22,7 +27,7 @@ export interface JwtPayload {
  */
 
 export const generateToken = (payload: JwtPayload): string => {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN })
 }
 
 /**
@@ -31,7 +36,7 @@ export const generateToken = (payload: JwtPayload): string => {
 
 export const verifyToken = (token: string): JwtPayload => {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload
+    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload
 
     return decoded
   } catch (error) {

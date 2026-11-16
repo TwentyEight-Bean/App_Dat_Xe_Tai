@@ -4,16 +4,23 @@ import { Icon, Status, Avatar } from "./ui"
 
 import { Drawer } from "./Orders"
 
-import { users as mockUsers, vnd, type UserRow, type Tone } from "./data"
+import { vnd, type UserRow } from "./data"
+import { clearAdminSession, isUnauthorizedResponse, requireAdminToken } from "./auth"
+
+type LiveUserRow = UserRow & {
+  rawId: string
+  rawStatus: "ACTIVE" | "BLOCKED" | "PENDING"
+}
 
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
+  const token = requireAdminToken()
   const res = await fetch(url, {
     ...opts,
 
     headers: {
       "Content-Type": "application/json",
 
-      Authorization: `Bearer ${localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"}`,
+      Authorization: `Bearer ${token}`,
 
       ...(opts?.headers ?? {}),
     },
@@ -22,10 +29,8 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const json = await res.json()
 
   if (!res.ok || json.success === false) {
-    if (res.status === 401 || json.message?.includes("Token không hợp lệ") || json.message?.includes("UNAUTHORIZED")) {
-      localStorage.removeItem("admin_auth_token")
-      localStorage.removeItem("admin_user_info")
-      window.dispatchEvent(new Event("admin_session_expired"))
+    if (isUnauthorizedResponse(res.status, json.message)) {
+      clearAdminSession()
     }
     throw new Error(json.message || "Lỗi API")
   }
@@ -35,16 +40,16 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
 
 function UserDrawer({
   u,
-
   onClose,
-
   openOrder,
+  onToggleStatus,
+  updatingStatus,
 }: {
-  u: UserRow
-
+  u: LiveUserRow
   onClose: () => void
-
   openOrder: (id: string) => void
+  onToggleStatus: (u: LiveUserRow) => void
+  updatingStatus: boolean
 }) {
   return (
     <Drawer
@@ -103,6 +108,29 @@ function UserDrawer({
                 : "Đã xác minh số điện thoại"}
             </small>
           </span>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            disabled={updatingStatus}
+            onClick={() => onToggleStatus(u)}
+            className={`btn btn-block ${u.rawStatus === "BLOCKED" ? "btn-primary" : ""}`}
+            style={
+              u.rawStatus !== "BLOCKED"
+                ? {
+                    backgroundColor: "#fef2f2",
+                    color: "#dc2626",
+                    border: "1px solid #fecaca",
+                  }
+                : undefined
+            }
+          >
+            {updatingStatus
+              ? "Đang cập nhật..."
+              : u.rawStatus === "BLOCKED"
+                ? "Mở khóa tài khoản"
+                : "Tạm khóa tài khoản"}
+          </button>
         </div>
       </section>
       <section className="dsec">
@@ -169,71 +197,108 @@ export default function Users({
   openOrder: (id: string) => void
 }) {
   const [q, setQ] = useState("")
-
   const [sel, setSel] = useState<string | null>(null)
-
-  const [dbUsers, setDbUsers] = useState<UserRow[]>([])
-
+  const [dbUsers, setDbUsers] = useState<LiveUserRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
 
   useEffect(() => {
-    apiFetch<any[]>("/api/admin/users")
-
+    setLoading(true)
+    setError(null)
+    apiFetch<any[]>("/api/v1/admin/users")
       .then((data) => {
-        const mapped: UserRow[] = data.map((u, i) => {
-          // Fallback or generate initials
-
-          const nameParts = (u.fullName || "Khách").split(" ")
-
+        const mapped: LiveUserRow[] = data.map((u) => {
+          const nameParts = (u.fullName || "Khách").trim().split(/\s+/)
           const initials =
             nameParts.length > 1
               ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`
               : nameParts[0].substring(0, 2)
 
+          const rawStatus: "ACTIVE" | "BLOCKED" | "PENDING" =
+            u.status === "BLOCKED"
+              ? "BLOCKED"
+              : u.status === "PENDING"
+                ? "PENDING"
+                : "ACTIVE"
+
           return {
+            rawId: u.id,
+            rawStatus,
             id: u.id.split("-")[0].toUpperCase(),
-
             name: u.fullName || "Khách",
-
             initials: initials.toUpperCase(),
-
             phone: u.phone,
-
             email: u.email || "",
-
-            orders: Math.floor(Math.random() * 50),
-
-            spent: Math.floor(Math.random() * 5000000),
-
-            last: "Hôm nay",
-
-            lastId: "DH1000",
-
-            status: u.status === "ACTIVE" ? "Hoạt động" : "Tạm khóa",
-
-            tone: u.status === "ACTIVE" ? "green" : "red",
-
+            orders: Number(u.orderCount || 0),
+            spent: Number(u.totalSpent || 0),
+            last: u.lastBookingAt
+              ? new Date(u.lastBookingAt).toLocaleDateString("vi-VN")
+              : "Chưa có đơn",
+            lastId: u.lastBookingCode || "—",
+            status:
+              rawStatus === "ACTIVE"
+                ? "Hoạt động"
+                : rawStatus === "PENDING"
+                  ? "Mới"
+                  : "Tạm khóa",
+            tone:
+              rawStatus === "ACTIVE"
+                ? "green"
+                : rawStatus === "PENDING"
+                  ? "amber"
+                  : "red",
             joined: new Date(u.createdAt).toLocaleDateString("vi-VN"),
-
             recent: [],
-
             support: [],
           }
         })
 
         setDbUsers(mapped)
-
         setLoading(false)
       })
-
-      .catch((e) => {
+      .catch((e: any) => {
         console.error(e)
-
-        setDbUsers(mockUsers) // fallback to mock
-
+        setError(e?.message || "Không thể tải danh sách người dùng")
+        setDbUsers([])
         setLoading(false)
       })
   }, [])
+
+  const handleToggleStatus = async (u: LiveUserRow) => {
+    const nextStatus = u.rawStatus === "BLOCKED" ? "ACTIVE" : "BLOCKED"
+    const label = nextStatus === "BLOCKED" ? "tạm khóa" : "mở khóa"
+    if (
+      !window.confirm(
+        `Xác nhận ${label} tài khoản "${u.name}" (${u.phone})?`,
+      )
+    ) {
+      return
+    }
+    setUpdatingStatus(true)
+    try {
+      await apiFetch(`/api/v1/admin/users/${u.rawId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      setDbUsers((prev) =>
+        prev.map((row) =>
+          row.rawId === u.rawId
+            ? {
+                ...row,
+                rawStatus: nextStatus,
+                status: nextStatus === "ACTIVE" ? "Hoạt động" : "Tạm khóa",
+                tone: nextStatus === "ACTIVE" ? "green" : "red",
+              }
+            : row,
+        ),
+      )
+    } catch (e: any) {
+      window.alert(e?.message || "Không thể cập nhật trạng thái tài khoản")
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
 
   const rows = dbUsers.filter((u) =>
     `${u.name} ${u.phone} ${u.email} ${u.id}`
@@ -263,9 +328,19 @@ export default function Users({
           />
         </label>
         <div className="toolbar-end">
-          <span>{rows.length} / 12.480 người dùng</span>
+          <span>
+            {loading ? "Đang tải..." : `${rows.length} / ${dbUsers.length} người dùng`}
+          </span>
         </div>
       </div>
+      {error && (
+        <div
+          className="panel"
+          style={{ padding: "12px 16px", color: "#dc2626", backgroundColor: "#fef2f2", borderColor: "#fecaca" }}
+        >
+          {error}
+        </div>
+      )}
       <section className="panel">
         <div className="table-wrap">
           <table className="dtable roomy">
@@ -335,6 +410,8 @@ export default function Users({
           u={active}
           onClose={() => setSel(null)}
           openOrder={openOrder}
+          onToggleStatus={handleToggleStatus}
+          updatingStatus={updatingStatus}
         />
       )}
     </div>

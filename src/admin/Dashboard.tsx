@@ -2,7 +2,53 @@ import { useState, useEffect } from "react"
 
 import { Icon, Status } from "./ui"
 
-import { orders, idleDrivers, vnd, type Order, type Pt } from "./data"
+import { vnd, type Order, type Pt } from "./data"
+import { clearAdminSession, getAdminToken, isUnauthorizedResponse } from "./auth"
+
+type DashboardSummaryData = {
+  todayOrders: number
+  yesterdayOrders: number
+  inTransitOrders: number
+  waitingDriverOrders: number
+  activeOrders: number
+  todayRevenue: number
+  yesterdayRevenue: number
+  onlineDrivers: number
+  totalActiveDrivers: number
+  pendingKycCount: number
+  pendingKycList: Array<{
+    id: string
+    fullName: string | null
+    phone: string
+    licensePlate: string | null
+    createdAt: string
+  }>
+  stuckOrders: Array<{
+    id: string
+    bookingCode: string
+    status: string
+    originAddress: string | null
+    createdAt: string
+    waitingMinutes: number
+  }>
+  onlineLocations: Array<{
+    driverId: string
+    driverName: string | null
+    licensePlate: string | null
+    lat: number
+    lng: number
+  }>
+}
+
+function latLngToPct(lat?: number | null, lng?: number | null): Pt {
+  if (typeof lat !== "number" || typeof lng !== "number" || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return [46, 47]
+  }
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+  const x = clamp(((lng - 106.58) / (106.82 - 106.58)) * 84 + 8, 8, 92)
+  const y = clamp(((10.88 - lat) / (10.88 - 10.68)) * 84 + 8, 8, 92)
+  return [Math.round(x * 10) / 10, Math.round(y * 10) / 10]
+}
 
 const ctrl = (p: Pt, d: Pt): Pt => [
   (p[0] + d[0]) / 2 + (d[1] - p[1]) * 0.18,
@@ -48,36 +94,32 @@ const districts: { n: string; x: number; y: number }[] = [
 
 export function OpsMap({
   sel,
-
   setSel,
-
   hover,
-
   onOpen,
-
   mobile,
+  ordersList = [],
+  idlePoints = [],
 }: {
   sel: string | null
-
   setSel: (id: string | null) => void
-
   hover: string | null
-
   onOpen: (id: string) => void
-
   mobile?: boolean
+  ordersList?: Order[]
+  idlePoints?: Array<{ pt: Pt; label: string }>
 }) {
   const [layer, setLayer] = useState<"all" | "problem">("all")
 
-  const active = orders.filter((o) => o.tone === "blue" || o.tone === "sky")
+  const active = ordersList.filter((o) => o.tone === "blue" || o.tone === "sky")
 
-  const waiting = orders.filter((o) => o.tone === "amber")
+  const waiting = ordersList.filter((o) => o.tone === "amber")
 
-  const late = orders.filter((o) => o.late)
+  const late = ordersList.filter((o) => o.late)
 
-  const focus = orders.find((o) => o.id === (hover ?? sel))
+  const focus = ordersList.find((o) => o.id === (hover ?? sel))
 
-  const selected = orders.find((o) => o.id === sel)
+  const selected = ordersList.find((o) => o.id === sel)
 
   const dim = (o: Order) => layer === "problem" && !o.late
 
@@ -156,12 +198,12 @@ export function OpsMap({
         )}
       </svg>
 
-      {idleDrivers.map((p, i) => (
+      {idlePoints.map((d, i) => (
         <span
           key={i}
           className={`mk-idle ${layer === "problem" ? "dim" : ""}`}
-          style={{ left: `${p[0]}%`, top: `${p[1]}%` }}
-          title="Tài xế đang rảnh"
+          style={{ left: `${d.pt[0]}%`, top: `${d.pt[1]}%` }}
+          title={d.label}
         />
       ))}
 
@@ -381,75 +423,76 @@ function Spark({ data, tone = "blue" }: { data: number[]; tone?: string }) {
   )
 }
 
-function Summary({ late }: { late: number }) {
+function Summary({
+  summary,
+  late,
+}: {
+  summary: DashboardSummaryData | null
+  late: number
+}) {
+  const todayOrders = summary?.todayOrders ?? 0
+  const yesterdayOrders = summary?.yesterdayOrders ?? 0
+  const ordersDiffPct =
+    yesterdayOrders > 0
+      ? Math.round(((todayOrders - yesterdayOrders) / yesterdayOrders) * 100)
+      : todayOrders > 0
+        ? 100
+        : 0
+
+  const inTransitOrders = summary?.inTransitOrders ?? 0
+  const waitingOrders = summary?.waitingDriverOrders ?? 0
+  const onlineDrivers = summary?.onlineDrivers ?? 0
+  const totalActiveDrivers = summary?.totalActiveDrivers ?? 0
+
+  const todayRev = summary?.todayRevenue ?? 0
+  const yesterdayRev = summary?.yesterdayRevenue ?? 0
+  const revDiffPct =
+    yesterdayRev > 0
+      ? Math.round(((todayRev - yesterdayRev) / yesterdayRev) * 100)
+      : todayRev > 0
+        ? 100
+        : 0
+  const todayRevMillion = (todayRev / 1_000_000).toFixed(1).replace(".", ",")
+
   const cells = [
     {
       label: "Đơn hôm nay",
-
-      value: "248",
-
+      value: String(todayOrders),
       unit: "",
-
-      trend: "+12,8%",
-
-      up: true,
-
-      note: "so với hôm qua",
-
-      spark: [18, 22, 20, 28, 31, 30, 38, 44],
+      trend: `${ordersDiffPct >= 0 ? "+" : ""}${ordersDiffPct}%`,
+      up: ordersDiffPct >= 0,
+      note: `hôm qua: ${yesterdayOrders}`,
+      spark: [Math.max(0, yesterdayOrders), Math.max(0, todayOrders)],
     },
-
     {
       label: "Đang giao",
-
-      value: "86",
-
+      value: String(inTransitOrders),
       unit: "",
-
-      trend: `${late} chậm`,
-
-      up: false,
-
-      warn: true,
-
-      note: "34,7% tổng đơn",
-
-      spark: [40, 52, 48, 60, 72, 68, 80, 86],
+      trend: `${late} quá hạn`,
+      up: late === 0,
+      warn: late > 0,
+      note: `${waitingOrders} đang chờ tài xế`,
+      spark: [waitingOrders, inTransitOrders],
+      tone: "sky",
     },
-
     {
       label: "Tài xế online",
-
-      value: "164",
-
+      value: String(onlineDrivers),
       unit: "",
-
-      trend: "+8",
-
+      trend: `${totalActiveDrivers} tổng`,
       up: true,
-
-      note: "62 đang rảnh",
-
-      spark: [120, 128, 140, 136, 150, 155, 158, 164],
-
+      note: "tài xế đã duyệt KYC",
+      spark: [onlineDrivers, totalActiveDrivers],
       tone: "green",
     },
-
     {
       label: "Doanh thu hôm nay",
-
-      value: "48,6",
-
+      value: todayRevMillion,
       unit: "triệu đ",
-
-      trend: "+9,2%",
-
-      up: true,
-
-      note: "so với hôm qua",
-
-      spark: [12, 18, 22, 27, 33, 38, 44, 48],
-
+      trend: `${revDiffPct >= 0 ? "+" : ""}${revDiffPct}%`,
+      up: revDiffPct >= 0,
+      note: "đơn hoàn thành hôm nay",
+      spark: [Math.round(yesterdayRev / 1000), Math.round(todayRev / 1000)],
       tone: "amber",
     },
   ]
@@ -632,14 +675,35 @@ export default function Dashboard({
   const [tableFilter, setTableFilter] = useState("Tất cả")
 
   const [liveOrders, setLiveOrders] = useState<Order[]>([])
+  const [summary, setSummary] = useState<DashboardSummaryData | null>(null)
 
   useEffect(() => {
-    const token = localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"
+    const token = getAdminToken()
+    if (!token) return
+    const headers = { Authorization: `Bearer ${token}` }
+
+    fetch("/api/v1/admin/dashboard/summary", { headers })
+      .then((r) => r.json().then((j) => ({ status: r.status, j })))
+      .then(({ status, j: res }) => {
+        if (isUnauthorizedResponse(status, res?.message)) {
+          clearAdminSession()
+          return
+        }
+        if (res.success && res.data) {
+          setSummary(res.data)
+        }
+      })
+      .catch(() => {})
+
     fetch("/api/v1/admin/bookings?limit=8", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers,
     })
-      .then((r) => r.json())
-      .then((res) => {
+      .then((r) => r.json().then((j) => ({ status: r.status, j })))
+      .then(({ status, j: res }) => {
+        if (isUnauthorizedResponse(status, res?.message)) {
+          clearAdminSession()
+          return
+        }
         if (res.success && Array.isArray(res.data) && res.data.length > 0) {
           const mapped: Order[] = res.data.map((b: any) => {
             let tone: "green" | "amber" | "blue" | "sky" | "red" = "blue"
@@ -692,8 +756,8 @@ export default function Dashboard({
               value: Number(b.totalPrice || 0),
               time: timeStr,
               t: d.getTime(),
-              p: [10.7769, 106.7009],
-              d: [10.7769, 106.7009],
+              p: latLngToPct(Number(b.originLat), Number(b.originLng)),
+              d: latLngToPct(Number(b.destLat), Number(b.destLng)),
               km: Number(b.distanceKm || 5),
               stage,
               cancelled,
@@ -712,145 +776,40 @@ export default function Dashboard({
       .catch(() => {})
   }, [])
 
-  const currentOrderList = liveOrders.length > 0 ? liveOrders : orders
+  const currentOrderList = liveOrders
 
-  const lateOrders = currentOrderList
-
-    .filter((o) => o.late)
-
-    .sort((a, b) => (b.late ?? 0) - (a.late ?? 0))
+  const stuckList = summary?.stuckOrders ?? []
+  const pendingKycList = summary?.pendingKycList ?? []
 
   const items: Attn[] = [
-    ...lateOrders.slice(0, 2).map(
+    ...stuckList.map(
       (o): Attn => ({
         kind: "order",
-
-        sev: "red",
-
-        title: "Đơn giao chậm",
-
-        sub: `#${o.id} · chậm ${o.late} phút`,
-
+        sev: o.waitingMinutes > 30 ? "red" : "amber",
+        title: "Đơn chờ điều phối lâu",
+        sub: `#${o.bookingCode} · chờ ${Math.round(o.waitingMinutes)} phút`,
         action: "Xem đơn",
-
-        go: () => openOrder(o.id),
-
-        hoverId: o.id,
+        go: () => openOrder(o.bookingCode),
+        hoverId: o.bookingCode,
       }),
     ),
-
-    ...(newComplaints > 0
-      ? [
-          {
-            kind: "complaint",
-
-            sev: "red",
-
-            title: "Khiếu nại mới",
-
-            sub: "#DH0987 · Hàng bị trầy xước",
-
-            time: "4 phút trước",
-
-            action: "Xử lý",
-
-            go: () => goComplaints("KN-0231"),
-          } as Attn,
-        ]
-      : []),
-
-    ...(pendingLeft > 0
-      ? [
-          {
-            kind: "driver",
-
-            sev: "amber",
-
-            title: "Hồ sơ tài xế mới",
-
-            sub: "Nguyễn Văn Minh",
-
-            time: "2 phút trước",
-
-            action: "Xem hồ sơ",
-
-            go: () => goDrivers("HS-1291", "review"),
-          } as Attn,
-        ]
-      : []),
-
-    ...lateOrders.slice(2).map(
-      (o): Attn => ({
-        kind: "order",
-
+    ...pendingKycList.map(
+      (k): Attn => ({
+        kind: "driver",
         sev: "amber",
-
-        title: "Đơn giao chậm",
-
-        sub: `#${o.id} · chậm ${o.late} phút`,
-
-        action: "Xem đơn",
-
-        go: () => openOrder(o.id),
-
-        hoverId: o.id,
+        title: "Hồ sơ tài xế chờ duyệt",
+        sub: `${k.fullName || k.phone}${k.licensePlate ? ` · ${k.licensePlate}` : ""}`,
+        time: new Date(k.createdAt).toLocaleDateString("vi-VN"),
+        action: "Xem hồ sơ",
+        go: () => goDrivers(k.id, "review"),
       }),
     ),
-
-    ...(newComplaints > 1
-      ? [
-          {
-            kind: "complaint",
-
-            sev: "amber",
-
-            title: "Khiếu nại mới",
-
-            sub: "#DH0975 · Phụ phí ngoài dự kiến",
-
-            time: "22 phút trước",
-
-            action: "Xử lý",
-
-            go: () => goComplaints("KN-0229"),
-          } as Attn,
-        ]
-      : []),
-
-    {
-      kind: "verify",
-
-      sev: "amber",
-
-      title: "Tài xế cần xác minh",
-
-      sub: "Lê Thành Đạt · GPLX sắp hết hạn",
-
-      time: "1 giờ trước",
-
-      action: "Xác minh",
-
-      go: () => goDrivers(undefined, "all"),
-    },
-
-    ...(pendingLeft > 1
-      ? [
-          {
-            kind: "driver",
-
-            sev: "amber",
-
-            title: `${pendingLeft - 1} hồ sơ khác đang chờ`,
-
-            sub: "Chờ duyệt từ 38 phút trước",
-
-            action: "Mở hàng đợi",
-
-            go: () => goDrivers("HS-1290", "review"),
-          } as Attn,
-        ]
-      : []),
   ]
+
+  const idlePoints = (summary?.onlineLocations ?? []).map((loc) => ({
+    pt: latLngToPct(Number(loc.lat), Number(loc.lng)),
+    label: `${loc.driverName || "Tài xế"}${loc.licensePlate ? ` (${loc.licensePlate})` : ""}`,
+  }))
 
   const rows = currentOrderList.filter(
     (o) =>
@@ -860,7 +819,7 @@ export default function Dashboard({
 
   return (
     <div className="dash">
-      <Summary late={lateOrders.length} />
+      <Summary summary={summary} late={stuckList.length} />
       <div className="cc">
         <div className="cc-main">
           <section className="panel map-panel">
@@ -875,6 +834,8 @@ export default function Dashboard({
               setSel={setSel}
               hover={hover}
               onOpen={openOrder}
+              ordersList={liveOrders}
+              idlePoints={idlePoints}
             />
           </section>
           <section className="panel">
@@ -960,13 +921,10 @@ export default function Dashboard({
         <Attention
           items={items}
           counts={{
-            driver: pendingLeft,
-
-            order: lateOrders.length,
-
-            complaint: newComplaints,
-
-            verify: 1,
+            driver: summary?.pendingKycCount ?? pendingLeft,
+            order: stuckList.length,
+            complaint: 0,
+            verify: 0,
           }}
           filter={filter}
           setFilter={setFilter}

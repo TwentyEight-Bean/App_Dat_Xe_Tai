@@ -54,22 +54,66 @@ export const VIETNAM_CITIES = [
 // 3 Lớp Bản Đồ Thật (0 VNĐ, Không Cần API Key)
 const TILE_SERVERS: Record<MapLayer, { url: string; maxZoom: number; subdomains?: string }> = {
   standard: {
-    // OpenStreetMap tiêu chuẩn (tiếng Việt đầy đủ)
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    maxZoom: 19,
-    subdomains: "abc",
+    // Google Maps tiêu chuẩn (hiển thị đầy đủ tên đường tiếng Việt, không watermark)
+    url: "https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=vi",
+    maxZoom: 20,
+    subdomains: "0123",
   },
   traffic: {
-    // Chế độ ban đêm bằng bộ lọc màu thông minh (Dark Mode), không lo watermark hay API key
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    maxZoom: 19,
-    subdomains: "abc",
+    // Chế độ ban đêm bằng bộ lọc màu thông minh (Dark Mode) + lớp giao thông
+    url: "https://mt{s}.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}&hl=vi",
+    maxZoom: 20,
+    subdomains: "0123",
   },
   satellite: {
     // Ảnh vệ tinh toàn cầu Esri World Imagery (độ phân giải cao, 0 VNĐ)
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     maxZoom: 18,
   },
+}
+
+export interface RoadRouteResult {
+  coordinates: [number, number][]
+  distanceMeters: number
+  durationSeconds: number
+}
+
+// Bộ nhớ đệm lộ trình đường sá thực tế (bám sát lòng đường như Google Maps)
+const roadRouteCache = new Map<string, RoadRouteResult>()
+
+export async function fetchRoadRoute(
+  startLat: number,
+  startLng: number,
+  endLat: number,
+  endLng: number,
+  signal?: AbortSignal
+): Promise<RoadRouteResult | null> {
+  const key = `${startLat.toFixed(4)},${startLng.toFixed(4)}_${endLat.toFixed(4)},${endLng.toFixed(4)}`
+  if (roadRouteCache.has(key)) {
+    return roadRouteCache.get(key)!
+  }
+
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`
+    const res = await fetch(url, { signal })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (data.code === "Ok" && data.routes?.[0]?.geometry?.coordinates) {
+      const coords: [number, number][] = data.routes[0].geometry.coordinates.map(
+        (c: [number, number]) => [c[1], c[0]]
+      )
+      const result: RoadRouteResult = {
+        coordinates: coords,
+        distanceMeters: data.routes[0].distance || 0,
+        durationSeconds: data.routes[0].duration || 0,
+      }
+      roadRouteCache.set(key, result)
+      return result
+    }
+  } catch {
+    // Không làm gián đoạn UI khi hủy fetch hoặc mạng chậm
+  }
+  return null
 }
 
 export default function InteractiveMap({
@@ -124,6 +168,10 @@ export default function InteractiveMap({
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
   const bookingFixedMarkerRef = useRef<L.Marker | null>(null)
   const bookingRoutePolylineRef = useRef<L.Polyline | null>(null)
+  const bookingRouteCasingRef = useRef<L.Polyline | null>(null)
+  const bookingEtaBadgeRef = useRef<L.Marker | null>(null)
+  const routeFetchAbortRef = useRef<AbortController | null>(null)
+  const routeFetchTimeoutRef = useRef<number | null>(null)
 
   // Driver animated progress (0 -> 1)
   const [driverProgress, setDriverProgress] = useState(0)
@@ -197,59 +245,73 @@ export default function InteractiveMap({
       setGeocodingLoading(true)
       reverseGeocodeTimeoutRef.current = window.setTimeout(async () => {
         try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=vi`,
-            {
-              headers: {
-                "Accept-Language": "vi,en",
-              },
-            }
-          )
-          if (!res.ok) throw new Error("Geocoding network error")
-          const data = await res.json()
+          let formatted = ""
 
-          if (data && data.address) {
-            const addr = data.address
-            const house = addr.house_number ? `${addr.house_number} ` : ""
-            const road = addr.road || addr.street || addr.pedestrian || ""
-            const quarter =
-              addr.quarter || addr.suburb || addr.neighbourhood || addr.city_district || ""
-            const city = addr.city || addr.town || addr.county || addr.state || ""
-
-            let formatted = ""
-            if (road) {
-              formatted = `${house}${road}, ${quarter ? quarter + ", " : ""}${city}`
-            } else if (data.display_name) {
-              formatted = data.display_name.split(",").slice(0, 3).join(",").trim()
-            } else {
-              formatted = `Tọa độ: ${lat.toFixed(4)}, ${lng.toFixed(4)}`
+          // 1. Thử Photon Geocoder (cực nhanh, hỗ trợ đầy đủ tiếng Việt không lỗi DNS)
+          try {
+            const photonRes = await fetch(
+              `https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`
+            )
+            if (photonRes.ok) {
+              const photonData = await photonRes.json()
+              const props = photonData?.features?.[0]?.properties
+              if (props) {
+                const street = props.street || ""
+                const house = props.housenumber ? `${props.housenumber} ` : ""
+                const place = props.name && props.name !== street ? `${props.name}, ` : ""
+                const district = props.district || props.locality || ""
+                const city = props.city || ""
+                if (street) {
+                  formatted = `${place}${house}${street}${district ? ", " + district : ""}${city ? ", " + city : ""}`
+                } else if (props.name) {
+                  formatted = `${props.name}${district ? ", " + district : ""}${city ? ", " + city : ""}`
+                }
+              }
             }
+          } catch {}
 
-            if (targetMode === "pickup") {
-              setCurrentDisplayAddr(formatted)
-              onPickupChangeRef.current?.(formatted)
-            } else {
-              setCurrentDestDisplayAddr(formatted)
-              onDestChangeRef.current?.(formatted)
-            }
+          // 2. Dự phòng Nominatim nếu có kết nối
+          if (!formatted) {
+            try {
+              const res = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=vi`,
+                { headers: { "Accept-Language": "vi,en" } }
+              )
+              if (res.ok) {
+                const data = await res.json()
+                if (data && data.address) {
+                  const addr = data.address
+                  const house = addr.house_number ? `${addr.house_number} ` : ""
+                  const road = addr.road || addr.street || addr.pedestrian || ""
+                  const quarter = addr.quarter || addr.suburb || addr.neighbourhood || addr.city_district || ""
+                  const city = addr.city || addr.town || addr.county || addr.state || ""
+                  if (road) {
+                    formatted = `${house}${road}, ${quarter ? quarter + ", " : ""}${city}`
+                  } else if (data.display_name) {
+                    formatted = data.display_name.split(",").slice(0, 3).join(",").trim()
+                  }
+                }
+              }
+            } catch {}
+          }
+
+          if (!formatted) {
+            formatted = `Vị trí (${lat.toFixed(4)}, ${lng.toFixed(4)})`
+          }
+
+          if (targetMode === "pickup") {
+            setCurrentDisplayAddr(formatted)
+            onPickupChangeRef.current?.(formatted)
+          } else {
+            setCurrentDestDisplayAddr(formatted)
+            onDestChangeRef.current?.(formatted)
           }
         } catch (err) {
-          console.warn("Lỗi đọc địa chỉ Nominatim:", err)
-          const fallback =
-            targetMode === "pickup"
-              ? `Điểm đón (${lat.toFixed(4)}, ${lng.toFixed(4)})`
-              : `Điểm giao (${lat.toFixed(4)}, ${lng.toFixed(4)})`
-          if (targetMode === "pickup") {
-            setCurrentDisplayAddr(fallback)
-            onPickupChangeRef.current?.(fallback)
-          } else {
-            setCurrentDestDisplayAddr(fallback)
-            onDestChangeRef.current?.(fallback)
-          }
+          console.warn("Lỗi đọc địa chỉ:", err)
         } finally {
           setGeocodingLoading(false)
         }
-      }, 450)
+      }, 400)
     },
     []
   )
@@ -408,21 +470,125 @@ export default function InteractiveMap({
         bookingFixedMarkerRef.current = marker
       }
 
-      // Connecting Dashed Route Line between A and B
-      if (pickupCoords && destCoords) {
-        const line = L.polyline(
-          [
-            [pickupCoords.lat, pickupCoords.lng],
-            [destCoords.lat, destCoords.lng],
-          ],
-          {
-            color: targetPinMode === "pickup" ? "#10b981" : "#ef4444",
-            weight: 3.5,
-            opacity: 0.85,
-            dashArray: "8, 8",
-          }
-        ).addTo(bookingLayer)
+      // Helper vẽ tuyến đường bám sát lòng đường giao thông chuẩn Google Maps
+      const renderRoadRoute = (
+        rawCoords: [number, number][],
+        durationSec: number,
+        distMeters: number,
+        layer: L.LayerGroup,
+        startPt?: { lat: number; lng: number } | null,
+        endPt?: { lat: number; lng: number } | null
+      ) => {
+        if (bookingRouteCasingRef.current) {
+          bookingRouteCasingRef.current.remove()
+          bookingRouteCasingRef.current = null
+        }
+        if (bookingRoutePolylineRef.current) {
+          bookingRoutePolylineRef.current.remove()
+          bookingRoutePolylineRef.current = null
+        }
+        if (bookingEtaBadgeRef.current) {
+          bookingEtaBadgeRef.current.remove()
+          bookingEtaBadgeRef.current = null
+        }
+
+        const coords: [number, number][] = [...rawCoords]
+        if (startPt && coords.length > 0) {
+          coords.unshift([startPt.lat, startPt.lng])
+        }
+        if (endPt && coords.length > 0) {
+          coords.push([endPt.lat, endPt.lng])
+        }
+
+        // 1. Lớp viền phát sáng làm nổi bật đường đi
+        const casing = L.polyline(coords, {
+          color: "#1e3a8a",
+          weight: 8.5,
+          opacity: 0.28,
+          lineCap: "round",
+          lineJoin: "round",
+        }).addTo(layer)
+        bookingRouteCasingRef.current = casing
+
+        // 2. Lộ trình uốn lượn chính màu xanh dương đậm nét (như Google Maps hình 2)
+        const line = L.polyline(coords, {
+          color: "#2563eb",
+          weight: 5.5,
+          opacity: 0.96,
+          lineCap: "round",
+          lineJoin: "round",
+        }).addTo(layer)
         bookingRoutePolylineRef.current = line
+
+        // 3. Nút thời gian & khoảng cách nổi giữa cung đường (như nút '3 min' trong hình 2)
+        if (coords.length > 0 && durationSec > 0) {
+          const midIdx = Math.floor(coords.length / 2)
+          const midPoint = coords[midIdx]
+          const mins = Math.max(1, Math.round(durationSec / 60))
+          const km = (distMeters / 1000).toFixed(1)
+
+          const etaIcon = L.divIcon({
+            className: "route-eta-badge",
+            html: `
+              <div class="route-eta-pill">
+                <span class="route-eta-time">${mins} min</span>
+                <span class="route-eta-dot">•</span>
+                <span class="route-eta-dist">${km} km</span>
+              </div>
+            `,
+            iconSize: [84, 26],
+            iconAnchor: [42, 13],
+          })
+          const etaMarker = L.marker(midPoint, {
+            icon: etaIcon,
+            zIndexOffset: 700,
+            interactive: false,
+          }).addTo(layer)
+          bookingEtaBadgeRef.current = etaMarker
+        }
+      }
+
+      // Connecting Real Road Route between A and B
+      if (pickupCoords && destCoords) {
+        const cacheKey = `${pickupCoords.lat.toFixed(4)},${pickupCoords.lng.toFixed(4)}_${destCoords.lat.toFixed(4)},${destCoords.lng.toFixed(4)}`
+        const cached = roadRouteCache.get(cacheKey)
+
+        if (cached) {
+          renderRoadRoute(cached.coordinates, cached.durationSeconds, cached.distanceMeters, bookingLayer, pickupCoords, destCoords)
+        } else {
+          // Bỏ hoàn toàn đường chim bay - Chỉ vẽ lộ trình giao thông thực tế từ OSRM
+          if (routeFetchTimeoutRef.current) {
+            window.clearTimeout(routeFetchTimeoutRef.current)
+          }
+          if (routeFetchAbortRef.current) {
+            routeFetchAbortRef.current.abort()
+          }
+
+          const curPLat = pickupCoords.lat
+          const curPLng = pickupCoords.lng
+          const curDLat = destCoords.lat
+          const curDLng = destCoords.lng
+
+          routeFetchTimeoutRef.current = window.setTimeout(() => {
+            const controller = new AbortController()
+            routeFetchAbortRef.current = controller
+            fetchRoadRoute(curPLat, curPLng, curDLat, curDLng, controller.signal).then((res) => {
+              if (!res || !mapRef.current || !bookingLayerRef.current) return
+              const p = pickupCoordsRef.current
+              const d = destCoordsRef.current
+              if (!p || !d) return
+              if (
+                Math.abs(p.lat - curPLat) > 0.0001 ||
+                Math.abs(p.lng - curPLng) > 0.0001 ||
+                Math.abs(d.lat - curDLat) > 0.0001 ||
+                Math.abs(d.lng - curDLng) > 0.0001
+              ) {
+                return
+              }
+              renderRoadRoute(res.coordinates, res.durationSeconds, res.distanceMeters, bookingLayerRef.current, p, d)
+            })
+          }, 120)
+        }
       }
     },
     [mode, phase]
@@ -583,6 +749,20 @@ export default function InteractiveMap({
       if (bookingFixedMarkerRef.current) {
         bookingFixedMarkerRef.current.remove()
         bookingFixedMarkerRef.current = null
+      }
+      if (routeFetchTimeoutRef.current) {
+        window.clearTimeout(routeFetchTimeoutRef.current)
+      }
+      if (routeFetchAbortRef.current) {
+        routeFetchAbortRef.current.abort()
+      }
+      if (bookingRouteCasingRef.current) {
+        bookingRouteCasingRef.current.remove()
+        bookingRouteCasingRef.current = null
+      }
+      if (bookingEtaBadgeRef.current) {
+        bookingEtaBadgeRef.current.remove()
+        bookingEtaBadgeRef.current = null
       }
       if (bookingRoutePolylineRef.current) {
         bookingRoutePolylineRef.current.remove()
@@ -902,30 +1082,48 @@ export default function InteractiveMap({
         destCoordsRef.current?.lng ?? center.lng + 0.012,
       ]
 
-      const midLat = (pickupLatLng[0] + destLatLng[0]) / 2
-      const midLng = (pickupLatLng[1] + destLatLng[1]) / 2
+      let trackingCasing: L.Polyline | null = null
+      let trackingPolyline: L.Polyline | null = null
 
-      const waypoints: [number, number][] = [
-        pickupLatLng,
-        [midLat - 0.001, midLng - 0.002],
-        [midLat + 0.002, midLng + 0.001],
-        destLatLng,
-      ]
+      const drawTrackingPolylines = (coords: [number, number][]) => {
+        if (!mapRef.current || !tripTrackingLayerRef.current) return
+        if (trackingCasing) trackingCasing.remove()
+        if (trackingPolyline) trackingPolyline.remove()
 
-      // Outer glow line for high contrast
-      L.polyline(waypoints, {
-        color: "#0284c7",
-        weight: 10,
-        opacity: 0.25,
-      }).addTo(trackingLayer)
+        trackingCasing = L.polyline(coords, {
+          color: "#1e3a8a",
+          weight: 9,
+          opacity: 0.28,
+          lineCap: "round",
+          lineJoin: "round",
+        }).addTo(trackingLayer)
 
-      // Vibrant polyline along real route coordinates
-      const polyline = L.polyline(waypoints, {
-        color: "#2563eb",
-        weight: 6,
-        opacity: 0.95,
-      }).addTo(trackingLayer)
-      routeLayerRef.current = polyline
+        trackingPolyline = L.polyline(coords, {
+          color: "#2563eb",
+          weight: 5.5,
+          opacity: 0.96,
+          lineCap: "round",
+          lineJoin: "round",
+        }).addTo(trackingLayer)
+
+        routeLayerRef.current = trackingPolyline
+
+        try {
+          map.fitBounds(trackingPolyline.getBounds(), { padding: [80, 80], maxZoom: 16 })
+        } catch {}
+      }
+
+      const trackingCacheKey = `${pickupLatLng[0].toFixed(4)},${pickupLatLng[1].toFixed(4)}_${destLatLng[0].toFixed(4)},${destLatLng[1].toFixed(4)}`
+      const cachedTrackingRoute = roadRouteCache.get(trackingCacheKey)
+      if (cachedTrackingRoute) {
+        drawTrackingPolylines(cachedTrackingRoute.coordinates)
+      } else {
+        fetchRoadRoute(pickupLatLng[0], pickupLatLng[1], destLatLng[0], destLatLng[1]).then((res) => {
+          if (res && res.coordinates.length > 0) {
+            drawTrackingPolylines(res.coordinates)
+          }
+        })
+      }
 
       // Pickup Marker (Only ONE)
       const pickupIcon = L.divIcon({
@@ -970,11 +1168,6 @@ export default function InteractiveMap({
 
       const movingTruck = L.marker(pickupLatLng, { icon: truckIcon }).addTo(trackingLayer)
       movingTruckMarkerRef.current = movingTruck
-
-      // Fit bounds nicely with padding
-      try {
-        map.fitBounds(polyline.getBounds(), { padding: [80, 80], maxZoom: 16 })
-      } catch {}
 
       return () => {
         trackingLayer.clearLayers()

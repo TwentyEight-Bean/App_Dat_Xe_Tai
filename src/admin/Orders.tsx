@@ -2,7 +2,8 @@ import { useEffect, useState, type ReactNode } from "react"
 
 import { Icon, Status, Avatar } from "./ui"
 
-import { orders, stamps, stepNames, vnd, type Order } from "./data"
+import { stamps, stepNames, vnd, type Order } from "./data"
+import { clearAdminSession, getAdminToken, isUnauthorizedResponse } from "./auth"
 
 export const getDriverInitials = (name?: string | null): string => {
   if (!name || !name.trim() || name === "—") return "TX"
@@ -721,7 +722,7 @@ export default function OrdersPage({
 
   const [checked, setChecked] = useState<string[]>([])
 
-  const [dbOrders, setDbOrders] = useState<Order[]>(orders)
+  const [dbOrders, setDbOrders] = useState<Order[]>([])
   const [totalDb, setTotalDb] = useState(0)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -750,7 +751,8 @@ export default function OrdersPage({
   }, [q, status, vehicle])
 
   useEffect(() => {
-    const token = localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"
+    const token = getAdminToken()
+    if (!token) return
     const params = new URLSearchParams({
       page: String(page),
       limit: String(limit),
@@ -763,12 +765,10 @@ export default function OrdersPage({
     fetch(`/api/v1/admin/bookings?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => r.json())
-      .then((res) => {
-        if (!res.success && (res.message?.includes("Token không hợp lệ") || res.message?.includes("UNAUTHORIZED"))) {
-          localStorage.removeItem("admin_auth_token")
-          localStorage.removeItem("admin_user_info")
-          window.dispatchEvent(new Event("admin_session_expired"))
+      .then((r) => r.json().then((j) => ({ status: r.status, j })))
+      .then(({ status, j: res }) => {
+        if (!res.success && isUnauthorizedResponse(status, res?.message)) {
+          clearAdminSession()
           return
         }
         if (res.success && Array.isArray(res.data)) {
@@ -846,7 +846,7 @@ export default function OrdersPage({
 
   const rows = dbOrders
 
-  const active = dbOrders.find((o) => o.id === activeId) || orders.find((o) => o.id === activeId)
+  const active = dbOrders.find((o) => o.id === activeId)
 
   const all = rows.length > 0 && rows.every((r) => checked.includes(r.id))
 
@@ -1100,12 +1100,23 @@ export default function OrdersPage({
 
 export function OrderDetail({ id, back }: { id: string; back: () => void }) {
   const [dbOrder, setDbOrder] = useState<Order | null>(null)
+  const [rawBooking, setRawBooking] = useState<any | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [actionBusy, setActionBusy] = useState(false)
+  const [assignModalOpen, setAssignModalOpen] = useState(false)
+  const [driverOptions, setDriverOptions] = useState<any[]>([])
+  const [selectedDriverId, setSelectedDriverId] = useState("")
   const [lightbox, setLightbox] = useState<{ src: string; title: string } | null>(
     null,
   )
 
-  useEffect(() => {
-    const token = localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"
+  const loadOrder = () => {
+    const token = getAdminToken()
+    if (!token) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
     fetch(`/api/v1/admin/bookings?search=${encodeURIComponent(id)}&limit=1`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -1113,6 +1124,7 @@ export function OrderDetail({ id, back }: { id: string; back: () => void }) {
       .then((res) => {
         if (res.success && Array.isArray(res.data) && res.data.length > 0) {
           const b = res.data[0]
+          setRawBooking(b)
           const d = new Date(b.createdAt || Date.now())
           const timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
           setDbOrder({
@@ -1135,20 +1147,31 @@ export function OrderDetail({ id, back }: { id: string; back: () => void }) {
                     ? "Đang giao"
                     : b.status === "ARRIVED_AT_PICKUP"
                       ? "Đang bốc hàng"
-                      : "Đang xử lý",
+                      : b.status === "PENDING" || b.status === "SEARCHING"
+                        ? "Chờ tài xế"
+                        : "Đã nhận",
             tone:
               b.status === "COMPLETED"
                 ? "green"
                 : b.status === "CANCELLED"
                   ? "red"
-                  : "blue",
+                  : b.status === "PENDING" || b.status === "SEARCHING"
+                    ? "amber"
+                    : "blue",
             value: Number(b.totalPrice || 0),
             time: timeStr,
             t: d.getTime(),
             p: [10.7769, 106.7009],
             d: [10.7769, 106.7009],
             km: Number(b.distanceKm || 5),
-            stage: b.status === "COMPLETED" ? 4 : b.status === "IN_TRANSIT" ? 3 : 2,
+            stage:
+              b.status === "COMPLETED"
+                ? 4
+                : b.status === "IN_TRANSIT"
+                  ? 3
+                  : b.status === "PENDING" || b.status === "SEARCHING"
+                    ? 0
+                    : 2,
             cancelled: b.status === "CANCELLED",
             pickupProofImage: b.pickupProofImage || null,
             deliveryProofImage: b.deliveryProofImage || null,
@@ -1156,21 +1179,149 @@ export function OrderDetail({ id, back }: { id: string; back: () => void }) {
             cancelledBy: b.cancelledBy || null,
           } as Order)
         } else {
-          const mock = orders.find((x) => x.id === id)
-          if (mock) setDbOrder(mock)
+          setDbOrder(null)
+          setRawBooking(null)
         }
       })
       .catch(() => {
-        const mock = orders.find((x) => x.id === id)
-        if (mock) setDbOrder(mock)
+        setDbOrder(null)
       })
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadOrder()
   }, [id])
 
-  const o = dbOrder || (orders.find((x) => x.id === id) ?? orders[0])
+  const callBookingAction = async (
+    endpoint: string,
+    payload: Record<string, any>,
+  ) => {
+    const token = getAdminToken()
+    if (!token || !rawBooking) return
+    setActionBusy(true)
+    try {
+      const res = await fetch(
+        `/api/v1/admin/bookings/${rawBooking.id}/${endpoint}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        },
+      )
+      const json = await res.json()
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Thao tác thất bại")
+      }
+      window.alert(json.message || "Đã cập nhật đơn hàng")
+      setAssignModalOpen(false)
+      loadOrder()
+    } catch (err: any) {
+      window.alert(err?.message || "Lỗi kết nối máy chủ")
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  const handleOpenAssign = async () => {
+    const token = getAdminToken()
+    if (!token) return
+    setAssignModalOpen(true)
+    try {
+      const res = await fetch(
+        "/api/v1/admin/drivers?kycStatus=APPROVED&limit=50",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
+      const json = await res.json()
+      if (json.success && Array.isArray(json.data)) {
+        setDriverOptions(json.data.filter((d: any) => d.isActive !== false))
+      }
+    } catch {
+      setDriverOptions([])
+    }
+  }
+
+  const handleAdminCancel = () => {
+    const reason = window.prompt(
+      `Nhập lý do hủy đơn #${dbOrder?.id} (bắt buộc):`,
+    )
+    if (!reason || reason.trim().length < 3) {
+      if (reason !== null) {
+        window.alert("Lý do hủy phải có ít nhất 3 ký tự.")
+      }
+      return
+    }
+    if (!window.confirm(`Xác nhận HỦY đơn #${dbOrder?.id}?`)) return
+    callBookingAction("cancel", { reason: reason.trim() })
+  }
+
+  const handleAdminRefund = () => {
+    const reason = window.prompt(
+      `Nhập lý do hoàn tiền ${vnd(dbOrder?.value || 0)} vào ví khách hàng:`,
+    )
+    if (!reason || reason.trim().length < 3) {
+      if (reason !== null) {
+        window.alert("Lý do hoàn tiền phải có ít nhất 3 ký tự.")
+      }
+      return
+    }
+    if (
+      !window.confirm(
+        `Xác nhận HOÀN TIỀN ${vnd(dbOrder?.value || 0)} cho đơn #${dbOrder?.id}?`,
+      )
+    ) {
+      return
+    }
+    callBookingAction("refund", { reason: reason.trim() })
+  }
+
+  if (loading) {
+    return (
+      <div className="page">
+        <button type="button" className="back-link" onClick={back}>
+          <Icon name="arrow" size={13} />
+          Quay lại danh sách đơn hàng
+        </button>
+        <div className="panel pad">Đang tải chi tiết đơn hàng #{id}...</div>
+      </div>
+    )
+  }
+
+  if (!dbOrder) {
+    return (
+      <div className="page">
+        <button type="button" className="back-link" onClick={back}>
+          <Icon name="arrow" size={13} />
+          Quay lại danh sách đơn hàng
+        </button>
+        <div className="panel pad">
+          <h2>Không tìm thấy đơn hàng #{id}</h2>
+          <p className="muted">
+            Đơn hàng không tồn tại trong cơ sở dữ liệu hoặc đã bị xóa.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const o = dbOrder
 
   const promo = o.value > 100000 ? 10000 : 0
 
   const surge = o.late ? 15000 : 0
+
+  const canAssign =
+    rawBooking?.status === "PENDING" || rawBooking?.status === "SEARCHING"
+  const canCancel =
+    rawBooking?.status &&
+    rawBooking.status !== "COMPLETED" &&
+    rawBooking.status !== "CANCELLED"
+  const canRefund = rawBooking?.paymentStatus === "PAID"
 
   return (
     <div className="page">
@@ -1184,12 +1335,124 @@ export function OrderDetail({ id, back }: { id: string; back: () => void }) {
             Đơn hàng <span className="code">#{o.id}</span>
             <Status tone={o.tone}>{o.status}</Status>
             {o.late && <Status tone="red">Chậm {o.late} phút</Status>}
+            {rawBooking?.paymentStatus === "REFUNDED" && (
+              <Status tone="amber">Đã hoàn tiền</Status>
+            )}
           </h1>
           <p>
-            Tạo lúc {o.time}, hôm nay · {o.vehicle} · {o.km} km
+            Tạo lúc {o.time} · {o.vehicle} · {o.km} km
           </p>
         </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {canAssign && (
+            <button
+              type="button"
+              disabled={actionBusy}
+              className="btn btn-primary"
+              onClick={handleOpenAssign}
+            >
+              Gán tài xế thủ công
+            </button>
+          )}
+          {canRefund && (
+            <button
+              type="button"
+              disabled={actionBusy}
+              className="btn"
+              style={{
+                backgroundColor: "#fffbeb",
+                color: "#b45309",
+                border: "1px solid #fde68a",
+              }}
+              onClick={handleAdminRefund}
+            >
+              Hoàn tiền vào ví
+            </button>
+          )}
+          {canCancel && (
+            <button
+              type="button"
+              disabled={actionBusy}
+              className="btn"
+              style={{
+                backgroundColor: "#fef2f2",
+                color: "#dc2626",
+                border: "1px solid #fecaca",
+              }}
+              onClick={handleAdminCancel}
+            >
+              Hủy đơn (Admin)
+            </button>
+          )}
+        </div>
       </div>
+
+      {assignModalOpen && (
+        <div
+          className="panel pad"
+          style={{
+            marginBottom: 16,
+            border: "1px solid #bfdbfe",
+            backgroundColor: "#eff6ff",
+          }}
+        >
+          <div className="dsec-label">Điều phối tài xế thủ công</div>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <select
+              value={selectedDriverId}
+              onChange={(e) => setSelectedDriverId(e.target.value)}
+              style={{
+                flex: 1,
+                minWidth: 240,
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid #cbd5e1",
+                backgroundColor: "#fff",
+              }}
+            >
+              <option value="">-- Chọn tài xế đã duyệt KYC --</option>
+              {driverOptions.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.userName || d.userPhone} · {d.licensePlate || "Chưa có BKS"} (
+                  {d.isOnline ? "Online" : "Offline"})
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={actionBusy || !selectedDriverId}
+              className="btn btn-primary"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Xác nhận gán tài xế này cho đơn #${o.id}?`,
+                  )
+                ) {
+                  callBookingAction("assign-driver", {
+                    driverId: selectedDriverId,
+                  })
+                }
+              }}
+            >
+              Xác nhận gán
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setAssignModalOpen(false)}
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
       <div className="detail-grid">
         <div className="stack">
           <section className="panel pad">
@@ -1380,9 +1643,14 @@ function CallLogsSection({ bookingId }: { bookingId: string }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const token = getAdminToken()
+    if (!token) {
+      setLoading(false)
+      return
+    }
     fetch(`/api/v1/calls/trip/${bookingId}`, {
       headers: {
-        Authorization: `Bearer ${localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"}`,
+        Authorization: `Bearer ${token}`,
       },
     })
       .then((r) => r.json())

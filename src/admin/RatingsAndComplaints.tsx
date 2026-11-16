@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { Icon, Avatar, Status } from "./ui"
-import Complaints from "./Complaints"
 import { type Complaint } from "./data"
+import { clearAdminSession, isUnauthorizedResponse, requireAdminToken } from "./auth"
 
 export type DriverRatingItem = {
   id: string
@@ -40,28 +40,32 @@ export type RatingSummary = {
 }
 
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
+  const token = requireAdminToken()
   const res = await fetch(url, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"}`,
+      Authorization: `Bearer ${token}`,
       ...(opts?.headers ?? {}),
     },
   })
 
   const json = await res.json()
   if (!res.ok || json.success === false) {
+    if (isUnauthorizedResponse(res.status, json.message)) {
+      clearAdminSession()
+    }
     throw new Error(json.message || "Lỗi API")
   }
   return json as T
 }
 
 export default function RatingsAndComplaints({
-  complaints,
-  setComplaints,
-  complaintsFocus,
+  complaints: _complaints,
+  setComplaints: _setComplaints,
+  complaintsFocus: _complaintsFocus,
   openOrder,
-  initialTab = "ratings",
+  initialTab: _initialTab = "ratings",
 }: {
   complaints: Complaint[]
   setComplaints: (f: (p: Complaint[]) => Complaint[]) => void
@@ -69,13 +73,7 @@ export default function RatingsAndComplaints({
   openOrder: (id: string) => void
   initialTab?: "ratings" | "complaints"
 }) {
-  const [activeTab, setActiveTab] = useState<"ratings" | "complaints">(initialTab)
-
-  useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab)
-    }
-  }, [initialTab])
+  const [activeTab, setActiveTab] = useState<"ratings" | "complaints">("ratings")
 
   // Ratings State
   const [ratings, setRatings] = useState<DriverRatingItem[]>([])
@@ -140,8 +138,6 @@ export default function RatingsAndComplaints({
     )
   }, [summary])
 
-  const newComplaintsCount = complaints.filter((c) => c.status === "Mới").length
-
   return (
     <div className="page" style={{ paddingBottom: 48 }}>
       {/* Page Header */}
@@ -169,31 +165,17 @@ export default function RatingsAndComplaints({
           </p>
         </div>
 
-        {/* Tab Switcher */}
+        {/* Tab Switcher (Ẩn tab Khiếu nại cho tới khi có backend DB) */}
         <div className="seg">
           <button
             type="button"
-            className={activeTab === "ratings" ? "on" : ""}
+            className="on"
             onClick={() => setActiveTab("ratings")}
             style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
             <Icon name="star" size={14} />
             <span>Đánh giá tài xế</span>
             <span className="seg-badge">{summary.totalRatings || ratings.length}</span>
-          </button>
-          <button
-            type="button"
-            className={activeTab === "complaints" ? "on" : ""}
-            onClick={() => setActiveTab("complaints")}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-          >
-            <Icon name="alert" size={14} />
-            <span>Khiếu nại</span>
-            {newComplaintsCount > 0 && (
-              <span className="seg-badge" style={{ background: "#fee2e2", color: "#dc2626" }}>
-                {newComplaintsCount}
-              </span>
-            )}
           </button>
         </div>
       </div>
@@ -724,15 +706,7 @@ export default function RatingsAndComplaints({
             )}
           </section>
         </div>
-      ) : (
-        /* Sub Tab 2: Khiếu nại khách hàng */
-        <Complaints
-          items={complaints}
-          setItems={setComplaints}
-          focus={complaintsFocus}
-          openOrder={openOrder}
-        />
-      )}
+      ) : null}
     </div>
   )
 }

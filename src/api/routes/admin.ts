@@ -8,7 +8,12 @@ import {
   getAllDrivers,
   setDriverActiveStatus,
   getAllUsers,
+  setUserStatus,
+  getDashboardSummary,
   getAdminBookings,
+  adminCancelBooking,
+  adminAssignDriver,
+  adminRefundBooking,
   getAllDriverRatings,
 } from "../../lib/adminService"
 
@@ -71,11 +76,37 @@ router.get("/ratings", async (req, res, next) => {
   }
 })
 
+router.get("/dashboard/summary", async (req, res, next) => {
+  try {
+    const summary = await getDashboardSummary()
+    res.json({ success: true, data: summary })
+  } catch (err) {
+    next(err)
+  }
+})
+
 router.get("/users", async (req, res, next) => {
   try {
     const allUsers = await getAllUsers()
 
     res.json({ success: true, data: allUsers })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.patch("/users/:id/status", async (req, res, next) => {
+  try {
+    const { status } = req.body
+    const updated = await setUserStatus(req.params.id as string, status)
+    res.json({
+      success: true,
+      message:
+        status === "BLOCKED"
+          ? "Đã tạm khóa tài khoản khách hàng"
+          : "Đã mở khóa tài khoản khách hàng",
+      data: updated,
+    })
   } catch (err) {
     next(err)
   }
@@ -460,6 +491,64 @@ router.get("/bookings", async (req, res, next) => {
         total: result.total,
         totalPages: result.totalPages,
       },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /admin/bookings/:id/cancel
+ * Admin hủy đơn hàng (bắt buộc nhập lý do)
+ */
+router.post("/bookings/:id/cancel", async (req: AuthRequest, res, next) => {
+  try {
+    const { reason } = req.body
+    const updated = await adminCancelBooking(req.params.id as string, reason)
+    res.json({
+      success: true,
+      message: `Đã hủy đơn ${updated.bookingCode}`,
+      data: updated,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /admin/bookings/:id/assign-driver
+ * Admin gán / điều phối tài xế thủ công cho đơn đang chờ
+ */
+router.post("/bookings/:id/assign-driver", async (req: AuthRequest, res, next) => {
+  try {
+    const { driverId } = req.body
+    const updated = await adminAssignDriver(req.params.id as string, driverId)
+    res.json({
+      success: true,
+      message: `Đã điều phối tài xế cho đơn ${updated.bookingCode}`,
+      data: updated,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /admin/bookings/:id/refund
+ * Admin hoàn tiền vào ví khách hàng cho đơn đã thanh toán
+ */
+router.post("/bookings/:id/refund", async (req: AuthRequest, res, next) => {
+  try {
+    const { reason } = req.body
+    const updated = await adminRefundBooking(
+      req.params.id as string,
+      reason,
+      req.user!.userId,
+    )
+    res.json({
+      success: true,
+      message: `Đã hoàn tiền cho đơn ${updated.bookingCode}`,
+      data: updated,
     })
   } catch (err) {
     next(err)
