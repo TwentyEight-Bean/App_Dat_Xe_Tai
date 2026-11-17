@@ -4,7 +4,7 @@ import "./admin.css"
 
 import { Icon, Avatar, type IconName } from "./admin/ui"
 
-import { orders, pending, complaints0, type Complaint } from "./admin/data"
+import { type Complaint } from "./admin/data"
 
 import Dashboard from "./admin/Dashboard"
 
@@ -18,7 +18,6 @@ import RatingsAndComplaints from "./admin/RatingsAndComplaints"
 
 import Pricing from "./admin/Pricing"
 
-import MobileAdmin from "./admin/Mobile"
 import AdminLoginGate from "./AdminLoginGate"
 import Accounting from "./admin/Accounting"
 import Wallets from "./admin/Wallets"
@@ -261,7 +260,8 @@ export default function Admin() {
 
   const [driverFocus, setDriverFocus] = useState<string | undefined>()
 
-  const [cs, setCs] = useState<Complaint[]>(complaints0)
+  const [cs, setCs] = useState<Complaint[]>([])
+  const [pendingKycCount, setPendingKycCount] = useState(0)
 
   const [csFocus, setCsFocus] = useState<string | undefined>()
 
@@ -317,18 +317,28 @@ export default function Admin() {
     )
   }
 
+  useEffect(() => {
+    if (!adminToken) return
+    fetch("/api/v1/admin/dashboard/summary", {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res?.success && typeof res.data?.pendingKycCount === "number") {
+          setPendingKycCount(res.data.pendingKycCount)
+        }
+      })
+      .catch(() => {})
+  }, [adminToken, tick, view])
+
   const section: Section = view === "order-detail" ? "orders" : view
 
-  const pendingLeft = pending.filter((p) => !decided[p.id]).length
+  const pendingLeft = pendingKycCount
 
-  const newCs = cs.filter((c) => c.status === "Mới").length
+  const newCs = 0
 
   const badge: Partial<Record<Section, number>> = {
     drivers: pendingLeft,
-
-    ratings: newCs,
-
-    complaints: newCs,
   }
 
   const idx = nav.findIndex((n) => n.id === section)
@@ -375,56 +385,15 @@ export default function Admin() {
     ...nav.map(
       (n): Cmd => ({
         label: n.label,
-
         hint: "Trang",
-
         icon: n.icon,
-
         fn: () => go(n.id),
-      }),
-    ),
-
-    ...orders.map(
-      (o): Cmd => ({
-        label: `#${o.id} · ${o.customer}`,
-
-        hint: o.status,
-
-        icon: "orders",
-
-        fn: () => openFull(o.id),
-      }),
-    ),
-
-    ...pending.map(
-      (p): Cmd => ({
-        label: p.name,
-
-        hint: "Hồ sơ chờ duyệt",
-
-        icon: "drivers",
-
-        fn: () => goDrivers(p.id),
       }),
     ),
   ]
 
-  if (mobile)
-    return (
-      <div className="admin-app is-mobile">
-        <MobileAdmin
-          decided={decided}
-          setDecided={setDecided}
-          cs={cs}
-          setCs={setCs}
-          onLogout={handleLogout}
-          adminUser={adminUser}
-        />
-      </div>
-    )
-
   return (
-    <div className="admin-app">
+    <div className={`admin-app${mobile ? " is-mobile" : ""}`}>
       <aside className="a-side">
         <div className="a-brand">
           <span className="brand-mark">
@@ -457,16 +426,6 @@ export default function Admin() {
           ))}
         </nav>
         <div className="a-side-bottom">
-          <button
-            type="button"
-            className={`side-settings ${
-              section === "settings" ? "active" : ""
-            }`}
-            onClick={() => go("settings")}
-          >
-            <Icon name="settings" size={18} />
-            <span>Cài đặt</span>
-          </button>
           <div
             className="a-me"
             style={{
@@ -632,26 +591,6 @@ export default function Admin() {
             />
           )}
           {view === "cron" && <SystemCron />}
-          {view === "settings" && (
-            <div className="page">
-              <div className="page-head">
-                <div>
-                  <h1>Cài đặt</h1>
-                  <p>Thiết lập vận hành và quyền truy cập hệ thống</p>
-                </div>
-              </div>
-              <section className="panel pad settings-stub">
-                <Icon name="settings" size={22} />
-                <div>
-                  <strong>6 nhóm thiết lập</strong>
-                  <small>
-                    Khu vực hoạt động, bảng giá, thông báo, phân quyền, tích hợp
-                    và bảo mật.
-                  </small>
-                </div>
-              </section>
-            </div>
-          )}
         </main>
       </div>
       {palette && (

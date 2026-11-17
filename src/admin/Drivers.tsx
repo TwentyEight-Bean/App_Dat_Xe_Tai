@@ -8,15 +8,17 @@ import {
   type DocState,
   type Pending,
 } from "./data"
+import { clearAdminSession, isUnauthorizedResponse, requireAdminToken } from "./auth"
 
 async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
+  const token = requireAdminToken()
   const res = await fetch(url, {
     ...opts,
 
     headers: {
       "Content-Type": "application/json",
 
-      Authorization: `Bearer ${localStorage.getItem("admin_auth_token") || "DEV_ADMIN_TOKEN"}`,
+      Authorization: `Bearer ${token}`,
 
       ...(opts?.headers ?? {}),
     },
@@ -25,10 +27,8 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const json = await res.json()
 
   if (!res.ok || json.success === false) {
-    if (res.status === 401 || json.message?.includes("Token không hợp lệ") || json.message?.includes("UNAUTHORIZED")) {
-      localStorage.removeItem("admin_auth_token")
-      localStorage.removeItem("admin_user_info")
-      window.dispatchEvent(new Event("admin_session_expired"))
+    if (isUnauthorizedResponse(res.status, json.message)) {
+      clearAdminSession()
     }
     throw new Error(json.message || "Lỗi API")
   }

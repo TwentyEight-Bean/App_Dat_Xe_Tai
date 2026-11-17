@@ -32,36 +32,13 @@ router.post("/admin/login", async (req, res, next) => {
     }
 
     const input = (email || "").trim()
-    const targetEmail =
-      input.toLowerCase() === "admin" ? "admin@fastdrop.vn" : input
 
     // Tìm tài khoản theo email hoặc phone
-    let [foundUser] = await db
+    const [foundUser] = await db
       .select()
       .from(users)
-      .where(or(eq(users.email, targetEmail), eq(users.phone, input)))
+      .where(or(eq(users.email, input), eq(users.phone, input)))
       .limit(1)
-
-    // Nếu hệ thống chưa có tài khoản admin nào và đăng nhập bằng tài khoản mẫu
-    if (
-      !foundUser &&
-      targetEmail === "admin@fastdrop.vn" &&
-      password === "admin123"
-    ) {
-      const defaultPasswordHash = await hashPassword("admin123")
-      const [seededAdmin] = await db
-        .insert(users)
-        .values({
-          phone: "0900000000",
-          email: "admin@fastdrop.vn",
-          fullName: "Minh Anh (Quản trị viên)",
-          passwordHash: defaultPasswordHash,
-          role: "ADMIN",
-          status: "ACTIVE",
-        })
-        .returning()
-      foundUser = seededAdmin
-    }
 
     if (!foundUser) {
       return res.status(401).json({

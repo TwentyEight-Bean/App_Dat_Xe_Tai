@@ -5388,11 +5388,14 @@ export default function App() {
                     aria-label="Kéo lên để đặt xe"
                     onPointerDown={(event) => {
                       swipeStart.current = event.clientY
+                      try {
+                        event.currentTarget.setPointerCapture(event.pointerId)
+                      } catch {}
                     }}
                     onPointerUp={(event) => {
                       if (
                         swipeStart.current !== null &&
-                        swipeStart.current - event.clientY > 40
+                        swipeStart.current - event.clientY > 25
                       )
                         setSheetExpanded(true)
                       swipeStart.current = null
@@ -5447,11 +5450,14 @@ export default function App() {
                         title="Chạm hoặc kéo xuống để thu gọn"
                         onPointerDown={(event) => {
                           swipeStart.current = event.clientY
+                          try {
+                            event.currentTarget.setPointerCapture(event.pointerId)
+                          } catch {}
                         }}
                         onPointerUp={(event) => {
                           if (
                             swipeStart.current !== null &&
-                            event.clientY - swipeStart.current > 40
+                            event.clientY - swipeStart.current > 25
                           )
                             setSheetExpanded(false)
                           swipeStart.current = null

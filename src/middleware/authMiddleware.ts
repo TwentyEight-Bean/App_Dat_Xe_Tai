@@ -27,8 +27,11 @@ export const authenticate = (authHeader?: string | null): JwtPayload => {
     )
   }
 
-  // Cho phép token DEV đặc biệt trong môi trường non-production
-  if (process.env.NODE_ENV !== "production") {
+  // Chỉ cho phép token DEV khi chạy test hoặc bật ALLOW_DEV_TOKENS=true (và không phải production)
+  if (
+    process.env.NODE_ENV !== "production" &&
+    (process.env.NODE_ENV === "test" || process.env.ALLOW_DEV_TOKENS === "true")
+  ) {
     if (token === "DEV_ADMIN_TOKEN") {
       return { userId: "dev-admin", role: "ADMIN", phone: "0000" }
     }
