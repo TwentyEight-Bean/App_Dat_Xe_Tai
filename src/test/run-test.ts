@@ -154,13 +154,17 @@ async function runTests() {
     "Từ chối truy cập khi không có Bearer Token (Đã vá lỗ hổng Bypass)",
   )
 
-  // TEST 4.2: Dev Token for testing
-
-  const devAdmin = authenticate("Bearer DEV_ADMIN_TOKEN")
+  // TEST 4.2: Dev Token bypass rejection
+  let devTokenRejected = false
+  try {
+    authenticate("Bearer DEV_ADMIN_TOKEN")
+  } catch (e: any) {
+    devTokenRejected = true
+  }
 
   assert(
-    devAdmin.role === "ADMIN" && devAdmin.userId === "dev-admin",
-    "Chấp nhận DEV_ADMIN_TOKEN cho môi trường test",
+    devTokenRejected,
+    "Từ chối DEV_ADMIN_TOKEN (Đã vá lỗ hổng Dev Token Bypass)",
   )
 
   // TEST 5: Cloudinary Signature Generation (Sprint 1 - Task 1.5)

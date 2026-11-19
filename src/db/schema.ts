@@ -55,6 +55,22 @@ export const driverDocTypeEnum = pgEnum("driver_doc_type", [
   "PORTRAIT",
 ])
 
+// Enum trạng thái khiếu nại
+export const complaintStatusEnum = pgEnum("complaint_status", [
+  "PENDING",
+  "PROCESSING",
+  "RESOLVED",
+  "REJECTED",
+])
+
+// Enum loại thông báo
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "order",
+  "chat",
+  "promo",
+  "system",
+])
+
 // --- CORE TABLES ---
 
 // 2.1 USERS
@@ -63,6 +79,7 @@ export const users = pgTable("users", {
   phone: varchar("phone", { length: 20 }).notNull().unique(),
   email: varchar("email", { length: 100 }).unique(),
   passwordHash: varchar("password_hash", { length: 255 }),
+  pinHash: varchar("pin_hash", { length: 255 }),
   fullName: varchar("full_name", { length: 100 }),
   avatarUrl: text("avatar_url"),
   role: userRoleEnum("role").notNull().default("CUSTOMER"),
@@ -518,3 +535,66 @@ export const driverRatings = pgTable(
   },
 )
 
+
+// 4.9 COMPLAINTS (Khiếu nại & báo cáo sự cố của khách hàng)
+export const complaints = pgTable(
+  "complaints",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bookingId: uuid("booking_id").references(() => bookings.id, {
+      onDelete: "set null",
+    }),
+    driverId: uuid("driver_id").references(() => driverProfiles.id, {
+      onDelete: "set null",
+    }),
+    category: varchar("category", { length: 50 }).notNull(),
+    description: text("description").notNull(),
+    estimatedLoss: varchar("estimated_loss", { length: 100 }),
+    proofImageUrls: text("proof_image_urls")
+      .array()
+      .default(sql`'{}'::text[]`),
+    status: complaintStatusEnum("status").default("PENDING").notNull(),
+    adminNotes: text("admin_notes"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => {
+    return {
+      userIdx: index("idx_complaints_user_id").on(table.userId),
+      bookingIdx: index("idx_complaints_booking_id").on(table.bookingId),
+      statusIdx: index("idx_complaints_status").on(table.status),
+      createdIdx: index("idx_complaints_created_at").on(table.createdAt),
+    }
+  },
+)
+
+// 4.10 NOTIFICATIONS (Lịch sử thông báo trong ứng dụng)
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 255 }).notNull(),
+    message: text("message").notNull(),
+    type: notificationTypeEnum("type").default("system").notNull(),
+    data: jsonb("data"),
+    isRead: boolean("is_read").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => {
+    return {
+      userIdx: index("idx_notifications_user_id").on(table.userId),
+      userUnreadIdx: index("idx_notifications_user_unread").on(
+        table.userId,
+        table.isRead,
+      ),
+      createdIdx: index("idx_notifications_created_at").on(table.createdAt),
+    }
+  },
+)

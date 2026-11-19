@@ -92,7 +92,7 @@ export interface PriceEstimateResult {
   }
 }
 
-// Fallback data khi chưa kết nối Database PostgreSQL
+// DEV ONLY: Mock data for testing, not used in production
 
 const MOCK_PRICING_RULES = [
   {
@@ -354,17 +354,19 @@ export async function getPricingRules() {
 
       .where(eq(vehicleTypes.isActive, true))
 
-    if (list.length > 0) return list
+    if (list.length === 0) {
+      console.warn("[pricingService] Không tìm thấy quy tắc giá nào trong Database")
+      return []
+    }
 
-    return MOCK_PRICING_RULES
+    return list
   } catch (err) {
     console.warn(
-      "[pricingService] Không thể kết nối Database, chuyển sang dữ liệu mặc định:",
-
+      "[pricingService] Lỗi kết nối Database khi lấy bảng giá cước:",
       (err as any)?.message,
     )
 
-    return MOCK_PRICING_RULES
+    return []
   }
 }
 
@@ -382,17 +384,19 @@ export async function getSurchargeServices() {
 
       .where(eq(surchargeServices.isActive, true))
 
-    if (list.length > 0) return list
+    if (list.length === 0) {
+      console.warn("[pricingService] Không tìm thấy phụ phí nào trong Database")
+      return []
+    }
 
-    return MOCK_SURCHARGE_SERVICES
+    return list
   } catch (err) {
     console.warn(
-      "[pricingService] Không thể kết nối Database, chuyển sang phụ phí mặc định:",
-
+      "[pricingService] Lỗi kết nối Database khi lấy danh mục phụ phí:",
       (err as any)?.message,
     )
 
-    return MOCK_SURCHARGE_SERVICES
+    return []
   }
 }
 

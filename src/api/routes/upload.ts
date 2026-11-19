@@ -51,7 +51,22 @@ router.post("/server", requireAuth, async (req: AuthRequest, res, next) => {
       res.status(400).json({
         success: false,
         message:
-          "Thiếu tham số 'filePath' (Đường dẫn file hoặc chuỗi Base64 Data URI)",
+          "Thiếu tham số 'filePath' (Chuỗi Base64 Data URI)",
+      })
+      return
+    }
+
+    // Chống lỗ hổng SSRF / Đọc file cục bộ: Chỉ chấp nhận chuỗi base64 Data URI hợp lệ
+    const isBase64DataUri =
+      typeof filePath === "string" &&
+      (filePath.startsWith("data:image/") ||
+        filePath.startsWith("data:application/pdf;base64,"))
+
+    if (!isBase64DataUri) {
+      res.status(400).json({
+        success: false,
+        message:
+          "Dữ liệu 'filePath' không hợp lệ. Chỉ chấp nhận chuỗi base64 Data URI (bắt đầu bằng 'data:image/' hoặc 'data:application/pdf;base64,')",
       })
       return
     }

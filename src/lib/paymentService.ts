@@ -50,7 +50,17 @@ export const MOMO_CONFIG = {
     "http://localhost:3000/api/v1/payments/momo-ipn",
 }
 
-export type PaymentGateway = "VNPAY" | "MOMO"
+/**
+ * Cấu hình VietQR Chuyển khoản trực tiếp vào tài khoản ngân hàng thụ hưởng
+ */
+export const VIETQR_CONFIG = {
+  bankId: process.env.BANK_ID || "VCB", // Vietcombank
+  bankName: "Vietcombank (VCB)",
+  accountNo: process.env.BANK_ACCOUNT_NO || "1049761056",
+  accountName: process.env.BANK_ACCOUNT_NAME || "TRAN VU HUNG",
+}
+
+export type PaymentGateway = "VNPAY" | "MOMO" | "VIETQR"
 
 export type PaymentPurpose = "TOPUP_WALLET" | "PAY_BOOKING"
 
@@ -284,6 +294,13 @@ export async function createPaymentOrder(dto: CreatePaymentDto) {
     paymentUrl = `https://test-payment.momo.vn/v2/gateway/pay?partnerCode=${MOMO_CONFIG.partnerCode}&orderId=${transactionCode}&requestId=${requestId}&amount=${numAmount}&orderInfo=${encodeURIComponent(orderDesc)}&signature=${signature}`
 
     qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentUrl)}`
+  } else if (gateway === "VIETQR") {
+    // Chuẩn VietQR Quốc Gia nạp tiền trực tiếp vào tài khoản ngân hàng thụ hưởng
+    const cleanAccountName = encodeURIComponent(VIETQR_CONFIG.accountName)
+    const transferMemo = encodeURIComponent(`${transactionCode}`)
+    // Tạo link QR VietQR chuẩn ngân hàng: https://img.vietqr.io/image/<BANK_ID>-<ACCOUNT_NO>-compact2.png?amount=<AMOUNT>&addInfo=<MEMO>&accountName=<NAME>
+    qrCodeUrl = `https://img.vietqr.io/image/${VIETQR_CONFIG.bankId}-${VIETQR_CONFIG.accountNo}-compact2.png?amount=${numAmount}&addInfo=${transferMemo}&accountName=${cleanAccountName}`
+    paymentUrl = qrCodeUrl
   } else {
     throw new ApiError(400, `Cổng thanh toán "${gateway}" không được hỗ trợ`)
   }

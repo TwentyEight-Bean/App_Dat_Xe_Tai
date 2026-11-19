@@ -6,6 +6,7 @@ interface ComplaintModalProps {
   bookingCode?: string | null
   bookingId?: string | null
   driverName?: string | null
+  driverId?: string | null
 }
 
 const CATEGORIES = [
@@ -24,6 +25,7 @@ export default function ComplaintModal({
   bookingCode,
   bookingId,
   driverName,
+  driverId,
 }: ComplaintModalProps) {
   const [selectedCat, setSelectedCat] = useState("cargo_damage")
   const [description, setDescription] = useState("")
@@ -31,6 +33,7 @@ export default function ComplaintModal({
   const [proofImage, setProofImage] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   if (!isOpen) return null
 
@@ -46,7 +49,7 @@ export default function ComplaintModal({
     reader.readAsDataURL(file)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!description.trim()) {
       alert("Vui lòng mô tả chi tiết sự cố gặp phải.")
@@ -54,14 +57,90 @@ export default function ComplaintModal({
     }
 
     setIsSubmitting(true)
-    setTimeout(() => {
-      setIsSubmitting(false)
+    setErrorMessage(null)
+
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("auth_token") ||
+            localStorage.getItem("driver_auth_token") ||
+            localStorage.getItem("admin_auth_token") ||
+            ""
+          : ""
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      }
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`
+      }
+
+      let uploadedProofUrl: string | null = null
+
+      // 1. Upload ảnh bằng chứng lên máy chủ / Cloudinary nếu có
+      if (proofImage && proofImage.startsWith("data:image/")) {
+        try {
+          const uploadRes = await fetch("/api/v1/upload/server", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              filePath: proofImage,
+              folder: "chat_images",
+            }),
+          })
+          const uploadData = await uploadRes.json()
+          if (uploadRes.ok && uploadData?.data?.url) {
+            uploadedProofUrl = uploadData.data.url
+          } else {
+            // Fallback giữ nguyên chuỗi base64 nếu Cloudinary chưa cấu hình
+            uploadedProofUrl = proofImage
+          }
+        } catch (uploadErr) {
+          console.warn("Upload ảnh lên Cloudinary lỗi, fallback dùng ảnh gốc:", uploadErr)
+          uploadedProofUrl = proofImage
+        }
+      } else if (proofImage) {
+        uploadedProofUrl = proofImage
+      }
+
+      // 2. Gửi khiếu nại tới POST /api/v1/customer/complaints
+      let fullDescription = description.trim()
+      if (bookingCode && !fullDescription.includes(bookingCode)) {
+        fullDescription = `[Đơn: ${bookingCode}] ${fullDescription}`
+      }
+
+      const res = await fetch("/api/v1/customer/complaints", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          bookingId: bookingId || null,
+          driverId: driverId || null,
+          category: selectedCat,
+          description: fullDescription,
+          estimatedLoss: estimatedLoss.trim() || null,
+          proofImageUrls: uploadedProofUrl ? [uploadedProofUrl] : [],
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || data.success === false) {
+        throw new Error(data.message || "Không thể gửi khiếu nại. Vui lòng thử lại sau.")
+      }
+
       setIsSuccess(true)
-    }, 600)
+    } catch (err: any) {
+      console.error("Lỗi gửi khiếu nại:", err)
+      const msg = err.message || "Có lỗi xảy ra khi gửi khiếu nại."
+      setErrorMessage(msg)
+      alert(msg)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleClose = () => {
     setIsSuccess(false)
+    setErrorMessage(null)
     setDescription("")
     setEstimatedLoss("")
     setProofImage(null)
@@ -393,6 +472,23 @@ export default function ComplaintModal({
                 </div>
               )}
             </div>
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  backgroundColor: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  color: "#dc2626",
+                  fontSize: 12,
+                  lineHeight: 1.4,
+                }}
+              >
+                ⚠️ {errorMessage}
+              </div>
+            )}
 
             {/* Submit Buttons */}
             <div

@@ -10,7 +10,7 @@ const router = Router()
  * GET /api/v1/pusher/events
  * Lấy danh sách sự kiện realtime gần nhất (hỗ trợ client polling / local dev sync)
  */
-router.get("/events", (req, res) => {
+router.get("/events", requireAuth, (req: AuthRequest, res) => {
   const channel = req.query.channel as string | undefined
   const since = req.query.since ? parseInt(req.query.since as string) : undefined
   const events = getRecentEvents(channel, since)
@@ -20,7 +20,7 @@ router.get("/events", (req, res) => {
 /**
  * POST /api/v1/pusher/auth
  * Xác thực bảo mật khi client subscribe vào Pusher Private Channels
- * Kênh: private-driver-{driverId}, private-trip-{bookingId}, private-user-{userId}
+ * Kênh: private-driver-{driverId}, private-trip-{bookingId}, private-chat-{bookingId}, private-user-{userId}
  */
 router.post("/auth", requireAuth, async (req: AuthRequest, res, next) => {
   try {
@@ -52,9 +52,9 @@ router.post("/auth", requireAuth, async (req: AuthRequest, res, next) => {
         isAuthorized = drivers.length > 0
       }
     }
-    // 2. Kênh riêng tư cho Chuyến xe: private-trip-{bookingId}
-    else if (channel_name.startsWith("private-trip-")) {
-      const bookingId = channel_name.replace("private-trip-", "")
+    // 2. Kênh riêng tư cho Chuyến xe & Tin nhắn: private-trip-{bookingId}, private-chat-{bookingId}
+    else if (channel_name.startsWith("private-trip-") || channel_name.startsWith("private-chat-")) {
+      const bookingId = channel_name.replace("private-trip-", "").replace("private-chat-", "")
       if (userRole === "ADMIN") {
         isAuthorized = true
       } else if (!isUuid(bookingId) || !isUuid(userId)) {

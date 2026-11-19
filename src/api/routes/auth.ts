@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { eq, or } from "drizzle-orm"
+import { eq, or, ilike } from "drizzle-orm"
 import { db } from "../../db"
 import { users, driverProfiles } from "../../db/schema"
 import { comparePassword, hashPassword } from "../../lib/hash"
@@ -13,6 +13,12 @@ import {
   registerDeviceToken,
   removeDeviceToken,
 } from "../../lib/notificationService"
+import {
+  validatePinStrength,
+  checkLoginLockout,
+  recordFailedAttempt,
+  resetLoginAttempts,
+} from "../../lib/pinSecurity"
 import { requireAuth, type AuthRequest } from "../middleware"
 
 const router = Router()
@@ -143,12 +149,12 @@ router.post("/verify-otp", async (req, res, next) => {
  */
 router.post("/register", async (req, res, next) => {
   try {
-    const { phone: rawPhone, password, fullName, role, otp } = req.body
+    const { phone: rawPhone, password, pin, fullName, role, otp } = req.body
 
-    if (!rawPhone || !password) {
+    if (!rawPhone || (!password && !pin)) {
       return res.status(400).json({
         success: false,
-        message: "Vui lòng nhập đầy đủ Số điện thoại và Mật khẩu / Mã PIN",
+        message: "Vui lòng nhập đầy đủ Số điện thoại và Mật khẩu hoặc Mã PIN",
       })
     }
 
@@ -161,30 +167,32 @@ router.post("/register", async (req, res, next) => {
     }
     const phone = phoneValidation.phone
 
-    // Cho phép các tài khoản tài xế mẫu (Seed Drivers) tự động khởi tạo khi bấm chọn nhanh
-    const isSeedDriver =
-      role === "DRIVER" &&
-      ["0908815624", "0903124486", "0987452201", "0916348832"].includes(phone)
-
-    if (!isSeedDriver) {
-      // Xác minh mã OTP chính chủ để chống đăng ký số điện thoại ảo
-      if (!otp || typeof otp !== "string" || otp.trim().length !== 6) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Vui lòng nhập mã OTP 6 chữ số để xác minh số điện thoại chính chủ",
-        })
-      }
-
-      // Kiểm tra tính chính xác và hiệu lực của mã OTP
+    // Xác minh mã OTP nếu có gửi lên (nếu không có mã OTP thì cho phép đăng ký trực tiếp bằng Mật khẩu)
+    if (otp && typeof otp === "string" && otp.trim().length === 6) {
       await verifyOtpCodeOnly(phone, otp.trim())
     }
 
-    if (typeof password !== "string" || password.trim().length < 6) {
+    if (password && (typeof password !== "string" || password.trim().length < 6)) {
       return res.status(400).json({
         success: false,
-        message: "Mật khẩu hoặc mã PIN phải có tối thiểu 6 ký tự",
+        message: "Mật khẩu phải có tối thiểu 6 ký tự",
       })
+    }
+
+    if (pin) {
+      if (typeof pin !== "string" || !/^\d{6}$/.test(pin.trim())) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã PIN phải gồm đúng 6 chữ số (0-9)",
+        })
+      }
+      const pinStrength = validatePinStrength(pin.trim(), phone)
+      if (!pinStrength.valid) {
+        return res.status(400).json({
+          success: false,
+          message: pinStrength.error || "Mã PIN không đủ an toàn",
+        })
+      }
     }
 
     // Kiểm tra số điện thoại đã tồn tại chưa
@@ -195,21 +203,23 @@ router.post("/register", async (req, res, next) => {
       .limit(1)
 
     const targetRole = role === "DRIVER" ? "DRIVER" : "CUSTOMER"
-    const passwordHash = await hashPassword(password.trim())
+    const passwordHash = password ? await hashPassword(password.trim()) : null
+    const pinHash = pin ? await hashPassword(pin.trim()) : null
 
     let userRecord
     if (existingUser) {
-      if (existingUser.passwordHash) {
+      if (existingUser.passwordHash || existingUser.pinHash) {
         return res.status(409).json({
           success: false,
           message: "Số điện thoại này đã được đăng ký. Vui lòng chuyển sang Đăng nhập.",
         })
       }
-      // Tài khoản cũ chưa có password -> cập nhật password
+      // Tài khoản cũ chưa có password -> cập nhật password / pin
       const [updated] = await db
         .update(users)
         .set({
-          passwordHash,
+          passwordHash: passwordHash || existingUser.passwordHash,
+          pinHash: pinHash || existingUser.pinHash,
           fullName: fullName?.trim() || existingUser.fullName,
           role: targetRole,
           updatedAt: new Date(),
@@ -223,6 +233,7 @@ router.post("/register", async (req, res, next) => {
         .values({
           phone,
           passwordHash,
+          pinHash,
           fullName: fullName?.trim() || (targetRole === "DRIVER" ? "Tài xế mới" : "Khách hàng"),
           role: targetRole,
           status: "ACTIVE",
@@ -275,68 +286,114 @@ router.post("/register", async (req, res, next) => {
 
 /**
  * POST /api/v1/auth/login
- * Đăng nhập Khách hàng / Tài xế bằng Số điện thoại + Mật khẩu / Mã PIN
+ * Đăng nhập Khách hàng / Tài xế bằng Tên đăng nhập hoặc Số điện thoại + Mật khẩu / Mã PIN
  */
 router.post("/login", async (req, res, next) => {
   try {
-    const { phone: rawPhone, password, role } = req.body
+    const rawInput = (
+      req.body.phone ||
+      req.body.username ||
+      req.body.name ||
+      req.body.fullName ||
+      ""
+    ).trim()
+    const password = req.body.password
 
-    if (!rawPhone || !password) {
+    if (!rawInput || !password) {
       return res.status(400).json({
         success: false,
-        message: "Vui lòng nhập đầy đủ Số điện thoại và Mật khẩu",
+        message: "Vui lòng nhập Tên đăng nhập (hoặc Số điện thoại) và Mật khẩu",
       })
     }
 
-    const phoneValidation = validateVietnamesePhone(rawPhone)
-    if (!phoneValidation.valid) {
-      return res.status(400).json({
+    // LỚP CHỐT CHẶN 1: Kiểm tra tài khoản/IP có đang bị khóa do nhập sai quá số lần không
+    const clientIp = getClientIp(req)
+    const lockoutKey = `${clientIp}_${rawInput.toLowerCase()}`
+    const lockoutStatus = checkLoginLockout(lockoutKey)
+    if (lockoutStatus.isLocked) {
+      return res.status(429).json({
         success: false,
-        message: phoneValidation.error || "Số điện thoại không hợp lệ",
+        message: `Bạn đã nhập sai quá 5 lần. Để bảo vệ tài khoản, hệ thống tạm khóa đăng nhập trong ${lockoutStatus.lockRemainingMinutes} phút nữa.`,
       })
     }
-    const phone = phoneValidation.phone
 
-    const [foundUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.phone, phone))
-      .limit(1)
+    const phoneValidation = validateVietnamesePhone(rawInput)
+    let candidateUsers = []
 
-    if (!foundUser) {
+    if (phoneValidation.valid) {
+      candidateUsers = await db
+        .select()
+        .from(users)
+        .where(
+          or(
+            eq(users.phone, phoneValidation.phone),
+            ilike(users.fullName, rawInput),
+          ),
+        )
+        .limit(10)
+    } else {
+      candidateUsers = await db
+        .select()
+        .from(users)
+        .where(
+          or(
+            eq(users.phone, rawInput),
+            ilike(users.fullName, rawInput),
+          ),
+        )
+        .limit(10)
+    }
+
+    if (!candidateUsers.length) {
       return res.status(404).json({
         success: false,
-        message: "Số điện thoại chưa được đăng ký trên hệ thống. Vui lòng bấm Đăng ký.",
+        message:
+          "Không tìm thấy tài khoản với Tên hoặc Số điện thoại này. Vui lòng kiểm tra lại.",
       })
     }
+
+    // Tìm tài khoản khớp mật khẩu HOẶC mã PIN trong danh sách kết quả
+    let foundUser = null
+    const cleanSecret = password.trim()
+    for (const u of candidateUsers) {
+      // 1. Kiểm tra khớp mật khẩu chữ
+      if (u.passwordHash && (await comparePassword(cleanSecret, u.passwordHash))) {
+        foundUser = u
+        break
+      }
+      // 2. Kiểm tra khớp mã PIN 6 số
+      if (u.pinHash && (await comparePassword(cleanSecret, u.pinHash))) {
+        foundUser = u
+        break
+      }
+    }
+
+    if (!foundUser) {
+      // Ghi nhận lần thử sai để kích hoạt chốt chặn chống dò mã PIN
+      const failInfo = recordFailedAttempt(lockoutKey)
+      let msg = "Mật khẩu hoặc Mã PIN không chính xác."
+      if (failInfo.isLocked) {
+        msg = `Bạn đã nhập sai 5 lần liên tiếp. Tài khoản bị tạm khóa đăng nhập trong ${failInfo.lockRemainingMinutes} phút để chống dò mã.`
+      } else {
+        msg += ` Bạn còn ${failInfo.remainingAttempts} lần thử trước khi bị tạm khóa.`
+      }
+
+      return res.status(401).json({
+        success: false,
+        message: msg,
+        remainingAttempts: failInfo.remainingAttempts,
+        isLocked: failInfo.isLocked,
+      })
+    }
+
+    // Đăng nhập thành công -> Reset lại bộ đếm số lần sai
+    resetLoginAttempts(lockoutKey)
 
     if (foundUser.status === "BLOCKED") {
       return res.status(403).json({
         success: false,
         message: "Tài khoản của bạn đã bị tạm khóa. Vui lòng liên hệ bộ phận hỗ trợ.",
       })
-    }
-
-    // Nếu tài khoản cũ chưa tạo mật khẩu
-    if (!foundUser.passwordHash) {
-      // Tự động thiết lập mật khẩu nhập vào lần đầu cho tài khoản cũ
-      const newHash = await hashPassword(password.trim())
-      await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, foundUser.id))
-      foundUser.passwordHash = newHash
-    } else {
-      const isMatch = await comparePassword(password.trim(), foundUser.passwordHash)
-      if (!isMatch) {
-        return res.status(401).json({
-          success: false,
-          message: "Mật khẩu hoặc mã PIN không chính xác. Vui lòng thử lại.",
-        })
-      }
-    }
-
-    // Nâng cấp role DRIVER nếu đăng nhập từ giao diện tài xế
-    if (role === "DRIVER" && foundUser.role === "CUSTOMER") {
-      await db.update(users).set({ role: "DRIVER", updatedAt: new Date() }).where(eq(users.id, foundUser.id))
-      foundUser.role = "DRIVER"
     }
 
     if (foundUser.role === "DRIVER") {

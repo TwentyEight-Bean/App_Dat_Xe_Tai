@@ -70,8 +70,17 @@ const activeChannels = new Set<string>()
 async function pollServerEvents() {
   if (activeChannels.size === 0) return
 
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("auth_token") ||
+        localStorage.getItem("driver_auth_token") ||
+        localStorage.getItem("admin_auth_token")
+      : null
+
   try {
-    const res = await fetch(`/api/v1/pusher/events?since=${lastPolledTimestamp}`)
+    const res = await fetch(`/api/v1/pusher/events?since=${lastPolledTimestamp}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
     if (!res.ok) return
     const json = await res.json()
     if (json.success && Array.isArray(json.data) && json.data.length > 0) {
@@ -141,7 +150,7 @@ export async function authenticatePrivateChannel(
 
 /**
  * Đăng ký nhận sự kiện realtime từ một kênh
- * @param channel Tên kênh (vd: "driver-xxx", "private-trip-yyy")
+ * @param channel Tên kênh (vd: "private-driver-xxx", "private-trip-yyy", "private-chat-yyy")
  * @param event Tên sự kiện (vd: "booking:new-offer", "booking:accepted")
  * @param callback Hàm xử lý khi nhận được dữ liệu
  * @returns Hàm unsubscribe để hủy lắng nghe khi component unmount
@@ -151,18 +160,26 @@ export function subscribeRealtime(
   event: string,
   callback: EventCallback,
 ): () => void {
+  // Đảm bảo các kênh driver, trip, chat luôn có tiền tố private-
+  const fullChannel =
+    channel.startsWith("driver-") ||
+    channel.startsWith("trip-") ||
+    channel.startsWith("chat-")
+      ? `private-${channel}`
+      : channel
+
   // Tự động kích hoạt xác thực bảo mật nếu là Private Channel
-  if (channel.startsWith("private-")) {
-    authenticatePrivateChannel(channel)
+  if (fullChannel.startsWith("private-")) {
+    authenticatePrivateChannel(fullChannel)
   }
 
-  const key = getListenerKey(channel, event)
+  const key = getListenerKey(fullChannel, event)
   if (!listeners.has(key)) {
     listeners.set(key, new Set())
   }
   listeners.get(key)!.add(callback)
 
-  const cleanChannel = channel.replace(/^private-/, "")
+  const cleanChannel = fullChannel.replace(/^private-/, "")
   activeChannels.add(cleanChannel)
   ensurePolling()
 
@@ -194,8 +211,15 @@ export function subscribeRealtime(
  * Phát sự kiện client-side tức thì (Cross-tab và in-page)
  */
 export function emitLocalRealtime(channel: string, event: string, data: any) {
+  const fullChannel =
+    channel.startsWith("driver-") ||
+    channel.startsWith("trip-") ||
+    channel.startsWith("chat-")
+      ? `private-${channel}`
+      : channel
+
   const payload: RealtimeMessage = {
-    channel,
+    channel: fullChannel,
     event,
     data,
     timestamp: Date.now(),
@@ -216,5 +240,5 @@ export function emitLocalRealtime(channel: string, event: string, data: any) {
   }
 
   // 3. Phân phối trực tiếp cho listeners cục bộ
-  dispatchToListeners(channel, event, data)
+  dispatchToListeners(fullChannel, event, data)
 }

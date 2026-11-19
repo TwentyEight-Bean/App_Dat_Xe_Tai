@@ -15,56 +15,10 @@ type NotificationItem = {
 
   time: string
 
-  type: "order" | "chat" | "promo"
+  type: "order" | "chat" | "promo" | "system"
 
   unread: boolean
 }
-
-const mockNotifications: NotificationItem[] = [
-  {
-    id: "notif-1",
-
-    title: "Tài xế đang di chuyển tới điểm lấy",
-
-    message:
-      "Tài xế Anh Minh (51D-482.15) đang tới 21 Nguyễn Đình Chiểu. Dự kiến đến trong 4 phút.",
-
-    time: "Vừa xong",
-
-    type: "order",
-
-    unread: true,
-  },
-
-  {
-    id: "notif-2",
-
-    title: "Tin nhắn mới từ tài xế",
-
-    message: '"Tôi đang ở đầu đường, khoảng 3 phút nữa xe tới trước cổng nhé!"',
-
-    time: "5 phút trước",
-
-    type: "chat",
-
-    unread: true,
-  },
-
-  {
-    id: "notif-3",
-
-    title: "Ưu đãi cuốc xe tải đầu tuần",
-
-    message:
-      "Mã GIAO30 giảm 30.000đ cho đơn đặt xe tiếp theo đã sẵn sàng trong tài khoản.",
-
-    time: "Hôm nay",
-
-    type: "promo",
-
-    unread: false,
-  },
-]
 
 type NotificationModalProps = {
   isOpen: boolean
@@ -77,7 +31,7 @@ export default function NotificationModal({
 
   onClose,
 }: NotificationModalProps) {
-  const [items, setItems] = useState<NotificationItem[]>(mockNotifications)
+  const [items, setItems] = useState<NotificationItem[]>([])
 
   const [isDeviceEnabled, setIsDeviceEnabled] = useState(false)
 
@@ -97,6 +51,31 @@ export default function NotificationModal({
       localStorage.getItem("device_notif_enabled") === "true"
 
     setIsDeviceEnabled(isEnabled)
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const token = localStorage.getItem("auth_token")
+    if (!token) return
+    fetch("/api/v1/customer/notifications", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data) {
+          setItems(
+            data.data.map((n: any) => ({
+              id: n.id,
+              title: n.title,
+              message: n.message,
+              time: new Date(n.createdAt).toLocaleString("vi-VN"),
+              type: n.type || "system",
+              unread: !n.isRead,
+            })),
+          )
+        }
+      })
+      .catch(() => {})
   }, [isOpen])
 
   if (!isOpen) return null
@@ -137,10 +116,18 @@ export default function NotificationModal({
     }
   }
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
     setItems((prev) => prev.map((item) => ({ ...item, unread: false })))
 
     setToastMsg("Đã đánh dấu tất cả là đã đọc")
+
+    const token = localStorage.getItem("auth_token")
+    if (token) {
+      fetch("/api/v1/customer/notifications/read-all", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {})
+    }
   }
 
   return (
@@ -411,117 +398,138 @@ export default function NotificationModal({
             paddingRight: "2px",
           }}
         >
-          {items.map((item) => {
-            const icon =
-              item.type === "order" ? "🚚" : item.type === "chat" ? "💬" : "🎁"
+          {items.length === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "36px 16px",
+                color: "#94a0aa",
+                fontSize: "13px",
+              }}
+            >
+              Chưa có thông báo nào
+            </div>
+          ) : (
+            items.map((item) => {
+              const icon =
+                item.type === "order"
+                  ? "🚚"
+                  : item.type === "chat"
+                    ? "💬"
+                    : item.type === "promo"
+                      ? "🎁"
+                      : "🔔"
 
-            const badgeBg =
-              item.type === "order"
-                ? "#e8f7f0"
-                : item.type === "chat"
-                  ? "#eaf5ff"
-                  : "#fdf3dc"
+              const badgeBg =
+                item.type === "order"
+                  ? "#e8f7f0"
+                  : item.type === "chat"
+                    ? "#eaf5ff"
+                    : item.type === "promo"
+                      ? "#fdf3dc"
+                      : "#f1f5f9"
 
-            return (
-              <div
-                key={item.id}
-                style={{
-                  display: "flex",
-
-                  gap: "12px",
-
-                  padding: "11px 12px",
-
-                  borderRadius: "14px",
-
-                  background: item.unread
-                    ? "#fff"
-                    : "rgba(255, 255, 255, 0.55)",
-
-                  border: item.unread
-                    ? "1px solid #e5e0d5"
-                    : "1px solid rgba(220, 215, 205, 0.4)",
-
-                  boxShadow: item.unread
-                    ? "0 2px 6px rgba(0, 0, 0, 0.04)"
-                    : "none",
-                }}
-              >
-                <span
+              return (
+                <div
+                  key={item.id}
                   style={{
-                    width: "36px",
+                    display: "flex",
 
-                    height: "36px",
+                    gap: "12px",
 
-                    borderRadius: "10px",
+                    padding: "11px 12px",
 
-                    background: badgeBg,
+                    borderRadius: "14px",
 
-                    display: "grid",
+                    background: item.unread
+                      ? "#fff"
+                      : "rgba(255, 255, 255, 0.55)",
 
-                    placeItems: "center",
+                    border: item.unread
+                      ? "1px solid #e5e0d5"
+                      : "1px solid rgba(220, 215, 205, 0.4)",
 
-                    fontSize: "17px",
-
-                    flexShrink: 0,
+                    boxShadow: item.unread
+                      ? "0 2px 6px rgba(0, 0, 0, 0.04)"
+                      : "none",
                   }}
                 >
-                  {icon}
-                </span>
-
-                <div style={{ flex: 1 }}>
-                  <div
+                  <span
                     style={{
-                      display: "flex",
+                      width: "36px",
 
-                      justifyContent: "space-between",
+                      height: "36px",
 
-                      alignItems: "flex-start",
+                      borderRadius: "10px",
+
+                      background: badgeBg,
+
+                      display: "grid",
+
+                      placeItems: "center",
+
+                      fontSize: "17px",
+
+                      flexShrink: 0,
                     }}
                   >
-                    <strong
+                    {icon}
+                  </span>
+
+                  <div style={{ flex: 1 }}>
+                    <div
                       style={{
-                        fontSize: "13px",
+                        display: "flex",
 
-                        color: "#17212b",
+                        justifyContent: "space-between",
 
-                        fontWeight: item.unread ? 700 : 600,
+                        alignItems: "flex-start",
                       }}
                     >
-                      {item.title}
-                    </strong>
-                    <span
+                      <strong
+                        style={{
+                          fontSize: "13px",
+
+                          color: "#17212b",
+
+                          fontWeight: item.unread ? 700 : 600,
+                        }}
+                      >
+                        {item.title}
+                      </strong>
+                      <span
+                        style={{
+                          fontSize: "10px",
+
+                          color: "#94a0aa",
+
+                          whiteSpace: "nowrap",
+
+                          marginLeft: "6px",
+                        }}
+                      >
+                        {item.time}
+                      </span>
+                    </div>
+
+                    <p
                       style={{
-                        fontSize: "10px",
+                        fontSize: "12px",
 
-                        color: "#94a0aa",
+                        color: "#4a5568",
 
-                        whiteSpace: "nowrap",
+                        margin: "3px 0 0",
 
-                        marginLeft: "6px",
+                        lineHeight: 1.35,
                       }}
                     >
-                      {item.time}
-                    </span>
+                      {item.message}
+                    </p>
                   </div>
-
-                  <p
-                    style={{
-                      fontSize: "12px",
-
-                      color: "#4a5568",
-
-                      margin: "3px 0 0",
-
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    {item.message}
-                  </p>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })
+          )}
         </div>
 
         {/* Footer Actions */}

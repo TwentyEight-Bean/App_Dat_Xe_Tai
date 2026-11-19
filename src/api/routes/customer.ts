@@ -1,4 +1,7 @@
 import { Router } from "express"
+import { eq, desc, and, sql } from "drizzle-orm"
+import { db } from "../../db"
+import { notifications, complaints } from "../../db/schema"
 
 import {
   getCustomerAddresses,
@@ -190,6 +193,93 @@ router.delete("/addresses/:id", async (req: AuthRequest, res, next) => {
   } catch (err) {
     next(err)
   }
+})
+
+// GET /api/v1/customer/notifications — Lấy danh sách thông báo
+router.get("/notifications", requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, req.user!.userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50)
+    return res.json({ success: true, data: result })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PATCH /api/v1/customer/notifications/read-all — Đánh dấu tất cả đã đọc
+router.patch("/notifications/read-all", requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(notifications.userId, req.user!.userId),
+          eq(notifications.isRead, false),
+        ),
+      )
+    return res.json({ success: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// GET /api/v1/customer/notifications/unread-count — Số thông báo chưa đọc
+router.get("/notifications/unread-count", requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.userId, req.user!.userId),
+          eq(notifications.isRead, false),
+        ),
+      )
+    return res.json({ success: true, count: result[0]?.count || 0 })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/v1/customer/complaints — Gửi khiếu nại mới
+router.post("/complaints", requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const { bookingId, driverId, category, description, estimatedLoss, proofImageUrls } = req.body
+    if (!category || !description?.trim()) {
+      return res.status(400).json({ success: false, message: "Vui lòng chọn danh mục và mô tả chi tiết sự cố." })
+    }
+
+    const isValidUuid = (id?: any): boolean =>
+      typeof id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+
+    const [complaint] = await db.insert(complaints).values({
+      userId: req.user!.userId,
+      bookingId: isValidUuid(bookingId) ? bookingId : null,
+      driverId: isValidUuid(driverId) ? driverId : null,
+      category,
+      description: description.trim(),
+      estimatedLoss: estimatedLoss || null,
+      proofImageUrls: Array.isArray(proofImageUrls) ? proofImageUrls : (proofImageUrls ? [proofImageUrls] : []),
+    }).returning()
+    return res.json({ success: true, data: complaint })
+  } catch (err) { next(err) }
+})
+
+// GET /api/v1/customer/complaints — Lịch sử khiếu nại của khách
+router.get("/complaints", requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await db.select().from(complaints)
+      .where(eq(complaints.userId, req.user!.userId))
+      .orderBy(desc(complaints.createdAt))
+      .limit(50)
+    return res.json({ success: true, data: result })
+  } catch (err) { next(err) }
 })
 
 export default router

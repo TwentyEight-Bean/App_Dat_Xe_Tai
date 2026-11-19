@@ -1293,6 +1293,8 @@ export type Complaint = {
   messages: { from: "customer" | "admin"; text: string; at: string }[]
 
   events: { text: string; at: string }[]
+
+  proofImageUrls?: string[]
 }
 
 export const complaints0: Complaint[] = [

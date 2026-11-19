@@ -1200,10 +1200,14 @@
   left: 0;
   right: 0;
   bottom: 0 !important;
+  max-height: 85dvh;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px 18px max(20px, env(safe-area-inset-bottom));
+  padding: 14px 18px max(24px, env(safe-area-inset-bottom));
   border-radius: 28px 28px 0 0;
   background: #ffffff !important;
   border-top: 1.5px solid #e2e8f0 !important;

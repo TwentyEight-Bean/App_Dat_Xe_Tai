@@ -932,7 +932,7 @@ export function ChatScreen({
     }
 
     const unsubscribe = subscribeRealtime(
-      `chat-${activeBookingId}`,
+      `private-chat-${activeBookingId}`,
       "chat:new-message",
       add,
     )

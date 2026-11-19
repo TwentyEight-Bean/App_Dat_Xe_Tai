@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { Icon, Avatar, Status } from "./ui"
 import { type Complaint } from "./data"
+import Complaints from "./Complaints"
 import { clearAdminSession, isUnauthorizedResponse, requireAdminToken } from "./auth"
 
 export type DriverRatingItem = {
@@ -60,12 +61,134 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   return json as T
 }
 
+function formatRelativeTime(dateInput?: string | Date | null) {
+  if (!dateInput) return "Vừa xong"
+  const d = new Date(dateInput)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return "Vừa xong"
+  if (diffMin < 60) return `${diffMin} phút trước`
+  const diffHrs = Math.floor(diffMin / 60)
+  if (diffHrs < 24) return `${diffHrs} giờ trước`
+  const diffDays = Math.floor(diffHrs / 24)
+  if (diffDays < 7) return `${diffDays} ngày trước`
+  return `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")} ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`
+}
+
+function mapBackendComplaintToUi(row: any): Complaint {
+  const item = row.complaint || row
+  const userName = row.userName || "Khách hàng"
+  const userPhone = row.userPhone ? ` (${row.userPhone})` : ""
+
+  const catMap: Record<string, string> = {
+    cargo_damage: "Hàng hóa",
+    accident: "Tai nạn",
+    off_app: "Chở ngoài sàn",
+    wrong_dest: "Sai lộ trình",
+    overcharge: "Thu sai cước",
+    attitude: "Thái độ",
+    other: "Khác",
+  }
+
+  const statusMap: Record<string, string> = {
+    PENDING: "Mới",
+    PROCESSING: "Đang xử lý",
+    RESOLVED: "Đã giải quyết",
+    REJECTED: "Đã từ chối",
+  }
+
+  const cat = catMap[item.category] || item.category || "Hàng hóa"
+  const status = statusMap[item.status] || "Mới"
+
+  let orderCode = "N/A"
+  if (item.description && item.description.startsWith("[Đơn:")) {
+    const match = item.description.match(/^\[Đơn:\s*([^\]]+)\]/)
+    if (match) orderCode = match[1].trim()
+  } else if (item.bookingId) {
+    orderCode = item.bookingId.length > 8 ? item.bookingId.slice(0, 8).toUpperCase() : item.bookingId
+  }
+
+  let cleanDesc = item.description || ""
+  if (cleanDesc.startsWith("[Đơn:")) {
+    cleanDesc = cleanDesc.replace(/^\[Đơn:[^\]]+\]\s*/, "")
+  }
+
+  const createdAt = item.createdAt ? new Date(item.createdAt) : new Date()
+  const updatedAt = item.updatedAt ? new Date(item.updatedAt) : createdAt
+  const timeStr = formatRelativeTime(createdAt)
+  const timeFormatted = `${createdAt.getHours().toString().padStart(2, "0")}:${createdAt.getMinutes().toString().padStart(2, "0")}`
+
+  const messages: { from: "customer" | "admin"; text: string; at: string }[] = [
+    {
+      from: "customer",
+      text: cleanDesc || "Khách hàng gửi khiếu nại sự cố",
+      at: timeFormatted,
+    },
+  ]
+
+  if (item.adminNotes) {
+    messages.push({
+      from: "admin",
+      text: item.adminNotes,
+      at: `${updatedAt.getHours().toString().padStart(2, "0")}:${updatedAt.getMinutes().toString().padStart(2, "0")}`,
+    })
+  }
+
+  const events: { text: string; at: string }[] = [
+    { text: "Khiếu nại được tạo", at: timeFormatted },
+  ]
+  if (status === "Đang xử lý" || status === "Đã giải quyết") {
+    events.push({
+      text: "Admin tiếp nhận xử lý",
+      at: `${updatedAt.getHours().toString().padStart(2, "0")}:${updatedAt.getMinutes().toString().padStart(2, "0")}`,
+    })
+  }
+  if (status === "Đã giải quyết") {
+    const resolvedAt = item.resolvedAt ? new Date(item.resolvedAt) : updatedAt
+    events.push({
+      text: "Đã giải quyết",
+      at: `${resolvedAt.getHours().toString().padStart(2, "0")}:${resolvedAt.getMinutes().toString().padStart(2, "0")}`,
+    })
+  }
+
+  let title = cat
+  if (item.category === "cargo_damage") {
+    title = item.estimatedLoss ? `Hàng hóa hư hại (Ước tính: ${item.estimatedLoss})` : "Hàng hóa bị bể vỡ / móp méo"
+  } else if (item.category === "accident") {
+    title = "Sự cố giao thông trên đường"
+  } else if (item.category === "off_app") {
+    title = "Tài xế yêu cầu hủy chuyến chở ngoài"
+  } else if (item.category === "overcharge") {
+    title = "Tài xế thu cước sai quy định"
+  } else if (item.category === "attitude") {
+    title = "Phản ánh thái độ tài xế"
+  } else if (item.category === "wrong_dest") {
+    title = "Chạy lệch lộ trình / giao sai điểm"
+  }
+
+  return {
+    id: item.id,
+    order: orderCode,
+    customer: `${userName}${userPhone}`,
+    driver: "Tài xế chuyến xe",
+    cat,
+    title,
+    body: cleanDesc,
+    status,
+    time: timeStr,
+    messages,
+    events,
+    proofImageUrls: Array.isArray(item.proofImageUrls) ? item.proofImageUrls : [],
+  }
+}
+
 export default function RatingsAndComplaints({
-  complaints: _complaints,
-  setComplaints: _setComplaints,
-  complaintsFocus: _complaintsFocus,
+  complaints,
+  setComplaints,
+  complaintsFocus,
   openOrder,
-  initialTab: _initialTab = "ratings",
+  initialTab = "ratings",
 }: {
   complaints: Complaint[]
   setComplaints: (f: (p: Complaint[]) => Complaint[]) => void
@@ -73,7 +196,7 @@ export default function RatingsAndComplaints({
   openOrder: (id: string) => void
   initialTab?: "ratings" | "complaints"
 }) {
-  const [activeTab, setActiveTab] = useState<"ratings" | "complaints">("ratings")
+  const [activeTab, setActiveTab] = useState<"ratings" | "complaints">(initialTab)
 
   // Ratings State
   const [ratings, setRatings] = useState<DriverRatingItem[]>([])
@@ -137,6 +260,72 @@ export default function RatingsAndComplaints({
       (summary.distribution[3] || 0)
     )
   }, [summary])
+
+  const newComplaintsCount = complaints.filter((c: Complaint) => c.status === "Mới").length
+
+  const fetchComplaints = async () => {
+    try {
+      const res = await apiFetch<any>("/api/v1/admin/complaints?limit=50")
+      if (res && res.success && Array.isArray(res.data)) {
+        if (res.data.length > 0) {
+          const mapped = res.data.map(mapBackendComplaintToUi)
+          setComplaints(() => mapped)
+        }
+      }
+    } catch (err: any) {
+      console.warn("Lỗi tải danh sách khiếu nại:", err.message)
+    }
+  }
+
+  useEffect(() => {
+    fetchComplaints()
+  }, [activeTab])
+
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    try {
+      const dbStatus =
+        newStatus === "Đã giải quyết"
+          ? "RESOLVED"
+          : newStatus === "Đang xử lý"
+            ? "PROCESSING"
+            : "PENDING"
+      await apiFetch(`/api/v1/admin/complaints/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: dbStatus }),
+      })
+    } catch (err: any) {
+      console.error("Lỗi cập nhật trạng thái khiếu nại:", err)
+      alert("Không thể cập nhật trạng thái khiếu nại: " + (err.message || "Lỗi máy chủ"))
+    }
+  }
+
+  const handleSendReply = async (id: string, text: string) => {
+    try {
+      await apiFetch(`/api/v1/admin/complaints/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: "PROCESSING",
+          adminNotes: text,
+        }),
+      })
+    } catch (err: any) {
+      console.error("Lỗi gửi phản hồi khiếu nại:", err)
+      alert("Không thể gửi phản hồi: " + (err.message || "Lỗi máy chủ"))
+    }
+  }
+
+  const handleEscalate = async (id: string, what: string) => {
+    try {
+      await apiFetch(`/api/v1/admin/complaints/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          adminNotes: `[Leo thang] ${what}`,
+        }),
+      })
+    } catch (err: any) {
+      console.error("Lỗi ghi nhận leo thang:", err)
+    }
+  }
 
   return (
     <div className="page" style={{ paddingBottom: 48 }}>
@@ -706,7 +895,18 @@ export default function RatingsAndComplaints({
             )}
           </section>
         </div>
-      ) : null}
+      ) : (
+        /* Sub Tab 2: Khiếu nại khách hàng */
+        <Complaints
+          items={complaints}
+          setItems={setComplaints}
+          focus={complaintsFocus}
+          openOrder={openOrder}
+          onStatusChange={handleStatusChange}
+          onSendReply={handleSendReply}
+          onEscalate={handleEscalate}
+        />
+      )}
     </div>
   )
 }

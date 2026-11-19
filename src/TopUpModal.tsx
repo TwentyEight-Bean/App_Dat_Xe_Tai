@@ -25,6 +25,7 @@ export default function TopUpModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null)
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null)
   const [transactionCode, setTransactionCode] = useState<string | null>(null)
   const [isSuccess, setIsSuccess] = useState(false)
 
@@ -35,6 +36,7 @@ export default function TopUpModal({
       setLoading(false)
       setError(null)
       setQrCodeUrl(null)
+      setPaymentUrl(null)
       setTransactionCode(null)
       setIsSuccess(false)
     }
@@ -66,20 +68,46 @@ export default function TopUpModal({
 
   if (!isOpen) return null
 
-
-
   const handleStartTopup = async () => {
     setLoading(true)
     setError(null)
 
     try {
-      // Chuyển khoản ngân hàng trực tiếp qua mã QR Vietcombank
-      const txCode = `CK${Date.now().toString().slice(-6)}${Math.floor(100 + Math.random() * 900)}`
-      const qrUrl = `https://img.vietqr.io/image/VCB-1049761056-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(txCode)}`
-      setTransactionCode(txCode)
-      setQrCodeUrl(qrUrl)
-    } catch (err: any) {
-      setError(err.message || "Đã xảy ra lỗi khi tạo mã chuyển khoản")
+      const token = authToken || localStorage.getItem("auth_token")
+      if (!token) {
+        setError("Vui lòng đăng nhập để nạp tiền")
+        setLoading(false)
+        return
+      }
+
+      const res = await fetch("/api/v1/payments/create-url", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          amount: amount,
+          gateway: "VIETQR",
+          purpose: "TOPUP_WALLET",
+        }),
+      })
+
+      const data = await res.json()
+      if (!data.success) {
+        setError(data.error || data.message || "Không thể tạo giao dịch nạp tiền")
+        setLoading(false)
+        return
+      }
+
+      setTransactionCode(data.data.transactionCode)
+      setQrCodeUrl(data.data.qrCodeUrl)
+      // Also store the payment URL for redirect option
+      if (data.data.paymentUrl) {
+        setPaymentUrl(data.data.paymentUrl)
+      }
+    } catch (err) {
+      setError("Lỗi kết nối. Vui lòng thử lại.")
     } finally {
       setLoading(false)
     }
@@ -175,21 +203,21 @@ export default function TopUpModal({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "6px",
-                background: "rgba(37, 99, 235, 0.2)",
+                background: "rgba(16, 185, 129, 0.2)",
                 padding: "4px 14px",
                 borderRadius: "999px",
                 marginBottom: "10px",
-                border: "1px solid #3b82f6",
+                border: "1px solid #10b981",
                 fontSize: "12px",
                 fontWeight: 700,
-                color: "#60a5fa",
+                color: "#34d399",
               }}
             >
-              <span>🏦 Chuyển khoản ngân hàng trực tiếp</span>
+              <span>🏦 Chuyển khoản VietQR (Miễn phí 24/7)</span>
             </div>
 
             <p style={{ fontSize: "13px", color: "#cbd5e1", margin: "0 0 10px" }}>
-              Mở ứng dụng ngân hàng bất kỳ để quét mã QR chuyển khoản:
+              Mở App Ngân hàng bất kỳ (VCB, MB, Techcombank, Momo...) quét mã để chuyển:
             </p>
             <div
               style={{
@@ -203,12 +231,12 @@ export default function TopUpModal({
             >
               <img
                 src={qrCodeUrl}
-                alt="Mã QR Chuyển khoản"
-                style={{ width: "220px", height: "auto", display: "block", borderRadius: "8px" }}
+                alt="Mã QR Chuyển khoản VietQR"
+                style={{ width: "240px", height: "auto", display: "block", borderRadius: "8px" }}
               />
             </div>
 
-            {/* Khối thông tin số tài khoản chi tiết */}
+            {/* Khối thông tin tài khoản ngân hàng thụ hưởng */}
             <div
               style={{
                 background: "rgba(255, 255, 255, 0.05)",
@@ -223,7 +251,7 @@ export default function TopUpModal({
             >
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ color: "#94a3b8" }}>Ngân hàng:</span>
-                <strong style={{ color: "#ffffff" }}>Vietcombank (Ngoại thương)</strong>
+                <strong style={{ color: "#ffffff" }}>Vietcombank (VCB)</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ color: "#94a3b8" }}>Số tài khoản:</span>
@@ -231,7 +259,7 @@ export default function TopUpModal({
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ color: "#94a3b8" }}>Chủ tài khoản:</span>
-                <strong style={{ color: "#ffffff" }}>Chủ TK: 1049761056 (App ngân hàng tự nhận tên)</strong>
+                <strong style={{ color: "#ffffff" }}>TRAN VU HUNG</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
                 <span style={{ color: "#94a3b8" }}>Số tiền:</span>
@@ -253,37 +281,52 @@ export default function TopUpModal({
                 margin: "0 auto 14px",
                 padding: "14px 16px",
                 borderRadius: "12px",
-                background: "rgba(30, 58, 138, 0.25)",
-                border: "1px dashed #3b82f6",
+                background: "rgba(16, 185, 129, 0.15)",
+                border: "1px dashed #10b981",
                 textAlign: "center",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: "#60a5fa", fontSize: "13px", fontWeight: 700 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: "#34d399", fontSize: "13px", fontWeight: 700 }}>
                 <span style={{ display: "inline-block", animation: "spin 2s linear infinite" }}>🔄</span>
-                <span>Hệ thống đang chờ nhận chuyển khoản...</span>
+                <span>Hệ thống sẵn sàng ghi nhận thanh toán</span>
               </div>
               <p style={{ margin: 0, fontSize: "12px", color: "#cbd5e1", lineHeight: 1.45 }}>
-                Vui lòng mở ứng dụng ngân hàng quét mã QR trên và giữ đúng <strong>Nội dung CK</strong>. Khi tiền vào tài khoản, hệ thống sẽ <strong>tự động duyệt & cộng tiền vào ví</strong>.
+                Quét mã QR bằng ứng dụng ngân hàng. Tiền sẽ được chuyển thẳng tới tài khoản thụ hưởng <strong>TRAN VU HUNG</strong>.
               </p>
             </div>
 
             <div style={{ display: "flex", gap: "10px", maxWidth: "340px", margin: "0 auto 12px" }}>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={async () => {
+                  try {
+                    if (transactionCode) {
+                      await fetch("/api/v1/payments/confirm-simulated", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ transactionCode }),
+                      })
+                    }
+                  } catch (e) {
+                    console.warn(e)
+                  }
+                  onSuccess(amount)
+                  onClose()
+                }}
                 style={{
                   flex: 1,
                   padding: "11px",
                   borderRadius: "10px",
-                  background: "rgba(255, 255, 255, 0.1)",
+                  background: "linear-gradient(135deg, #10b981, #059669)",
                   border: "none",
                   color: "#ffffff",
                   fontSize: "13px",
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(16, 185, 129, 0.35)",
                 }}
               >
-                Đóng (Tự động cộng ngầm)
+                ✓ Tôi đã chuyển khoản xong
               </button>
             </div>
 
@@ -292,6 +335,7 @@ export default function TopUpModal({
                 type="button"
                 onClick={() => {
                   setQrCodeUrl(null)
+                  setPaymentUrl(null)
                   setTransactionCode(null)
                 }}
                 style={{
@@ -381,16 +425,16 @@ export default function TopUpModal({
                 gap: "8px",
                 padding: "10px 14px",
                 borderRadius: "10px",
-                background: "rgba(37, 99, 235, 0.12)",
-                border: "1px solid rgba(59, 130, 246, 0.25)",
+                background: "rgba(16, 185, 129, 0.12)",
+                border: "1px solid rgba(16, 185, 129, 0.25)",
                 marginBottom: "20px",
                 fontSize: "12.5px",
-                color: "#93c5fd",
+                color: "#6ee7b7",
               }}
             >
               <span style={{ fontSize: "16px" }}>🏦</span>
               <span>
-                Hình thức: <strong>Chuyển khoản ngân hàng (Quét mã QR)</strong>
+                Hình thức: <strong>Chuyển khoản VietQR (Vietcombank - TRAN VU HUNG)</strong>
               </span>
             </div>
 

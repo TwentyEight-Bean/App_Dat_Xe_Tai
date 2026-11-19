@@ -567,7 +567,7 @@ export async function setDriverOnlineStatus(userId: string, isOnline: boolean) {
       throw new ApiError(
         403,
 
-        `FORBIDDEN: Bạn chưa thể bật trực tuyến. ${statusText}. Chỉ tài xế có hồ sơ ĐÃ ĐƯỢC PHÊ DUYỆT mới có thể nhận chuyến.`,
+        `Bạn chưa thể bật trực tuyến. ${statusText}. Chỉ tài xế có hồ sơ ĐÃ ĐƯỢC PHÊ DUYỆT mới có thể nhận chuyến.`,
 
         "KYC_NOT_APPROVED",
       )
@@ -579,7 +579,7 @@ export async function setDriverOnlineStatus(userId: string, isOnline: boolean) {
       throw new ApiError(
         403,
 
-        "FORBIDDEN: Tài khoản tài xế của bạn đang bị tạm ngưng hoặc vô hiệu hóa. Vui lòng liên hệ tổng đài hỗ trợ.",
+        "Tài khoản tài xế của bạn đang bị tạm ngưng hoặc vô hiệu hóa. Vui lòng liên hệ tổng đài hỗ trợ.",
 
         "DRIVER_INACTIVE",
       )

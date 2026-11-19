@@ -1,4 +1,7 @@
 import { Router } from "express"
+import { eq, desc } from "drizzle-orm"
+import { db } from "../../db"
+import { complaints, users } from "../../db/schema"
 
 import {
   getPendingKycDrivers,
@@ -553,6 +556,70 @@ router.post("/bookings/:id/refund", async (req: AuthRequest, res, next) => {
   } catch (err) {
     next(err)
   }
+})
+
+/**
+ * GET /api/v1/admin/complaints — Danh sách khiếu nại (Admin)
+ */
+router.get("/complaints", requireAuth, requireRoles(["ADMIN"]), async (req, res, next) => {
+  try {
+    const { status, page = "1", limit = "20" } = req.query as Record<string, string>
+    const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10)
+    let query = db.select({
+      complaint: complaints,
+      userName: users.fullName,
+      userPhone: users.phone,
+    }).from(complaints)
+      .leftJoin(users, eq(complaints.userId, users.id))
+
+    if (status) {
+      let dbStatus = status
+      if (status === "Mới") dbStatus = "PENDING"
+      else if (status === "Đang xử lý") dbStatus = "PROCESSING"
+      else if (status === "Đã giải quyết") dbStatus = "RESOLVED"
+      else if (status === "Từ chối") dbStatus = "REJECTED"
+      query = query.where(eq(complaints.status, dbStatus as any)) as any
+    }
+
+    const result = await query
+      .orderBy(desc(complaints.createdAt))
+      .limit(parseInt(limit, 10))
+      .offset(offset)
+
+    return res.json({ success: true, data: result })
+  } catch (err) { next(err) }
+})
+
+/**
+ * PATCH /api/v1/admin/complaints/:id — Cập nhật trạng thái khiếu nại
+ */
+router.patch("/complaints/:id", requireAuth, requireRoles(["ADMIN"]), async (req, res, next) => {
+  try {
+    const complaintId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+    if (!complaintId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(complaintId)) {
+      return res.status(400).json({ success: false, message: "ID khiếu nại không hợp lệ" })
+    }
+    const { status, adminNotes } = req.body
+    const updateData: any = { updatedAt: new Date() }
+    if (status) {
+      let dbStatus = status
+      if (status === "Mới") dbStatus = "PENDING"
+      else if (status === "Đang xử lý") dbStatus = "PROCESSING"
+      else if (status === "Đã giải quyết") dbStatus = "RESOLVED"
+      else if (status === "Từ chối") dbStatus = "REJECTED"
+      updateData.status = dbStatus
+      if (dbStatus === "RESOLVED") updateData.resolvedAt = new Date()
+    }
+    if (adminNotes) updateData.adminNotes = adminNotes
+
+    const [updated] = await db.update(complaints)
+      .set(updateData)
+      .where(eq(complaints.id, complaintId))
+      .returning()
+
+    if (!updated) return res.status(404).json({ success: false, message: "Khiếu nại không tồn tại" })
+    return res.json({ success: true, data: updated })
+  } catch (err) { next(err) }
 })
 
 router.use("/pricing", pricingRouter)
