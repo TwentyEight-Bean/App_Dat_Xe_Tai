@@ -36,7 +36,7 @@ export class EsmsProvider implements ISmsProvider {
       const content = `Ma xac thuc OTP cua ban la ${otp}. Ma co hieu luc trong 5 phut. Khong chia se ma nay cho bat ky ai.`
 
       const url =
-        "http://rest.esms.vn/MainService.svc/json/SendMultipleMessage_V4_post_json"
+        "https://rest.esms.vn/MainService.svc/json/SendMultipleMessage_V4_post_json"
 
       const response = await fetch(url, {
         method: "POST",

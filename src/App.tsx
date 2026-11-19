@@ -39,10 +39,13 @@ import CallingModal from "./CallingModal"
 import useCustomerDialog from "./customerDialog"
 
 import InsurancePolicyModal from "./InsurancePolicyModal"
+
 import ComplaintModal from "./ComplaintModal"
+
 import TopUpModal from "./TopUpModal"
 
 import "./customer.css"
+
 import CustomerTripSheet from "./CustomerTripSheet"
 
 type IconName = "home" | "orders" | "message" | "user" | "bell" | "pin" | "arrow" | "target" | "layers" | "chevron" | "chevron-up" | "chevron-down" | "close" | "check" | "truck" | "phone" | "star"
@@ -828,47 +831,61 @@ function SurchargeServicesSelector({
 
 const navItems: {
   label: string
+
   icon: IconName
 }[] = [
-    { label: "Trang chủ", icon: "home" },
+  { label: "Trang chủ", icon: "home" },
 
-    { label: "Đơn hàng", icon: "orders" },
+  { label: "Đơn hàng", icon: "orders" },
 
-    { label: "Tin nhắn", icon: "message" },
+  { label: "Tin nhắn", icon: "message" },
 
-    { label: "Tài khoản", icon: "user" },
-  ]
+  { label: "Tài khoản", icon: "user" },
+]
 
 function BottomNavigation({
   active,
 
   onChange,
+
   authToken,
+
   chatOpen,
+
   bookingId,
 }: {
   active: string
 
   onChange: (label: string) => void
+
   authToken: string | null
+
   chatOpen: boolean
+
   bookingId: string | null
 }) {
   const index = navItems.findIndex((item) => item.label === active)
 
   const [unread, setUnread] = useState(0)
+
   useEffect(() => {
     if (!authToken) {
       setUnread(0)
+
       return
     }
+
     const controller = new AbortController()
+
     const refresh = () =>
       fetch("/api/v1/chat/conversations", {
         signal: controller.signal,
+
         headers: { Authorization: `Bearer ${authToken}` },
       })
+
         .then((res) => res.json())
+
         .then((data) => {
           if (
             !controller.signal.aborted &&
@@ -879,20 +896,26 @@ function BottomNavigation({
               data.data.reduce(
                 (total: number, conv: { unreadCount?: number }) =>
                   total + Number(conv.unreadCount || 0),
+
                 0,
               ),
             )
         })
+
         .catch((error) => {
           if (!controller.signal.aborted)
             console.warn("Không thể cập nhật số tin nhắn chưa đọc", error)
         })
+
     refresh()
+
     const unsubscribe = bookingId
-      ? subscribeRealtime(`chat-${bookingId}`, "chat:new-message", refresh)
-      : () => { }
+      ? subscribeRealtime(`private-chat-${bookingId}`, "chat:new-message", refresh)
+      : () => {}
+
     return () => {
       controller.abort()
+
       unsubscribe()
     }
   }, [authToken, active, chatOpen, bookingId])
@@ -923,8 +946,9 @@ function BottomNavigation({
 
   return (
     <nav
-      className={`bottom-nav glass glass-strong ${flow ? `nav-flow-${flow}` : ""
-        }`}
+      className={`bottom-nav glass glass-strong ${
+        flow ? `nav-flow-${flow}` : ""
+      }`}
       aria-label="Điều hướng chính"
       style={{ "--i": index } as CSSProperties}
     >
@@ -985,6 +1009,7 @@ const PHASE_DELAY: Partial<Record<Phase, number>> = {
 
 const DRIVER_PROGRESS: Partial<Record<Phase, {
   to: number
+
   ms: number
 }>> = {
   found: { to: 0.3, ms: 4500 },
@@ -1059,8 +1084,9 @@ function DriverMarker({
 
         opacity: hidden ? 0 : 1,
 
-        transition: `offset-distance ${ms}ms linear, opacity 400ms ease ${hidden ? 700 : 0
-          }ms`,
+        transition: `offset-distance ${ms}ms linear, opacity 400ms ease ${
+          hidden ? 700 : 0
+        }ms`,
       }}
     >
       <Icon name="truck" size={15} strokeWidth={2} />
@@ -1287,6 +1313,7 @@ function SearchingSheet({
   vehicle,
 
   bookingCode,
+
   priceLabel,
 
   escalated,
@@ -1304,6 +1331,7 @@ function SearchingSheet({
   vehicle: Vehicle
 
   bookingCode?: string
+
   priceLabel?: string
 
   escalated?: boolean
@@ -1492,12 +1520,21 @@ function FoundSheet({
 
       <div className="driver-card">
         <div className="driver-top">
-          <span className="driver-avatar" aria-hidden="true" style={{ position: "relative" }}>
+          <span
+            className="driver-avatar"
+            aria-hidden="true"
+            style={{ position: "relative" }}
+          >
             {driver?.avatarUrl ? (
               <img
                 src={driver.avatarUrl}
                 alt={driverName}
-                style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                }}
               />
             ) : (
               driverInitials
@@ -1718,12 +1755,19 @@ function TrackingSheet({
   bookingId,
 
   onRate,
+
   isPaid,
+
   priceLabel,
+
   deliveryOtp,
+
   deliveryProofImage,
+
   onOpenInsurance,
+
   onOpenComplaint,
+
   onReassign,
 }: {
   phase: TrackPhase
@@ -1737,9 +1781,13 @@ function TrackingSheet({
   driver?: any
 
   bookingId?: string | null
+
   isPaid?: boolean
+
   priceLabel?: string
+
   deliveryOtp?: string | null
+
   deliveryProofImage?: string | null
 
   onAdvance: () => void
@@ -1762,7 +1810,9 @@ function TrackingSheet({
 
   onRate?: (
     rating: number,
+
     comment?: string,
+
     tags?: string[],
   ) => void | Promise<void>
 }) {
@@ -1811,31 +1861,42 @@ function TrackingSheet({
   ])
 
   const [isSubmittingRate, setIsSubmittingRate] = useState(false)
+
   const [rateError, setRateError] = useState("")
 
   const [ratingOpen, setRatingOpen] = useState(false)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
+
   const [copiedLink, setCopiedLink] = useState(false)
+
   const copyTimer = useRef<number | null>(null)
 
   // Live countdown timer và phát hiện trễ hẹn
+
   const initialSeconds = Number(info.eta || 4) * 60
+
   const [countdown, setCountdown] = useState(initialSeconds)
+
   const isLate = countdown <= 0
 
   useEffect(() => {
     if (delivered || phase === "arrived") return
+
     const timer = window.setInterval(() => {
       setCountdown((prev) => prev - 1)
     }, 1000)
+
     return () => window.clearInterval(timer)
   }, [delivered, phase])
 
   const formatCountdown = (secs: number) => {
     const s = Math.abs(secs)
+
     const m = Math.floor(s / 60)
+
     const rem = s % 60
+
     return `${m.toString().padStart(2, "0")}:${rem.toString().padStart(2, "0")}`
   }
 
@@ -1843,8 +1904,10 @@ function TrackingSheet({
     () => () => {
       if (copyTimer.current) clearTimeout(copyTimer.current)
     },
+
     [],
   )
+
   const ratePending = useRef(false)
 
   return (
@@ -1916,7 +1979,8 @@ function TrackingSheet({
                   </div>
                 </div>
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>
-                  {driver?.vehicleTypeName || vehicle?.name || "Xe tải"} · {vehicle?.detail || "Giao hàng an toàn"}
+                  {driver?.vehicleTypeName || vehicle?.name || "Xe tải"} ·{" "}
+                  {vehicle?.detail || "Giao hàng an toàn"}
                 </div>
               </div>
             </div>
@@ -1948,28 +2012,41 @@ function TrackingSheet({
             <div
               style={{
                 margin: "10px 0 12px",
+
                 padding: "11px 14px",
+
                 borderRadius: "14px",
+
                 background: isLate
                   ? "linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%)"
                   : "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)",
+
                 border: isLate ? "1.5px solid #fecaca" : "1.5px solid #bbf7d0",
+
                 display: "flex",
+
                 alignItems: "center",
+
                 justifyContent: "space-between",
+
                 gap: "10px",
+
                 boxShadow: isLate
                   ? "0 2px 8px rgba(220, 38, 38, 0.08)"
                   : "0 2px 8px rgba(16, 185, 129, 0.08)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "9px" }}
+              >
                 <span style={{ fontSize: "20px" }}>{isLate ? "⚠️" : "⏱️"}</span>
                 <div>
                   <div
                     style={{
                       fontSize: "12.5px",
+
                       fontWeight: 800,
+
                       color: isLate ? "#b91c1c" : "#166534",
                     }}
                   >
@@ -1980,7 +2057,9 @@ function TrackingSheet({
                   <div
                     style={{
                       fontSize: "11px",
+
                       color: isLate ? "#991b1b" : "#15803d",
+
                       marginTop: "2px",
                     }}
                   >
@@ -1996,14 +2075,23 @@ function TrackingSheet({
                   onClick={onReassign}
                   style={{
                     background: "#dc2626",
+
                     color: "#ffffff",
+
                     border: "none",
+
                     borderRadius: "10px",
+
                     padding: "7px 12px",
+
                     fontSize: "11.5px",
+
                     fontWeight: 700,
+
                     cursor: "pointer",
+
                     flexShrink: 0,
+
                     boxShadow: "0 2px 6px rgba(220, 38, 38, 0.25)",
                   }}
                 >
@@ -2018,25 +2106,39 @@ function TrackingSheet({
             <div
               style={{
                 margin: "10px 0 12px",
+
                 padding: "12px 14px",
+
                 borderRadius: "14px",
+
                 background: "linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)",
+
                 border: "1.5px solid #bfdbfe",
+
                 display: "flex",
+
                 alignItems: "center",
+
                 justifyContent: "space-between",
+
                 boxShadow: "0 2px 8px rgba(37,99,235,0.08)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "10px" }}
+              >
                 <span style={{ fontSize: "24px" }}>🔐</span>
                 <div>
                   <div
                     style={{
                       fontSize: "11px",
+
                       color: "#1e40af",
+
                       fontWeight: 700,
+
                       textTransform: "uppercase",
+
                       letterSpacing: "0.5px",
                     }}
                   >
@@ -2045,7 +2147,9 @@ function TrackingSheet({
                   <div
                     style={{
                       fontSize: "11.5px",
+
                       color: "#475569",
+
                       marginTop: "2px",
                     }}
                   >
@@ -2056,25 +2160,38 @@ function TrackingSheet({
               <div
                 style={{
                   display: "flex",
+
                   gap: "5px",
+
                   background: "#ffffff",
+
                   padding: "6px 10px",
+
                   borderRadius: "10px",
+
                   border: "1.5px solid #3b82f6",
+
                   boxShadow: "0 2px 6px rgba(59,130,246,0.15)",
                 }}
               >
                 {String(deliveryOtp)
+
                   .split("")
+
                   .map((digit, idx) => (
                     <span
                       key={idx}
                       style={{
                         fontFamily: "monospace",
+
                         fontSize: "18px",
+
                         fontWeight: 800,
+
                         color: "#1d4ed8",
+
                         width: "14px",
+
                         textAlign: "center",
                       }}
                     >
@@ -2116,10 +2233,14 @@ function TrackingSheet({
                     } catch {
                       return
                     }
+
                     setCopiedLink(true)
+
                     if (copyTimer.current) clearTimeout(copyTimer.current)
+
                     copyTimer.current = window.setTimeout(
                       () => setCopiedLink(false),
+
                       2400,
                     )
                   } else {
@@ -2190,9 +2311,13 @@ function TrackingSheet({
           <div
             style={{
               display: "flex",
+
               justifyContent: "center",
+
               gap: "14px",
+
               marginTop: "10px",
+
               alignItems: "center",
             }}
           >
@@ -2201,13 +2326,21 @@ function TrackingSheet({
               onClick={onOpenComplaint}
               style={{
                 background: "transparent",
+
                 border: "none",
+
                 color: "#dc2626",
+
                 fontSize: "12px",
+
                 fontWeight: 600,
+
                 cursor: "pointer",
+
                 display: "inline-flex",
+
                 alignItems: "center",
+
                 gap: "4px",
               }}
             >
@@ -2220,13 +2353,21 @@ function TrackingSheet({
               onClick={onOpenInsurance}
               style={{
                 background: "transparent",
+
                 border: "none",
+
                 color: "#059669",
+
                 fontSize: "12px",
+
                 fontWeight: 600,
+
                 cursor: "pointer",
+
                 display: "inline-flex",
+
                 alignItems: "center",
+
                 gap: "4px",
               }}
             >
@@ -2254,21 +2395,32 @@ function TrackingSheet({
             <div
               style={{
                 marginTop: "10px",
+
                 marginBottom: "12px",
+
                 padding: "12px",
+
                 borderRadius: "14px",
+
                 background: "#f8fafc",
+
                 border: "1px solid #e2e8f0",
               }}
             >
               <div
                 style={{
                   fontSize: "12px",
+
                   fontWeight: 700,
+
                   color: "#334155",
+
                   marginBottom: "8px",
+
                   display: "flex",
+
                   alignItems: "center",
+
                   gap: "6px",
                 }}
               >
@@ -2280,9 +2432,13 @@ function TrackingSheet({
                 alt="Ảnh xác nhận giao hàng"
                 style={{
                   width: "100%",
+
                   maxHeight: "180px",
+
                   objectFit: "cover",
+
                   borderRadius: "10px",
+
                   border: "1px solid #cbd5e1",
                 }}
               />
@@ -2294,27 +2450,45 @@ function TrackingSheet({
               className="paid-success-banner"
               style={{
                 display: "flex",
+
                 alignItems: "center",
+
                 justifyContent: "space-between",
+
                 padding: "13px 16px",
+
                 background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)",
+
                 border: "1.5px solid #a7f3d0",
+
                 borderRadius: "16px",
+
                 marginBottom: "12px",
+
                 boxShadow: "0 2px 8px rgba(16, 185, 129, 0.08)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "10px" }}
+              >
                 <span
                   style={{
                     width: "28px",
+
                     height: "28px",
+
                     borderRadius: "50%",
+
                     backgroundColor: "#10b981",
+
                     color: "#ffffff",
+
                     display: "grid",
+
                     placeItems: "center",
+
                     fontSize: "15px",
+
                     fontWeight: 700,
                   }}
                 >
@@ -2324,7 +2498,9 @@ function TrackingSheet({
                   <div
                     style={{
                       color: "#065f46",
+
                       fontWeight: 700,
+
                       fontSize: "14px",
                     }}
                   >
@@ -2333,7 +2509,9 @@ function TrackingSheet({
                   <div
                     style={{
                       color: "#047857",
+
                       fontSize: "12px",
+
                       marginTop: "1px",
                     }}
                   >
@@ -2344,10 +2522,15 @@ function TrackingSheet({
               <span
                 style={{
                   fontSize: "12px",
+
                   fontWeight: 600,
+
                   color: "#059669",
+
                   background: "#d1fae5",
+
                   padding: "4px 8px",
+
                   borderRadius: "8px",
                 }}
               >
@@ -2367,8 +2550,12 @@ function TrackingSheet({
                 </strong>
                 <small>
                   {bookingId
-                    ? `${driverName} · ${driverPlate}${vehicle.price ? ` · Giá thuê: ${vehicle.price}` : ""}`
-                    : `${vehicle.detail}${vehicle.price ? ` · Giá thuê: ${vehicle.price}` : ""}`}
+                    ? `${driverName} · ${driverPlate}${
+                        vehicle.price ? ` · Giá thuê: ${vehicle.price}` : ""
+                      }`
+                    : `${vehicle.detail}${
+                        vehicle.price ? ` · Giá thuê: ${vehicle.price}` : ""
+                      }`}
                 </small>
               </span>
               <span className="summary-price">
@@ -2380,9 +2567,13 @@ function TrackingSheet({
                   <span
                     style={{
                       display: "block",
+
                       fontSize: "11.5px",
+
                       color: "#059669",
+
                       fontWeight: 700,
+
                       marginTop: "3px",
                     }}
                   >
@@ -2414,10 +2605,15 @@ function TrackingSheet({
               className="rate-panel"
               style={{
                 padding: "16px",
+
                 borderRadius: "18px",
+
                 background: "#ffffff",
+
                 border: "1.5px solid #e2e8f0",
+
                 boxShadow: "0 2px 10px rgba(0, 0, 0, 0.04)",
+
                 marginBottom: "28px",
               }}
             >
@@ -2442,8 +2638,11 @@ function TrackingSheet({
                 aria-label="Đánh giá tài xế"
                 style={{
                   justifyContent: "center",
+
                   marginBottom: "12px",
+
                   display: "flex",
+
                   gap: "8px",
                 }}
               >
@@ -2581,13 +2780,21 @@ function TrackingSheet({
                   type="button"
                   style={{
                     flex: 1,
+
                     minHeight: "48px",
+
                     fontSize: "14px",
+
                     fontWeight: 700,
+
                     borderRadius: "14px",
+
                     background: "#f1f5f9",
+
                     color: "#334155",
+
                     border: "1.5px solid #cbd5e1",
+
                     cursor: "pointer",
                   }}
                 >
@@ -2599,8 +2806,11 @@ function TrackingSheet({
                   disabled={isSubmittingRate}
                   onClick={async () => {
                     if (ratePending.current) return
+
                     ratePending.current = true
+
                     setIsSubmittingRate(true)
+
                     setRateError("")
 
                     try {
@@ -2617,17 +2827,25 @@ function TrackingSheet({
                       )
                     } finally {
                       ratePending.current = false
+
                       setIsSubmittingRate(false)
                     }
                   }}
                   style={{
                     flex: 1.6,
+
                     minHeight: "48px",
+
                     fontSize: "14.5px",
+
                     fontWeight: 800,
+
                     borderRadius: "14px",
+
                     background: "linear-gradient(180deg, #2563eb, #1d4ed8)",
+
                     boxShadow: "0 4px 14px rgba(37, 99, 235, 0.32)",
+
                     cursor: "pointer",
                   }}
                 >
@@ -2684,18 +2902,31 @@ function TrackingSheet({
               onClick={onOpenComplaint}
               style={{
                 width: "100%",
+
                 background: "#fef2f2",
+
                 border: "1.5px solid #fecaca",
+
                 borderRadius: "14px",
+
                 padding: "10px 14px",
+
                 color: "#b91c1c",
+
                 fontSize: "12.5px",
+
                 fontWeight: 700,
+
                 cursor: "pointer",
+
                 display: "flex",
+
                 alignItems: "center",
+
                 justifyContent: "center",
+
                 gap: "6px",
+
                 boxShadow: "0 1px 3px rgba(185, 28, 28, 0.08)",
               }}
             >
@@ -2798,8 +3029,11 @@ type Order = {
 
   driver?: {
     name: string
+
     initials: string
+
     rating: string
+
     plate: string
   }
 
@@ -2968,6 +3202,7 @@ const orders: Order[] = [
 
 const statusMeta: Record<OrderStatus, {
   label: string
+
   tone: string
 }> = {
   active: { label: "Đang giao", tone: "active" },
@@ -3060,6 +3295,7 @@ function OrderHistory({
 
       .then((res) => {
         if (controller.signal.aborted) return
+
         if (!res.success || !Array.isArray(res.data))
           throw new Error(res.message || "Không thể tải đơn hàng")
 
@@ -3105,14 +3341,14 @@ function OrderHistory({
 
               driver: b.driver
                 ? {
-                  name: b.driver.name || "Tài xế",
+                    name: b.driver.name || "Tài xế",
 
-                  initials: "TX",
+                    initials: "TX",
 
-                  plate: b.driver.licensePlate || "",
+                    plate: b.driver.licensePlate || "",
 
-                  rating: "4.9",
-                }
+                    rating: "4.9",
+                  }
                 : undefined,
             }
           })
@@ -3268,7 +3504,9 @@ function OrderDetail({
 
   onRate: (
     value: number,
+
     comment?: string,
+
     tags?: string[],
   ) => void | Promise<void>
 
@@ -3289,30 +3527,42 @@ function OrderDetail({
   const [orderComment, setOrderComment] = useState("")
 
   const [isSubmittingOrderRate, setIsSubmittingOrderRate] = useState(false)
+
   const orderRatePending = useRef(false)
+
   const [rateError, setRateError] = useState("")
+
   const [bookingDetails, setBookingDetails] = useState<any>(null)
+
   const [detailError, setDetailError] = useState("")
 
   useEffect(() => {
     if (!order.rawBookingId) return
+
     const controller = new AbortController()
+
     fetch(`/api/v1/bookings/${order.rawBookingId}`, {
       signal: controller.signal,
+
       headers: {
         Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
       },
     })
+
       .then((res) => res.json())
+
       .then((data) => {
         if (!data.success)
           throw new Error(data.message || "Không thể tải chi tiết đơn")
+
         if (!controller.signal.aborted) setBookingDetails(data.data)
       })
+
       .catch((error) => {
         if (!controller.signal.aborted)
           setDetailError(error.message || "Không thể tải chi tiết đơn")
       })
+
     return () => controller.abort()
   }, [order.rawBookingId])
 
@@ -3336,7 +3586,7 @@ function OrderDetail({
         }
       })
 
-      .catch(() => { })
+      .catch(() => {})
   }, [order.rawBookingId])
 
   const total = Number(
@@ -3404,7 +3654,7 @@ function OrderDetail({
             <small>
               {order.rawBookingId
                 ? bookingDetails?.driver?.licensePlate ||
-                "Đang cập nhật thông tin xe"
+                  "Đang cập nhật thông tin xe"
                 : v.detail}
             </small>
           </span>
@@ -3452,10 +3702,15 @@ function OrderDetail({
           <div
             style={{
               fontSize: "13px",
+
               color: "#64748b",
+
               padding: "6px 0",
+
               display: "flex",
+
               alignItems: "center",
+
               gap: "8px",
             }}
           >
@@ -3493,7 +3748,9 @@ function OrderDetail({
                     <div
                       style={{
                         fontSize: "13px",
+
                         fontWeight: 600,
+
                         color: "#1e293b",
                       }}
                     >
@@ -3504,12 +3761,15 @@ function OrderDetail({
                     <div
                       style={{
                         fontSize: "11px",
+
                         color: "#64748b",
+
                         marginTop: "2px",
                       }}
                     >
                       {new Date(c.created_at).toLocaleTimeString("vi-VN", {
                         hour: "2-digit",
+
                         minute: "2-digit",
                       })}{" "}
                       · Tổng đài bảo mật số
@@ -3519,7 +3779,9 @@ function OrderDetail({
                     <div
                       style={{
                         fontSize: "12px",
+
                         fontWeight: 700,
+
                         color: isAnswered ? "#16a34a" : "#dc2626",
                       }}
                     >
@@ -3727,9 +3989,11 @@ function OrderDetail({
                   disabled={draft === 0 || isSubmittingOrderRate}
                   onClick={async () => {
                     if (draft === 0 || orderRatePending.current) return
+
                     orderRatePending.current = true
 
                     setIsSubmittingOrderRate(true)
+
                     setRateError("")
 
                     try {
@@ -3742,6 +4006,7 @@ function OrderDetail({
                       )
                     } finally {
                       orderRatePending.current = false
+
                       setIsSubmittingOrderRate(false)
                     }
                   }}
@@ -3803,22 +4068,29 @@ function OrderDetail({
 
 export default function App() {
   const phoneRef = useRef<HTMLElement>(null)
+
   const restoreId = useRef(
     new URLSearchParams(window.location.search).get("trackBooking") ||
-    sessionStorage.getItem("customer-active-booking"),
+      sessionStorage.getItem("customer-active-booking"),
   )
 
   const [customerToast, setCustomerToast] = useState<string | null>(null)
+
   const toastTimer = useRef<number | null>(null)
+
   useEffect(
     () => () => {
       if (toastTimer.current) clearTimeout(toastTimer.current)
     },
+
     [],
   )
+
   const showCustomerToast = useCallback((msg: string, duration = 3500) => {
     setCustomerToast(msg)
+
     if (toastTimer.current) clearTimeout(toastTimer.current)
+
     toastTimer.current = window.setTimeout(() => {
       setCustomerToast((prev) => (prev === msg ? null : prev))
     }, duration)
@@ -3847,6 +4119,7 @@ export default function App() {
   const [tab, setTab] = useState("Trang chủ")
 
   const [sheetExpanded, setSheetExpanded] = useState(false)
+
   const [tripSheetCollapsed, setTripSheetCollapsed] = useState(false)
 
   const [showVehicleDetails, setShowVehicleDetails] = useState(false)
@@ -3871,16 +4144,19 @@ export default function App() {
 
   const [callModalOpen, setCallModalOpen] = useState(false)
 
-  const [paymentMethod, setPaymentMethod] =
-    useState<"CASH" | "VNPAY">("CASH")
+  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "VNPAY">("CASH")
+
   const defaultPayment = usePaymentPreference()
+
   useEffect(() => {
     const methods = {
       cash: "CASH",
+
       vnpay: "VNPAY",
     } as const
+
     if (defaultPayment in methods) {
-      setPaymentMethod(methods[defaultPayment as "cash" | "vnpay"])
+      setPaymentMethod(methods[(defaultPayment as "cash" | "vnpay")])
     }
   }, [defaultPayment])
 
@@ -3889,35 +4165,53 @@ export default function App() {
   const [paymentQrData, setPaymentQrData] = useState<any>(null)
 
   const [paymentSuccess, setPaymentSuccess] = useState(false)
+
   const [paymentError, setPaymentError] = useState("")
+
   const [paidBookings, setPaidBookings] = useState<Record<string, boolean>>({})
+
   const markBookingPaid = (id?: string | null) => {
     const targetId = id || currentBookingId
+
     if (targetId) {
       setPaidBookings((prev) => ({ ...prev, [targetId]: true }))
     }
   }
+
   const closeCustomerPayment = () => {
     setPaymentQrOpen(false)
+    setPhase("searching")
   }
 
   const [paymentChecking, setPaymentChecking] = useState(false)
+
   const manualPaymentRequest = useRef<AbortController | null>(null)
+
   const manualPaymentPending = useRef(false)
+
   useEffect(() => {
     if (!paymentQrOpen) {
       manualPaymentRequest.current?.abort()
+
       manualPaymentPending.current = false
+
       setPaymentChecking(false)
     }
+
     return () => manualPaymentRequest.current?.abort()
   }, [paymentQrOpen])
+
   useEffect(() => {
     if (!paymentSuccess || !paymentQrOpen) return
+
     const timer = window.setTimeout(() => {
       setPaymentQrOpen(false)
+
       setPaymentSuccess(false)
+
+      setPhase("searching")
     }, 2000)
+
     return () => window.clearTimeout(timer)
   }, [paymentSuccess, paymentQrOpen])
 
@@ -3933,22 +4227,28 @@ export default function App() {
       return
 
     const txnCode = paymentQrData.transactionCode
+
     const controller = new AbortController()
+
     let pending = false
 
     const checkStatus = async () => {
       if (pending || controller.signal.aborted) return
+
       pending = true
+
       try {
         const res = await fetch(`/api/v1/payments/status/${txnCode}`, {
           signal: controller.signal,
         })
 
         const data = await res.json()
+
         if (controller.signal.aborted) return
 
         if (data.success && data.data?.isSuccess) {
           setPaymentSuccess(true)
+
           markBookingPaid()
         } else if (data.data?.status === "FAILED") {
           setPaymentError("Thanh toán mô phỏng thất bại. Bạn có thể thử lại.")
@@ -3965,15 +4265,19 @@ export default function App() {
 
     const unsubscribe = subscribeRealtime(
       `payment-${txnCode}`,
+
       "payment-completed",
+
       () => {
         setPaymentSuccess(true)
+
         markBookingPaid()
       },
     )
 
     return () => {
       clearInterval(interval)
+
       controller.abort()
 
       unsubscribe()
@@ -3987,8 +4291,11 @@ export default function App() {
       manualPaymentPending.current
     )
       return
+
     manualPaymentPending.current = true
+
     const controller = new AbortController()
+
     manualPaymentRequest.current = controller
 
     setPaymentChecking(true)
@@ -3996,14 +4303,17 @@ export default function App() {
     try {
       const res = await fetch(
         `/api/v1/payments/status/${paymentQrData.transactionCode}`,
+
         { signal: controller.signal },
       )
 
       const data = await res.json()
+
       if (controller.signal.aborted) return
 
       if (data.success && data.data?.isSuccess) {
         setPaymentSuccess(true)
+
         markBookingPaid()
       } else if (data.data?.status === "FAILED") {
         setPaymentError("Thanh toán mô phỏng thất bại. Bạn có thể thử lại.")
@@ -4014,10 +4324,12 @@ export default function App() {
       }
     } catch (err) {
       if (controller.signal.aborted) return
+
       showCustomerToast("Lỗi kiểm tra: " + String(err))
     } finally {
       if (manualPaymentRequest.current === controller) {
         manualPaymentPending.current = false
+
         if (!controller.signal.aborted) setPaymentChecking(false)
       }
     }
@@ -4032,6 +4344,7 @@ export default function App() {
   const [surchargeServices, setSurchargeServices] =
     useState<SurchargeServiceItem[]>(defaultSurcharges)
 
+  // Tạm thời tắt tính năng phụ phí / bốc xếp: luôn để rỗng
   const [selectedServices, setSelectedServices] =
     useState<Record<string, number>>({})
 
@@ -4054,6 +4367,7 @@ export default function App() {
 
     breakdown?: {
       transportPrice?: number
+
       surchargeTotal?: number
     }
   } | null>(null)
@@ -4062,8 +4376,11 @@ export default function App() {
 
   const [routeCoords, setRouteCoords] = useState<{
     originLat: number
+
     originLng: number
+
     destLat: number
+
     destLng: number
   } | null>(null)
 
@@ -4077,25 +4394,33 @@ export default function App() {
 
   const [customerWallet, setCustomerWallet] = useState<{
     balance: number
+
     id?: string
   } | null>(null)
+
   const [topUpModalOpen, setTopUpModalOpen] = useState(false)
 
   const fetchCustomerWallet = useCallback(async () => {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
     if (!token) {
       setCustomerWallet(null)
+
       return
     }
+
     try {
       const res = await fetch("/api/v1/customer/wallet", {
         headers: { Authorization: `Bearer ${token}` },
       })
+
       const data = await res.json()
+
       if (data.success && data.data) {
         setCustomerWallet({
           balance: Number(data.data.balance || 0),
+
           id: data.data.id,
         })
       }
@@ -4107,37 +4432,64 @@ export default function App() {
   const [authToken, setAuthToken] = useState<string | null>(() =>
     typeof window !== "undefined" ? localStorage.getItem("auth_token") : null,
   )
+
   const authTokenRef = useRef(authToken)
+
   authTokenRef.current = authToken
 
   useEffect(() => {
     const syncAuth = (event: Event) => {
       if (event instanceof StorageEvent && event.key !== "auth_token") return
+
       const token = localStorage.getItem("auth_token")
+
       if (token === authTokenRef.current) return
+
       authTokenRef.current = token
+
       setAuthToken(token)
+
       setCustomerOrders([])
+
       setSupportBooking(null)
+
       setOpenOrder(null)
+
       clearCustomerData()
+
       setPaymentQrOpen(false)
+
       setPaymentQrData(null)
+
       setPaymentSuccess(false)
+
       setRatings({})
+
       setCurrentBookingId(null)
+
       setActiveDriver(null)
+
       setPhase("booking")
+
       setChatId(null)
+
       setCallModalOpen(false)
+
       if (!token) {
         restoreId.current = null
+
         sessionStorage.removeItem("customer-active-booking")
+
         setCurrentBookingId(null)
+
         setActiveDriver(null)
+
         setPhase("booking")
+
         setChatId(null)
+
         setCallModalOpen(false)
+
         setCustomerWallet(null)
       } else {
         fetchCustomerWallet()
@@ -4334,10 +4686,14 @@ export default function App() {
 
     if (!targetBookingId) {
       showCustomerToast("Thiếu mã đơn để theo dõi")
+
       return
     }
+
     setCurrentBookingId(targetBookingId)
+
     setActiveDriver(null)
+
     setPhase("searching")
 
     changeTab("Trang chủ")
@@ -4363,42 +4719,65 @@ export default function App() {
 
   const viewTrip = () => {
     setChatId(null)
+
     if (!currentBookingId) {
       changeTab("Đơn hàng")
+
       return
     }
+
     changeTab("Trang chủ")
   }
 
   useEffect(() => {
     const trackId = restoreId.current
+
     if (!authToken || !trackId) return
+
     const controller = new AbortController()
+
     fetch(`/api/v1/bookings/${trackId}/track`, {
       signal: controller.signal,
+
       headers: { Authorization: `Bearer ${authToken}` },
     })
+
       .then(async (res) => {
         const json = await res.json()
+
         if (controller.signal.aborted) return
+
         if (!res.ok || !json.success || !json.data?.bookingId)
           throw new Error(json.message || "Không thể khôi phục chuyến xe")
+
         restoreId.current = null
+
         const data = json.data
+
         if (data.status === "CANCELLED") {
           sessionStorage.removeItem("customer-active-booking")
+
           setBookingError("Chuyến xe đã bị hủy.")
+
           return
         }
+
         setCurrentBookingId(data.bookingId)
+
         setCurrentBookingCode(data.bookingCode || "")
+
         if (data.totalPrice) {
           setPrice(`${Number(data.totalPrice).toLocaleString("vi-VN")}đ`)
         }
+
         if (data.vehicleTypeId) setSelected(data.vehicleTypeId)
+
         setPickup(data.origin?.address || "")
+
         setDestination(data.destination?.address || "")
+
         setActiveDriver(data.driver || null)
+
         setPhase(
           data.status === "COMPLETED"
             ? "delivered"
@@ -4411,10 +4790,12 @@ export default function App() {
                   : "searching",
         )
       })
+
       .catch((error) => {
         if (!controller.signal.aborted)
           setBookingError(error.message || "Không thể khôi phục chuyến xe")
       })
+
     return () => controller.abort()
   }, [authToken])
 
@@ -4434,6 +4815,8 @@ export default function App() {
   }, [currentBookingId, phase])
 
   const [activeDriver, setActiveDriver] = useState<any>(null)
+
+  const [nearbyDriverCount, setNearbyDriverCount] = useState<number | null>(null)
 
   const [isBookingLoading, setIsBookingLoading] = useState(false)
 
@@ -4455,21 +4838,28 @@ export default function App() {
 
   const paymentDialogRef = useCustomerDialog(
     paymentQrOpen,
+
     closeCustomerPayment,
   )
 
-  const [currentDeliveryOtp, setCurrentDeliveryOtp] = useState<string | null>(null)
-  const [currentDeliveryProof, setCurrentDeliveryProof] = useState<string | null>(null)
+  const [currentDeliveryOtp, setCurrentDeliveryOtp] = useState<string | null>(
+    null,
+  )
+
+  const [currentDeliveryProof, setCurrentDeliveryProof] =
+    useState<string | null>(null)
+
   const [showInsuranceModal, setShowInsuranceModal] = useState(false)
+
   const [showComplaintModal, setShowComplaintModal] = useState(false)
 
-  // Lắng nghe sự kiện Realtime trên kênh chuyến đi của khách (trip-{bookingId})
+  // Lắng nghe sự kiện Realtime trên kênh chuyến đi của khách (private-trip-{bookingId})
 
   useEffect(() => {
     if (!currentBookingId) return
 
     const unsubAccepted = subscribeRealtime(
-      `trip-${currentBookingId}`,
+      `private-trip-${currentBookingId}`,
 
       "booking:accepted",
 
@@ -4481,31 +4871,39 @@ export default function App() {
         }
 
         setPhase("found")
+
         setTripSheetCollapsed(false)
       },
     )
 
     const unsubStatus = subscribeRealtime(
-      `trip-${currentBookingId}`,
+      `private-trip-${currentBookingId}`,
 
       "booking:status-change",
 
       (data) => {
         console.log("📍 [Customer UI] Cập nhật chặng:", data)
+
+        if (data.deliveryOtp) {
+          setCurrentDeliveryOtp(data.deliveryOtp)
+        }
+
         if (data.status === "ARRIVED_AT_PICKUP") setPhase("arrived")
         else if (data.status === "IN_TRANSIT") setPhase("delivering")
         else if (data.status === "COMPLETED") {
           setPhase("delivered")
+
           if (data.deliveryProofImage) {
             setCurrentDeliveryProof(data.deliveryProofImage)
           }
         }
+
         setTripSheetCollapsed(false)
       },
     )
 
     const unsubCancelled = subscribeRealtime(
-      `trip-${currentBookingId}`,
+      `private-trip-${currentBookingId}`,
 
       "booking:cancelled",
 
@@ -4514,6 +4912,7 @@ export default function App() {
 
         showCustomerToast(
           `Chuyến xe đã bị hủy (${data.reason || "Bởi tài xế"})`,
+
           5000,
         )
 
@@ -4540,12 +4939,16 @@ export default function App() {
     if (!currentBookingId) return
 
     if (phase === "booking" || phase === "delivered") return
+
     const controller = new AbortController()
+
     let pending = false
 
     const fetchTripTrack = async () => {
       if (pending || controller.signal.aborted) return
+
       pending = true
+
       try {
         const token =
           typeof window !== "undefined"
@@ -4554,10 +4957,12 @@ export default function App() {
 
         const res = await fetch(`/api/v1/bookings/${currentBookingId}/track`, {
           signal: controller.signal,
+
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
 
         const json = await res.json()
+
         if (controller.signal.aborted) return
 
         if (json.success && json.data) {
@@ -4584,21 +4989,26 @@ export default function App() {
             (phase === "searching" || phase === "found")
           ) {
             setPhase("arriving")
+
             setTripSheetCollapsed(false)
           }
 
           if (trackData.status === "ARRIVED_AT_PICKUP" && phase !== "arrived") {
             setPhase("arrived")
+
             setTripSheetCollapsed(false)
           } else if (
             trackData.status === "IN_TRANSIT" &&
             phase !== "delivering"
           ) {
             setPhase("delivering")
+
             setTripSheetCollapsed(false)
           } else if (trackData.status === "COMPLETED") {
             setPhase("delivered")
+
             setTripSheetCollapsed(false)
+
             if (trackData.deliveryProofImage) {
               setCurrentDeliveryProof(trackData.deliveryProofImage)
             }
@@ -4607,6 +5017,7 @@ export default function App() {
           if (trackData.deliveryOtp) {
             setCurrentDeliveryOtp(trackData.deliveryOtp)
           }
+
           if (trackData.deliveryProofImage) {
             setCurrentDeliveryProof(trackData.deliveryProofImage)
           }
@@ -4635,6 +5046,7 @@ export default function App() {
 
     return () => {
       clearInterval(timer)
+
       controller.abort()
     }
   }, [currentBookingId, phase])
@@ -4643,12 +5055,14 @@ export default function App() {
     if (currentBookingId) {
       if (phase === "found") {
         setPhase("arriving")
+
         return
       }
 
       try {
         const response = await fetch(
           `/api/v1/bookings/${currentBookingId}/track`,
+
           {
             headers: {
               Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
@@ -4665,9 +5079,14 @@ export default function App() {
 
         const status = data.data.status
 
+        if (data.data.deliveryOtp) {
+          setCurrentDeliveryOtp(data.data.deliveryOtp)
+        }
+
         if (status === "COMPLETED") setPhase("delivered")
         else if (status === "IN_TRANSIT") {
           setPhase("delivering")
+
           if (phase === "delivering")
             showCustomerToast("Hệ thống chưa xác nhận chuyến đã hoàn thành.")
         } else if (status === "ARRIVED_AT_PICKUP") setPhase("arrived")
@@ -4717,27 +5136,37 @@ export default function App() {
 
   useEffect(() => {
     let isCancelled = false
+
     const controller = new AbortController()
 
     if (!pickup.trim() || !destination.trim()) {
       setEstimateData(null)
+
       setEstimateError("")
+
       setIsEstimating(false)
+
       setPrice(vehicleList.find((v) => v.id === selected)?.price || "—")
+
       return () => {
         isCancelled = true
+
         controller.abort()
       }
     }
 
     const coords = routeCoords || {
       originLat: 10.7769,
+
       originLng: 106.7009,
+
       destLat: 10.7734,
+
       destLng: 106.7044,
     }
 
     setIsEstimating(true)
+
     setEstimateError("")
 
     const currentV =
@@ -4745,35 +5174,45 @@ export default function App() {
       vehicleList[1] ||
       vehicleList[0]
 
-    const servicesPayload = Object.entries(selectedServices)
-      .filter(([_, qty]) => qty > 0)
-      .map(([code, quantity]) => ({ code, quantity }))
+    // Tạm thời tắt tính năng phụ phí / bốc xếp: không gửi payload phụ phí
+    const servicesPayload: { code: string; quantity: number }[] = []
 
     const calculateLocalFallback = () => {
       const R = 6371
+
       const dLat = ((coords.destLat - coords.originLat) * Math.PI) / 180
+
       const dLng = ((coords.destLng - coords.originLng) * Math.PI) / 180
+
       const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos((coords.originLat * Math.PI) / 180) *
           Math.cos((coords.destLat * Math.PI) / 180) *
           Math.sin(dLng / 2) *
           Math.sin(dLng / 2)
+
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
       const distanceKm = Math.max(0.6, Number((R * c * 1.35).toFixed(1)))
+
       const durationMinutes = Math.max(6, Math.round(distanceKm * 3.2))
 
       const rawBase =
         currentV.rawBasePrice ||
         parseInt(currentV.price.replace(/\D/g, "")) ||
         149000
+
       const pricePerKm = 17000
+
       const baseKm = 4.0
+
       const extraKm = Math.max(0, distanceKm - baseKm)
+
       const transportPrice = Math.round(rawBase + extraKm * pricePerKm)
 
       const surchargeTotal = servicesPayload.reduce((sum, s) => {
         const foundSrv = surchargeServices.find((sv) => sv.code === s.code)
+
         return sum + (foundSrv?.price || 0) * s.quantity
       }, 0)
 
@@ -4781,15 +5220,24 @@ export default function App() {
 
       return {
         distanceKm,
+
         durationMinutes,
+
         totalPrice,
+
         surchargesTotal: surchargeTotal,
+
         originLat: coords.originLat,
+
         originLng: coords.originLng,
+
         destLat: coords.destLat,
+
         destLng: coords.destLng,
+
         breakdown: {
           transportPrice,
+
           surchargeTotal,
         },
       }
@@ -4799,14 +5247,22 @@ export default function App() {
       try {
         const res = await fetch("/api/v1/bookings/estimate", {
           method: "POST",
+
           headers: { "Content-Type": "application/json" },
+
           signal: controller.signal,
+
           body: JSON.stringify({
             vehicleTypeId: currentV?.vehicleTypeId || currentV?.id,
+
             originLat: coords.originLat,
+
             originLng: coords.originLng,
+
             destLat: coords.destLat,
+
             destLng: coords.destLng,
+
             services: servicesPayload,
           }),
         })
@@ -4815,13 +5271,18 @@ export default function App() {
 
         if (res.ok) {
           const json = await res.json()
+
           if (json.success && json.data) {
             const data = json.data
+
             const surchargesTotal =
               data.surchargeTotal ??
               data.breakdown?.surchargeTotal ??
               servicesPayload.reduce((sum, s) => {
-                const foundSrv = surchargeServices.find((sv) => sv.code === s.code)
+                const foundSrv = surchargeServices.find(
+                  (sv) => sv.code === s.code,
+                )
+
                 return sum + (foundSrv?.price || 0) * s.quantity
               }, 0)
 
@@ -4831,41 +5292,64 @@ export default function App() {
               (data.breakdown?.transportPrice
                 ? Number(data.breakdown.transportPrice) + surchargesTotal
                 : null)
+
             const numTotal = Number(rawTotal)
+
             const finalTotalPrice =
               Number.isFinite(numTotal) && numTotal > 0 ? numTotal : 149000
 
             setEstimateData({
               distanceKm: Number(data.distanceKm) || 1.2,
+
               durationMinutes: Number(data.durationMinutes) || 12,
+
               totalPrice: finalTotalPrice,
+
               surchargesTotal,
+
               originLat: coords.originLat,
+
               originLng: coords.originLng,
+
               destLat: coords.destLat,
+
               destLng: coords.destLng,
+
               breakdown: data.breakdown || {
                 transportPrice: Math.max(0, finalTotalPrice - surchargesTotal),
+
                 surchargeTotal: surchargesTotal,
               },
             })
+
             setPrice(`${finalTotalPrice.toLocaleString("vi-VN")}đ`)
+
             setEstimateError("")
+
             setIsEstimating(false)
+
             return
           }
         }
 
         const fallback = calculateLocalFallback()
+
         setEstimateData(fallback)
+
         setPrice(`${fallback.totalPrice.toLocaleString("vi-VN")}đ`)
+
         setEstimateError("")
       } catch (err: any) {
         if (isCancelled || err.name === "AbortError") return
+
         console.warn("Dùng công thức dự phòng cước chuyến:", err)
+
         const fallback = calculateLocalFallback()
+
         setEstimateData(fallback)
+
         setPrice(`${fallback.totalPrice.toLocaleString("vi-VN")}đ`)
+
         setEstimateError("")
       } finally {
         if (!isCancelled) {
@@ -4878,12 +5362,22 @@ export default function App() {
 
     return () => {
       isCancelled = true
+
       controller.abort()
     }
-  }, [pickup, destination, routeCoords, selected, selectedServices, vehicleList, surchargeServices])
+  }, [
+    pickup,
+    destination,
+    routeCoords,
+    selected,
+    selectedServices,
+    vehicleList,
+    surchargeServices,
+  ])
 
   const handleBook = async () => {
     if (bookingPending.current) return
+
     if (isEstimating) return
 
     setBookingError("")
@@ -4892,7 +5386,9 @@ export default function App() {
       setPickupError(true)
 
       document
+
         .querySelector<HTMLInputElement>('[aria-label="Điểm lấy hàng"]')
+
         ?.focus()
 
       return
@@ -4920,12 +5416,16 @@ export default function App() {
     }
 
     // Phương án 1: Bắt buộc không được có nợ phạt hủy chuyến mới được đặt xe
+
     if (customerWallet && customerWallet.balance < 0) {
       const debt = Math.abs(customerWallet.balance).toLocaleString("vi-VN")
+
       setBookingError(
         `Tài khoản đang có khoản nợ phí hủy chuyến ${debt}đ chưa thanh toán. Vui lòng thanh toán khoản nợ để tiếp tục đặt xe.`,
       )
+
       setTopUpModalOpen(true)
+
       return
     }
 
@@ -4934,38 +5434,30 @@ export default function App() {
       vehicleList[1] ||
       vehicleList[0]
 
-    const servicesPayload = Object.entries(selectedServices)
+    // Tạm thời tắt tính năng phụ phí / bốc xếp: không gửi payload phụ phí
+    const servicesPayload: { code: string; quantity: number }[] = []
 
-      .filter(([_, qty]) => qty > 0)
+    const currentEst = estimateData
 
-      .map(([code, quantity]) => ({ code, quantity }))
-
-    let currentEst = estimateData
     if (
       !currentEst ||
-      ![
-        currentEst.originLat,
-        currentEst.originLng,
-        currentEst.destLat,
-        currentEst.destLng,
-      ].every((value) => typeof value === "number" && Number.isFinite(value))
+      typeof currentEst.originLat !== "number" ||
+      typeof currentEst.originLng !== "number" ||
+      typeof currentEst.destLat !== "number" ||
+      typeof currentEst.destLng !== "number" ||
+      !Number.isFinite(currentEst.originLat) ||
+      !Number.isFinite(currentEst.originLng) ||
+      !Number.isFinite(currentEst.destLat) ||
+      !Number.isFinite(currentEst.destLng)
     ) {
-      const fallbackCoords = routeCoords || {
-        originLat: 10.7769,
-        originLng: 106.7009,
-        destLat: 10.7734,
-        destLng: 106.7044,
-      }
-      currentEst = {
-        distanceKm: 2.5,
-        durationMinutes: 15,
-        totalPrice: 149000,
-        surchargesTotal: 0,
-        originLat: fallbackCoords.originLat,
-        originLng: fallbackCoords.originLng,
-        destLat: fallbackCoords.destLat,
-        destLng: fallbackCoords.destLng,
-      }
+      const errorMsg =
+        "Chưa có thông tin cước và lộ trình. Vui lòng chọn lại địa chỉ điểm lấy hàng và điểm giao hàng."
+
+      setBookingError(errorMsg)
+
+      showCustomerToast(errorMsg)
+
+      return
     }
 
     bookingPending.current = true
@@ -4984,6 +5476,7 @@ export default function App() {
 
         body: JSON.stringify({
           originAddress: pickup,
+
           originLat: currentEst.originLat,
 
           originLng: currentEst.originLng,
@@ -4993,6 +5486,7 @@ export default function App() {
           destLat: currentEst.destLat,
 
           destLng: currentEst.destLng,
+
           vehicleTypeId: currentV?.vehicleTypeId || currentV?.id,
 
           paymentMethod: paymentMethod,
@@ -5010,18 +5504,24 @@ export default function App() {
 
       if (!res.ok || !data.success) {
         const errMsg = data.message || "Không thể tạo đơn đặt xe."
+
         setBookingError(errMsg)
+
         if (errMsg.toLowerCase().includes("nợ")) {
           fetchCustomerWallet()
+
           setTopUpModalOpen(true)
         }
+
         return
       }
 
       const bId = data.data.bookingId
+
       if (!bId) throw new Error("Phản hồi đặt xe thiếu mã đơn")
 
       setTripSheetCollapsed(false)
+
       setCurrentBookingId(bId)
 
       setCurrentBookingCode(data.data.bookingCode || "")
@@ -5036,8 +5536,51 @@ export default function App() {
 
       setHasEscalated(false)
 
-      // Khách và tài xế thanh toán trực tiếp khi nhận hàng. Ứng dụng không thu hộ tiền cước nên không mở cổng thanh toán.
-      setPhase("searching")
+      const totalBookingPrice =
+        Number(data.data.totalPrice) || currentEst?.totalPrice || 0
+
+      if (paymentMethod === "CASH" || (paymentMethod as any) === "WALLET") {
+        setPhase("searching")
+      } else {
+        // Online payment (VNPAY/MOMO)
+        try {
+          const payToken =
+            token ||
+            (typeof window !== "undefined"
+              ? localStorage.getItem("auth_token")
+              : null)
+          const payRes = await fetch("/api/v1/payments/create-url", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${payToken}`,
+            },
+            body: JSON.stringify({
+              amount: totalBookingPrice,
+              gateway: paymentMethod,
+              purpose: "PAY_BOOKING",
+              bookingId: bId,
+            }),
+          })
+          const payData = await payRes.json()
+          if (payData.success) {
+            setPaymentQrData({
+              qrCodeUrl: payData.data.qrCodeUrl,
+              paymentUrl: payData.data.paymentUrl,
+              amount: totalBookingPrice,
+              transactionCode: payData.data.transactionCode,
+              gateway: paymentMethod,
+            })
+            setPaymentQrOpen(true)
+            setPhase("searching")
+          } else {
+            // Fallback to searching if payment creation fails
+            setPhase("searching")
+          }
+        } catch {
+          setPhase("searching")
+        }
+      }
     } catch (err: any) {
       console.warn("Error creating booking:", err)
 
@@ -5123,11 +5666,13 @@ export default function App() {
 
       if (res.ok && data.success) {
         fetchCustomerWallet()
+
         if (data.data?.cancellationFee > 0) {
           showCustomerToast(
             `Chuyến xe đã hủy. Do tài xế đã đến điểm đón, áp dụng phí bồi thường: ${data.data.cancellationFee.toLocaleString(
               "vi-VN",
             )}đ.`,
+
             5000,
           )
         } else {
@@ -5153,22 +5698,32 @@ export default function App() {
 
   const handleReassignDriver = async () => {
     if (!currentBookingId) return
+
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
 
     try {
       const res = await fetch(`/api/v1/bookings/${currentBookingId}/reassign`, {
         method: "POST",
+
         headers: {
           "Content-Type": "application/json",
+
           Authorization: `Bearer ${token}`,
         },
+
         body: JSON.stringify({ reason: "Tài xế đến trễ hơn dự kiến" }),
       })
+
       const data = await res.json()
+
       if (res.ok && data.success) {
-        showCustomerToast("Đã hủy tài xế trễ. Đang tự động tìm tài xế xe tải khác gần bạn...")
+        showCustomerToast(
+          "Đã hủy tài xế trễ. Đang tự động tìm tài xế xe tải khác gần bạn...",
+        )
+
         setActiveDriver(null)
+
         setPhase("searching")
       } else {
         showCustomerToast(data.message || "Không thể đổi tài xế lúc này.")
@@ -5239,16 +5794,26 @@ export default function App() {
 
   const viewCompletedOrder = () => {
     setOpenOrder(null)
+
     changeTab("Đơn hàng")
   }
 
+  const displayNearbyCount = nearbyDriverCount !== null ? String(nearbyDriverCount) : "..."
+
   const pillMap: Record<string, {
     text: string
+
     badge: string
   }> = {
-    booking: { text: "Tài xế đang hoạt động gần bạn", badge: "18" },
+    booking: {
+      text: "Tài xế đang hoạt động gần bạn",
+      badge: displayNearbyCount,
+    },
 
-    searching: { text: "Đang tìm quanh bạn", badge: "18 xe" },
+    searching: {
+      text: "Đang tìm quanh bạn",
+      badge: `${displayNearbyCount} xe`,
+    },
 
     found: { text: "Anh Minh đang di chuyển", badge: "4 phút" },
 
@@ -5288,6 +5853,7 @@ export default function App() {
                   onDestChange={(addr) => {
                     if (!isBookingLoading) {
                       setDestination(addr)
+
                       if (addr.trim()) setDestinationError(false)
                     }
                   }}
@@ -5296,6 +5862,8 @@ export default function App() {
                   pickupAddr={pickup}
                   driverName={activeDriver?.name || "Tài xế FastDrop"}
                   driverPlate={activeDriver?.licensePlate || "51D-892.41"}
+                  bookingId={currentBookingId || undefined}
+                  onNearbyCountChange={setNearbyDriverCount}
                 />
                 <header className="top-bar">
                   <div
@@ -5306,6 +5874,7 @@ export default function App() {
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault()
+
                         navigateTab("Tài khoản")
                       }
                     }}
@@ -5324,7 +5893,9 @@ export default function App() {
                           alt={profile.name}
                           style={{
                             width: "100%",
+
                             height: "100%",
+
                             objectFit: "cover",
                           }}
                         />
@@ -5341,12 +5912,31 @@ export default function App() {
                       </strong>
                     </span>
                   </div>
-                  <IconButton
-                    badge
-                    icon="bell"
-                    label="Thông báo"
-                    onClick={() => setShowNotifications(true)}
-                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <button
+                      type="button"
+                      className="icon-button glass"
+                      aria-label="Chuyển sang giao diện Tài xế"
+                      title="Chuyển sang giao diện Tài xế"
+                      onClick={() => {
+                        window.location.hash = "driver"
+                      }}
+                      style={{
+                        color: "var(--brand-600)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Icon name="truck" size={20} />
+                    </button>
+                    <IconButton
+                      badge
+                      icon="bell"
+                      label="Thông báo"
+                      onClick={() => setShowNotifications(true)}
+                    />
+                  </div>
                 </header>
 
                 <div className="location-pill glass" key={phase}>
@@ -5371,7 +5961,11 @@ export default function App() {
                   tabIndex={0}
                   title="Chạm vào bản đồ để thu gọn"
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+                    if (
+                      e.key === "Enter" ||
+                      e.key === " " ||
+                      e.key === "Escape"
+                    ) {
                       setSheetExpanded(false)
                     }
                   }}
@@ -5398,6 +5992,7 @@ export default function App() {
                         swipeStart.current - event.clientY > 25
                       )
                         setSheetExpanded(true)
+
                       swipeStart.current = null
                     }}
                     onPointerCancel={() => {
@@ -5460,6 +6055,7 @@ export default function App() {
                             event.clientY - swipeStart.current > 25
                           )
                             setSheetExpanded(false)
+
                           swipeStart.current = null
                         }}
                         onPointerCancel={() => {
@@ -5468,6 +6064,7 @@ export default function App() {
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault()
+
                             setSheetExpanded(false)
                           }
                         }}
@@ -5487,7 +6084,11 @@ export default function App() {
                           aria-label="Thu gọn bản đồ"
                           title="Thu gọn bảng đặt xe"
                         >
-                          <Icon name="chevron-down" size={20} strokeWidth={2.4} />
+                          <Icon
+                            name="chevron-down"
+                            size={20}
+                            strokeWidth={2.4}
+                          />
                         </button>
                       </div>
                     </div>
@@ -5504,6 +6105,7 @@ export default function App() {
                           error={pickupError}
                           onChange={(value) => {
                             setPickup(value)
+
                             setPickupError(false)
                           }}
                           placeholder="Chọn điểm lấy hàng"
@@ -5647,11 +6249,14 @@ export default function App() {
                         vehicleList={vehicleList}
                       />
 
+                      {/* Tạm thời ẩn tính năng dịch vụ bốc xếp & phụ phí */}
+                      {/*
                       <SurchargeServicesSelector
                         onToggleService={handleToggleService}
                         selectedServices={selectedServices}
                         services={surchargeServices}
                       />
+                      */}
 
                       <div className="price-row">
                         <span>
@@ -5665,169 +6270,86 @@ export default function App() {
                           <strong key={price}>{price}</strong>
                         </span>
                         <span className="price-note">
-                          {estimateData ? (
-                            estimateData.surchargesTotal > 0 ? (
-                              `Đã gồm phụ phí +${estimateData.surchargesTotal.toLocaleString("vi-VN")}đ`
-                            ) : (
-                              "Giá trọn gói theo km"
-                            )
-                          ) : !pickup.trim() && !destination.trim() ? (
-                            "Vui lòng chọn điểm đón & điểm đến"
-                          ) : !destination.trim() ? (
-                            "Vui lòng chọn điểm đến"
-                          ) : !pickup.trim() ? (
-                            "Vui lòng chọn điểm đón"
-                          ) : (
-                            "Đang tính cước phí..."
-                          )}
+                          {estimateData
+                            ? "Giá trọn gói theo km"
+                            : !pickup.trim() && !destination.trim()
+                              ? "Vui lòng chọn điểm đón & điểm đến"
+                              : !destination.trim()
+                                ? "Vui lòng chọn điểm đến"
+                                : !pickup.trim()
+                                  ? "Vui lòng chọn điểm đón"
+                                  : "Đang tính cước phí..."}
                         </span>
                       </div>
 
-                      <div style={{ margin: "14px 0 10px" }}>
-                        <div
-                          style={{
-                            fontSize: 12,
-
-                            fontWeight: 600,
-
-                            color: "#475569",
-
-                            marginBottom: 6,
-
-                            display: "flex",
-
-                            justifyContent: "space-between",
-                          }}
-                        >
-                          <span>Phương thức thanh toán</span>
-                          <span style={{ color: "#2563eb", fontWeight: 700 }}>
-                            {paymentMethod === "CASH"
-                              ? "💵 Tiền mặt (Trực tiếp)"
-                              : "💳 Chuyển khoản (Trực tiếp)"}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(2, 1fr)",
-                            gap: 10,
-                          }}
-                        >
-                          {([
-                            {
-                              id: "CASH",
-                              label: "Tiền mặt",
-                              sub: "Trả trực tiếp tài xế",
-                              icon: "💵",
-                            },
-                            {
-                              id: "VNPAY",
-                              label: "Chuyển khoản",
-                              sub: "Chuyển khoản trực tiếp",
-                              icon: "💳",
-                            },
-                          ] as const).map((pm) => {
-                            const isSelected = paymentMethod === pm.id
-                            return (
-                              <button
-                                key={pm.id}
-                                type="button"
-                                className="customer-pm-btn"
-                                onClick={() => setPaymentMethod(pm.id)}
-                                style={{
-                                  border: isSelected
-                                    ? "2px solid #2563eb"
-                                    : "1.5px solid #e2e8f0",
-                                  backgroundColor: isSelected
-                                    ? "#eff6ff"
-                                    : "#ffffff",
-                                  color: isSelected ? "#1d4ed8" : "#334155",
-                                  boxShadow: isSelected
-                                    ? "0 4px 12px rgba(37,99,235,0.18)"
-                                    : "0 1px 3px rgba(0,0,0,0.04)",
-                                  padding: "10px 12px",
-                                  borderRadius: "14px",
-                                  display: "flex",
-                                  flexDirection: "row",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  gap: "10px",
-                                  minHeight: "54px",
-                                  transition: "all 0.18s ease",
-                                }}
-                              >
-                                <span style={{ fontSize: 24 }}>{pm.icon}</span>
-                                <div style={{ textAlign: "left" }}>
-                                  <div
-                                    style={{
-                                      fontSize: "13.5px",
-                                      fontWeight: 700,
-                                      lineHeight: 1.2,
-                                    }}
-                                  >
-                                    {pm.label}
-                                  </div>
-                                  <div
-                                    style={{
-                                      fontSize: "10.5px",
-                                      color: isSelected ? "#3b82f6" : "#64748b",
-                                      marginTop: "2px",
-                                      fontWeight: 500,
-                                    }}
-                                  >
-                                    {pm.sub}
-                                  </div>
-                                </div>
-                              </button>
-                            )
-                          })}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 9,
-                            padding: "8px 12px",
-                            borderRadius: "12px",
-                            background: "#f8fafc",
-                            border: "1px dashed #cbd5e1",
-                            fontSize: "11px",
-                            color: "#64748b",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          <span style={{ fontSize: 13 }}>💡</span>
-                          <span>
-                            Hai bên tự thanh toán trực tiếp khi giao nhận hàng. Ứng dụng không thu hộ tiền cước.
-                          </span>
-                        </div>
+                      {/* Lưu ý thanh toán trực tiếp giữa hai bên */}
+                      <div
+                        style={{
+                          margin: "12px 0",
+                          padding: "9px 12px",
+                          borderRadius: "12px",
+                          background: "#f8fafc",
+                          border: "1px dashed #cbd5e1",
+                          fontSize: "12px",
+                          color: "#475569",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        <span style={{ fontSize: 15 }}>💡</span>
+                        <span>
+                          <strong>Lưu ý:</strong> Hai bên tự thanh toán trực tiếp khi giao nhận hàng. Ứng dụng không thu hộ tiền cước.
+                        </span>
                       </div>
 
                       {/* Thẻ Bảo hiểm Chuyến xe & Cảnh báo Miễn trừ 100% */}
                       <div
                         style={{
                           marginTop: 12,
+
                           marginBottom: 12,
+
                           padding: "12px 14px",
+
                           borderRadius: "14px",
-                          background: "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)",
+
+                          background:
+                            "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)",
+
                           border: "1.5px solid #a7f3d0",
+
                           boxShadow: "0 2px 8px rgba(16, 185, 129, 0.08)",
                         }}
                       >
                         <div
                           style={{
                             display: "flex",
+
                             alignItems: "center",
+
                             justifyContent: "space-between",
+
                             marginBottom: 6,
                           }}
                         >
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
                             <span style={{ fontSize: 18 }}>🛡️</span>
                             <div>
-                              <strong style={{ fontSize: 13, color: "#065f46", fontWeight: 800 }}>
+                              <strong
+                                style={{
+                                  fontSize: 13,
+                                  color: "#065f46",
+                                  fontWeight: 800,
+                                }}
+                              >
                                 Bảo hiểm hàng hóa tới 50.000.000đ
                               </strong>
                               <div style={{ fontSize: 11, color: "#047857" }}>
@@ -5840,13 +6362,21 @@ export default function App() {
                             onClick={() => setShowInsuranceModal(true)}
                             style={{
                               background: "none",
+
                               border: "none",
+
                               color: "#059669",
+
                               fontSize: "11.5px",
+
                               fontWeight: 700,
+
                               cursor: "pointer",
+
                               textDecoration: "underline",
+
                               padding: 0,
+
                               flexShrink: 0,
                             }}
                           >
@@ -5856,20 +6386,32 @@ export default function App() {
                         <div
                           style={{
                             marginTop: 6,
+
                             padding: "8px 10px",
+
                             borderRadius: "10px",
+
                             background: "#fffbeb",
+
                             border: "1px solid #fde68a",
+
                             fontSize: "11px",
+
                             color: "#92400e",
+
                             lineHeight: 1.4,
+
                             display: "flex",
+
                             gap: "6px",
                           }}
                         >
                           <span>⚠️</span>
                           <span>
-                            <strong>Điều khoản:</strong> Bảo hiểm chỉ có hiệu lực đúng lộ trình và địa chỉ trên app. Mọi thỏa thuận thay đổi ngoài app sẽ bị <strong>từ chối bồi thường 100%</strong>.
+                            <strong>Điều khoản:</strong> Bảo hiểm chỉ có hiệu
+                            lực đúng lộ trình và địa chỉ trên app. Mọi thỏa
+                            thuận thay đổi ngoài app sẽ bị{" "}
+                            <strong>từ chối bồi thường 100%</strong>.
                           </span>
                         </div>
                       </div>
@@ -5879,61 +6421,102 @@ export default function App() {
                         <div
                           style={{
                             marginTop: "10px",
+
                             marginBottom: "12px",
+
                             padding: "12px 14px",
+
                             borderRadius: "12px",
+
                             background: "#fef2f2",
+
                             border: "1.5px solid #f87171",
+
                             boxShadow: "0 2px 8px rgba(239, 68, 68, 0.1)",
                           }}
                         >
                           <div
                             style={{
                               display: "flex",
+
                               alignItems: "center",
+
                               gap: "8px",
+
                               fontWeight: 700,
+
                               fontSize: "13px",
+
                               color: "#991b1b",
+
                               marginBottom: "4px",
                             }}
                           >
                             <span style={{ fontSize: "16px" }}>🚫</span>
                             <span>
-                              Khoản nợ phí hủy chuyến: {Math.abs(customerWallet.balance).toLocaleString("vi-VN")}đ
+                              Khoản nợ phí hủy chuyến:{" "}
+                              {Math.abs(customerWallet.balance).toLocaleString(
+                                "vi-VN",
+                              )}
+                              đ
                             </span>
                           </div>
                           <p
                             style={{
                               margin: "0 0 10px",
+
                               fontSize: "11.5px",
+
                               color: "#7f1d1d",
+
                               lineHeight: 1.45,
                             }}
                           >
-                            Bạn có cuốc xe đã hủy sau khi tài xế tới điểm lấy hàng. Vui lòng thanh toán khoản nợ để mở lại quyền tìm tài xế.
+                            Bạn có cuốc xe đã hủy sau khi tài xế tới điểm lấy
+                            hàng. Vui lòng thanh toán khoản nợ để mở lại quyền
+                            tìm tài xế.
                           </p>
                           <button
                             type="button"
                             onClick={() => setTopUpModalOpen(true)}
                             style={{
                               width: "100%",
+
                               padding: "9px 12px",
-                              background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+
+                              background:
+                                "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+
                               color: "#fff",
+
                               border: "none",
+
                               borderRadius: "8px",
+
                               fontWeight: 700,
+
                               fontSize: "12px",
+
                               cursor: "pointer",
+
                               display: "flex",
+
                               alignItems: "center",
+
                               justifyContent: "center",
+
                               gap: "6px",
+
                               boxShadow: "0 2px 6px rgba(220, 38, 38, 0.3)",
                             }}
                           >
-                            <span>💳 Thanh toán nợ ngay ({Math.abs(customerWallet.balance).toLocaleString("vi-VN")}đ)</span>
+                            <span>
+                              💳 Thanh toán nợ ngay (
+                              {Math.abs(customerWallet.balance).toLocaleString(
+                                "vi-VN",
+                              )}
+                              đ)
+                            </span>
                           </button>
                         </div>
                       )}
@@ -5950,7 +6533,11 @@ export default function App() {
                         type="button"
                         style={
                           customerWallet && customerWallet.balance < 0
-                            ? { opacity: 0.65, cursor: "not-allowed", filter: "grayscale(0.8)" }
+                            ? {
+                                opacity: 0.65,
+                                cursor: "not-allowed",
+                                filter: "grayscale(0.8)",
+                              }
                             : undefined
                         }
                       >
@@ -5972,9 +6559,13 @@ export default function App() {
                       <div
                         style={{
                           textAlign: "center",
+
                           fontSize: "11px",
+
                           color: "#64748b",
+
                           marginTop: "8px",
+
                           lineHeight: 1.4,
                         }}
                       >
@@ -5984,12 +6575,19 @@ export default function App() {
                           onClick={() => setShowInsuranceModal(true)}
                           style={{
                             color: "#0284c7",
+
                             textDecoration: "underline",
+
                             background: "none",
+
                             border: "none",
+
                             padding: 0,
+
                             cursor: "pointer",
+
                             fontSize: "11px",
+
                             fontWeight: 600,
                           }}
                         >
@@ -6077,12 +6675,17 @@ export default function App() {
                         if (currentBookingId) {
                           await handleRateBooking(
                             currentBookingId,
+
                             stars,
+
                             comment,
+
                             tags,
                           )
+
                           setRatings((r) => ({
                             ...r,
+
                             [currentBookingId]: stars,
                           }))
                         }
@@ -6113,7 +6716,9 @@ export default function App() {
 
                     if (!targetBookingId)
                       throw new Error("Thiếu mã đơn để đánh giá")
+
                     await handleRateBooking(targetBookingId, n, comment, tags)
+
                     setRatings((r) => ({ ...r, [openOrder.id]: n }))
                   }}
                   onSupport={openSupport}
@@ -6178,15 +6783,19 @@ export default function App() {
         )}
 
         {!(tab === "Tài khoản" && navHidden) &&
-          !(tab === "Trang chủ" && phase !== "booking" && phase !== "delivered") && (
-          <BottomNavigation
-            active={tab}
-            onChange={navigateTab}
-            authToken={authToken}
-            chatOpen={Boolean(chatId)}
-            bookingId={currentBookingId}
-          />
-        )}
+          !(
+            tab === "Trang chủ" &&
+            phase !== "booking" &&
+            phase !== "delivered"
+          ) && (
+            <BottomNavigation
+              active={tab}
+              onChange={navigateTab}
+              authToken={authToken}
+              chatOpen={Boolean(chatId)}
+              bookingId={currentBookingId}
+            />
+          )}
 
         {chatId && (
           <ChatScreen
@@ -6262,8 +6871,11 @@ export default function App() {
               <p
                 style={{
                   margin: "0 0 14px",
+
                   fontSize: "13px",
+
                   color: "#64748b",
+
                   lineHeight: 1.4,
                 }}
               >
@@ -6288,14 +6900,20 @@ export default function App() {
               >
                 {[
                   "Tài xế nhận cuốc nhưng không di chuyển / đến quá trễ",
+
                   "Không liên lạc được với tài xế",
+
                   "Đổi kế hoạch đi lại / gửi hàng",
+
                   "Đặt nhầm loại xe / địa chỉ",
+
                   "Lý do cá nhân khác",
                 ].map((reason) => (
                   <label
                     key={reason}
-                    className={`customer-radio-option ${customerCancelReason === reason ? "selected" : ""}`}
+                    className={`customer-radio-option ${
+                      customerCancelReason === reason ? "selected" : ""
+                    }`}
                     onClick={() => setCustomerCancelReason(reason)}
                   >
                     <input
@@ -6369,9 +6987,13 @@ export default function App() {
             <div
               style={{
                 background: "var(--canvas)",
+
                 borderRadius: 20,
+
                 padding: 20,
+
                 width: "100%",
+
                 maxWidth: 390,
               }}
             >
@@ -6388,29 +7010,42 @@ export default function App() {
               </div>
               {vehicleList.map((vehicle) => {
                 const isCurrent = vehicle.id === selected
+
                 return (
                   <div
                     key={vehicle.id}
                     style={{
                       display: "flex",
+
                       alignItems: "center",
+
                       justifyContent: "space-between",
+
                       gap: 12,
+
                       padding: "14px 12px",
+
                       borderRadius: 14,
+
                       marginBottom: 8,
+
                       border: isCurrent
                         ? "1.5px solid #2563eb"
                         : "1px solid var(--line)",
+
                       backgroundColor: isCurrent ? "#eff6ff" : "#fff",
+
                       transition: "all 160ms ease",
                     }}
                   >
                     <div
                       style={{
                         display: "flex",
+
                         alignItems: "center",
+
                         gap: 12,
+
                         minWidth: 0,
                       }}
                     >
@@ -6419,7 +7054,9 @@ export default function App() {
                         <div
                           style={{
                             fontWeight: 700,
+
                             fontSize: 14,
+
                             color: "#1e293b",
                           }}
                         >
@@ -6428,7 +7065,9 @@ export default function App() {
                         <div
                           style={{
                             fontSize: 12,
+
                             color: "#64748b",
+
                             marginTop: 2,
                           }}
                         >
@@ -6440,11 +7079,17 @@ export default function App() {
                       <span
                         style={{
                           fontSize: 12,
+
                           fontWeight: 700,
+
                           color: "#2563eb",
+
                           backgroundColor: "#dbeafe",
+
                           padding: "4px 8px",
+
                           borderRadius: 8,
+
                           flexShrink: 0,
                         }}
                       >
@@ -6456,12 +7101,16 @@ export default function App() {
                         className="secondary-button"
                         style={{
                           padding: "6px 12px",
+
                           fontSize: 12,
+
                           minHeight: 32,
+
                           flexShrink: 0,
                         }}
                         onClick={() => {
                           handleVehicleSelect(vehicle)
+
                           setShowVehicleDetails(false)
                         }}
                       >
@@ -6503,6 +7152,7 @@ export default function App() {
           bookingCode={currentBookingCode}
           bookingId={currentBookingId}
           driverName={activeDriver?.name}
+          driverId={activeDriver?.id}
         />
 
         <TopUpModal
@@ -6510,6 +7160,7 @@ export default function App() {
           onClose={() => setTopUpModalOpen(false)}
           onSuccess={() => {
             fetchCustomerWallet()
+
             setTopUpModalOpen(false)
           }}
           userRole="CUSTOMER"
@@ -6536,44 +7187,66 @@ export default function App() {
             tabIndex={-1}
             style={{
               position: "fixed",
+
               inset: 0,
+
               backgroundColor: "rgba(0,0,0,0.75)",
+
               backdropFilter: "blur(4px)",
+
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
+
               zIndex: 99999,
+
               padding: 16,
             }}
           >
             <div
               style={{
                 backgroundColor: "#fff",
+
                 borderRadius: 20,
+
                 width: "100%",
+
                 maxWidth: 380,
+
                 padding: 24,
+
                 textAlign: "center",
+
                 boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
               }}
             >
               <div
                 style={{
                   display: "flex",
+
                   justifyContent: "space-between",
+
                   alignItems: "center",
+
                   marginBottom: 12,
                 }}
               >
                 <span
                   style={{
                     padding: "4px 10px",
+
                     borderRadius: 9999,
+
                     backgroundColor:
                       paymentQrData.gateway === "VNPAY" ? "#eff6ff" : "#fdf2f8",
+
                     color:
                       paymentQrData.gateway === "VNPAY" ? "#2563eb" : "#d946ef",
+
                     fontSize: 12,
+
                     fontWeight: 700,
                   }}
                 >
@@ -6586,9 +7259,13 @@ export default function App() {
                   onClick={closeCustomerPayment}
                   style={{
                     border: "none",
+
                     background: "none",
+
                     fontSize: 18,
+
                     cursor: "pointer",
+
                     color: "#64748b",
                   }}
                 >
@@ -6599,8 +7276,11 @@ export default function App() {
               <h2
                 style={{
                   fontSize: 18,
+
                   fontWeight: 700,
+
                   margin: "0 0 6px",
+
                   color: "#0f172a",
                 }}
               >
@@ -6609,7 +7289,9 @@ export default function App() {
               <p
                 style={{
                   fontSize: 13,
+
                   color: "#64748b",
+
                   margin: "0 0 16px",
                 }}
               >
@@ -6624,15 +7306,25 @@ export default function App() {
                   <div
                     style={{
                       width: 64,
+
                       height: 64,
+
                       borderRadius: "50%",
+
                       backgroundColor: "#ecfdf5",
+
                       color: "#059669",
+
                       fontSize: 32,
+
                       display: "flex",
+
                       alignItems: "center",
+
                       justifyContent: "center",
+
                       margin: "0 auto 16px",
+
                       boxShadow: "0 4px 12px rgba(5, 150, 105, 0.2)",
                     }}
                   >
@@ -6641,8 +7333,11 @@ export default function App() {
                   <h4
                     style={{
                       fontSize: 18,
+
                       fontWeight: 700,
+
                       color: "#059669",
+
                       margin: "0 0 6px",
                     }}
                   >
@@ -6657,14 +7352,23 @@ export default function App() {
                   <div
                     style={{
                       width: 200,
+
                       height: 200,
+
                       margin: "0 auto 16px",
+
                       borderRadius: 14,
+
                       border: "2px solid #e2e8f0",
+
                       padding: 8,
+
                       backgroundColor: "#fff",
+
                       display: "flex",
+
                       alignItems: "center",
+
                       justifyContent: "center",
                     }}
                   >
@@ -6673,7 +7377,9 @@ export default function App() {
                       alt="QR Code"
                       style={{
                         width: "100%",
+
                         height: "100%",
+
                         objectFit: "contain",
                       }}
                     />
@@ -6682,8 +7388,11 @@ export default function App() {
                   <div
                     style={{
                       fontSize: 20,
+
                       fontWeight: 800,
+
                       color: "#0f172a",
+
                       marginBottom: 10,
                     }}
                   >
@@ -6694,15 +7403,25 @@ export default function App() {
                   <div
                     style={{
                       fontSize: 12,
+
                       color: "#059669",
+
                       backgroundColor: "#ecfdf5",
+
                       padding: "6px 12px",
+
                       borderRadius: 8,
+
                       marginBottom: 16,
+
                       display: "flex",
+
                       alignItems: "center",
+
                       justifyContent: "center",
+
                       gap: 6,
+
                       fontWeight: 500,
                     }}
                   >
@@ -6718,13 +7437,21 @@ export default function App() {
                       onClick={closeCustomerPayment}
                       style={{
                         flex: 1,
+
                         padding: "10px",
+
                         borderRadius: 10,
+
                         border: "1px solid #cbd5e1",
+
                         backgroundColor: "#fff",
+
                         color: "#334155",
+
                         fontSize: 13,
+
                         fontWeight: 600,
+
                         cursor: "pointer",
                       }}
                     >
@@ -6736,13 +7463,21 @@ export default function App() {
                       disabled={paymentChecking}
                       style={{
                         flex: 1.2,
+
                         padding: "10px",
+
                         borderRadius: 10,
+
                         border: "1px solid #93c5fd",
+
                         backgroundColor: "#eff6ff",
+
                         color: "#2563eb",
+
                         fontSize: 13,
+
                         fontWeight: 600,
+
                         cursor: paymentChecking ? "not-allowed" : "pointer",
                       }}
                     >
@@ -6754,19 +7489,30 @@ export default function App() {
                       rel="noreferrer"
                       style={{
                         flex: 1.5,
+
                         padding: "10px",
+
                         borderRadius: 10,
+
                         border: "none",
+
                         backgroundColor:
                           paymentQrData.gateway === "VNPAY"
                             ? "#2563eb"
                             : "#d946ef",
+
                         color: "#fff",
+
                         fontSize: 13,
+
                         fontWeight: 700,
+
                         textDecoration: "none",
+
                         display: "inline-flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >

@@ -47,7 +47,7 @@ router.post("/create-url", requireAuth, async (req: AuthRequest, res, next) => {
 
       amount: Number(amount),
 
-      gateway: gateway ? String(gateway).toUpperCase() as any : "VNPAY",
+      gateway: gateway ? String(gateway).toUpperCase() as any : "VIETQR",
 
       purpose: purpose ? String(purpose).toUpperCase() as any : "TOPUP_WALLET",
 

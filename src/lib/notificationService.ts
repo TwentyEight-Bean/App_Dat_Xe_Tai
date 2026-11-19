@@ -1,8 +1,29 @@
 import admin from "firebase-admin"
 
-import { client } from "../db"
+import { client, db } from "../db"
+import { notifications } from "../db/schema"
 
 import { ApiError } from "./errors"
+
+async function saveNotificationToDb(
+  userId: string,
+  title: string,
+  message: string,
+  type: "order" | "chat" | "promo" | "system",
+  data?: any,
+) {
+  try {
+    await db.insert(notifications).values({
+      userId,
+      title,
+      message,
+      type,
+      data: data || null,
+    })
+  } catch (err) {
+    console.error("Failed to save notification to DB:", err)
+  }
+}
 
 export interface RegisterDeviceTokenDto {
   fcmToken: string
@@ -430,10 +451,21 @@ export async function notifyDriverNewBookingOffer(
 
   offer: NewBookingOfferNotificationData,
 ) {
-  return await sendPushNotificationToUsers(driverUserIds, {
-    title: "🚚 Có chuyến hàng mới gần bạn!",
+  const title = "🚚 Có chuyến hàng mới gần bạn!"
+  const body = `Đơn hàng cách bạn ${offer.distanceKm}km (${offer.bookingCode}) - Cước phí: ${offer.totalPrice.toLocaleString("vi-VN")}đ. Nhận ngay trong 20s!`
 
-    body: `Đơn hàng cách bạn ${offer.distanceKm}km (${offer.bookingCode}) - Cước phí: ${offer.totalPrice.toLocaleString("vi-VN")}đ. Nhận ngay trong 20s!`,
+  await Promise.all(
+    driverUserIds.map((driverUserId) =>
+      saveNotificationToDb(driverUserId, title, body, "order", {
+        bookingId: offer.bookingId,
+      }),
+    ),
+  )
+
+  return await sendPushNotificationToUsers(driverUserIds, {
+    title,
+
+    body,
 
     data: {
       type: "NEW_OFFER",
@@ -473,11 +505,17 @@ export async function notifyCustomerBookingAccepted(
   info: BookingAcceptedNotificationData,
 ) {
   const plateText = info.licensePlate ? ` (Biển số: ${info.licensePlate})` : ""
+  const title = "✅ Tài xế đã nhận chuyến xe của bạn!"
+  const body = `Tài xế ${info.driverName}${plateText} đã nhận đơn ${info.bookingCode} và đang di chuyển đến điểm lấy hàng.`
+
+  await saveNotificationToDb(customerUserId, title, body, "order", {
+    bookingId: info.bookingId,
+  })
 
   return await sendPushNotificationToUser(customerUserId, {
-    title: "✅ Tài xế đã nhận chuyến xe của bạn!",
+    title,
 
-    body: `Tài xế ${info.driverName}${plateText} đã nhận đơn ${info.bookingCode} và đang di chuyển đến điểm lấy hàng.`,
+    body,
 
     data: {
       type: "BOOKING_ACCEPTED",
@@ -524,10 +562,17 @@ export async function notifyCustomerDriverArrived(
 
   info: DriverArrivedInfo,
 ) {
-  return await sendPushNotificationToUser(customerUserId, {
-    title: "📍 Xe đã tới điểm lấy hàng!",
+  const title = "📍 Xe đã tới điểm lấy hàng!"
+  const body = `Tài xế ${info.driverName} đã đến điểm hẹn lấy hàng (${info.bookingCode}). Vui lòng chuẩn bị hàng hóa!`
 
-    body: `Tài xế ${info.driverName} đã đến điểm hẹn lấy hàng (${info.bookingCode}). Vui lòng chuẩn bị hàng hóa!`,
+  await saveNotificationToDb(customerUserId, title, body, "order", {
+    bookingId: info.bookingId,
+  })
+
+  return await sendPushNotificationToUser(customerUserId, {
+    title,
+
+    body,
 
     data: {
       type: "DRIVER_ARRIVED",
@@ -548,10 +593,17 @@ export async function notifyCustomerBookingInTransit(
 
   info: BookingInTransitInfo,
 ) {
-  return await sendPushNotificationToUser(customerUserId, {
-    title: "🚚 Hàng hóa đang trên đường vận chuyển!",
+  const title = "🚚 Hàng hóa đang trên đường vận chuyển!"
+  const body = `Đơn hàng ${info.bookingCode} đã được bốc lên xe và đang trên đường giao đến người nhận.`
 
-    body: `Đơn hàng ${info.bookingCode} đã được bốc lên xe và đang trên đường giao đến người nhận.`,
+  await saveNotificationToDb(customerUserId, title, body, "order", {
+    bookingId: info.bookingId,
+  })
+
+  return await sendPushNotificationToUser(customerUserId, {
+    title,
+
+    body,
 
     data: {
       type: "IN_TRANSIT",
@@ -572,10 +624,17 @@ export async function notifyCustomerBookingCompleted(
 
   info: BookingCompletedInfo,
 ) {
-  return await sendPushNotificationToUser(customerUserId, {
-    title: "🎉 Giao hàng hoàn tất!",
+  const title = "🎉 Giao hàng hoàn tất!"
+  const body = `Chuyến hàng ${info.bookingCode} đã được giao thành công. Cảm ơn bạn đã tin tưởng dịch vụ!`
 
-    body: `Chuyến hàng ${info.bookingCode} đã được giao thành công. Cảm ơn bạn đã tin tưởng dịch vụ!`,
+  await saveNotificationToDb(customerUserId, title, body, "order", {
+    bookingId: info.bookingId,
+  })
+
+  return await sendPushNotificationToUser(customerUserId, {
+    title,
+
+    body,
 
     data: {
       type: "BOOKING_COMPLETED",
@@ -612,11 +671,17 @@ export async function notifyTripCancelled(
         : "Hệ thống"
 
   const reasonText = info.reason ? ` Lý do: ${info.reason}` : ""
+  const title = "❌ Chuyến xe đã bị hủy"
+  const body = `Chuyến xe ${info.bookingCode} đã bị hủy bởi ${who}.${reasonText}`
+
+  await saveNotificationToDb(targetUserId, title, body, "order", {
+    bookingId: info.bookingId,
+  })
 
   return await sendPushNotificationToUser(targetUserId, {
-    title: "❌ Chuyến xe đã bị hủy",
+    title,
 
-    body: `Chuyến xe ${info.bookingCode} đã bị hủy bởi ${who}.${reasonText}`,
+    body,
 
     data: {
       type: "BOOKING_CANCELLED",

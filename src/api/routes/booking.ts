@@ -65,10 +65,29 @@ router.get("/:id", async (req: AuthRequest, res, next) => {
   try {
     const booking = await getBookingById(req.params.id as string)
 
+    const isOwner =
+      booking.customerId === req.user?.userId ||
+      booking.driverId === req.user?.userId ||
+      (booking as any).driverUserId === req.user?.userId ||
+      req.user?.role === "ADMIN"
+
+    if (!isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền truy cập thông tin chuyến xe này",
+      })
+    }
+
+    // Mã OTP nhận hàng chỉ hiển thị cho khách hàng đặt đơn hoặc ADMIN
+    const isCustomerOrAdmin =
+      booking.customerId === req.user?.userId || req.user?.role === "ADMIN"
+
+    const data = isCustomerOrAdmin ? booking : { ...booking, deliveryOtp: null }
+
     res.json({
       success: true,
 
-      data: booking,
+      data,
     })
   } catch (err) {
     next(err)
@@ -83,6 +102,19 @@ router.get("/:id", async (req: AuthRequest, res, next) => {
 router.get("/:id/track", async (req: AuthRequest, res, next) => {
   try {
     const booking = await getBookingById(req.params.id as string)
+
+    const isOwner =
+      booking.customerId === req.user?.userId ||
+      booking.driverId === req.user?.userId ||
+      (booking as any).driverUserId === req.user?.userId ||
+      req.user?.role === "ADMIN"
+
+    if (!isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền truy cập thông tin chuyến xe này",
+      })
+    }
 
     res.json({
       success: true,
@@ -104,11 +136,14 @@ router.get("/:id/track", async (req: AuthRequest, res, next) => {
 
         pricing: booking.pricing,
 
-        deliveryOtp: booking.deliveryOtp,
-
         proofImages: booking.proofImages,
 
         deliveryProofImage: booking.proofImages?.delivery,
+
+        deliveryOtp:
+          booking.customerId === req.user?.userId || req.user?.role === "ADMIN"
+            ? (booking as any).deliveryOtp
+            : null,
 
         completedAt: booking.completedAt,
 

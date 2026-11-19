@@ -42,7 +42,6 @@ export const authenticate = (authHeader?: string | null): JwtPayload => {
       return { userId: "dev-customer", role: "CUSTOMER", phone: "0900000001" }
     }
   }
-
   return verifyToken(token)
 }
 
@@ -57,7 +56,7 @@ export const authorizeRoles = (
 ) => {
   if (!allowedRoles.includes(payload.role)) {
     throw new Error(
-      `FORBIDDEN: Quyền truy cập bị từ chối. API này chỉ dành cho: ${allowedRoles.join(", ")}`,
+      `Quyền truy cập bị từ chối. API này chỉ dành cho: ${allowedRoles.join(", ")}`,
     )
   }
 }

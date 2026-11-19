@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => {
 
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "./src"),
+        "@": path.resolve(import.meta.dirname, "./src"),
       },
     },
 
@@ -53,7 +53,7 @@ export default defineConfig(({ mode }) => {
 
       port: parseInt(process.env.PORT || "8443"),
 
-      strictPort: true,
+      strictPort: false,
 
       watch: {
         ignored: ["**/.figma/**"],

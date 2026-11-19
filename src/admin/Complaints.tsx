@@ -21,6 +21,12 @@ export default function Complaints({
   focus,
 
   openOrder,
+
+  onStatusChange,
+
+  onSendReply,
+
+  onEscalate,
 }: {
   items: Complaint[]
 
@@ -29,6 +35,12 @@ export default function Complaints({
   focus?: string
 
   openOrder: (id: string) => void
+
+  onStatusChange?: (id: string, newStatus: string) => Promise<void> | void
+
+  onSendReply?: (id: string, text: string) => Promise<void> | void
+
+  onEscalate?: (id: string, what: string) => Promise<void> | void
 }) {
   const [st, setSt] = useState("Tất cả")
 
@@ -53,7 +65,8 @@ export default function Complaints({
     setItems((p) => p.map((x) => (x.id === c.id ? f(x) : x)))
   }
 
-  const setStatus = (s: string) =>
+  const setStatus = (s: string) => {
+    if (!c) return
     patch((x) => ({
       ...x,
 
@@ -70,9 +83,14 @@ export default function Complaints({
         },
       ],
     }))
+    if (onStatusChange) {
+      onStatusChange(c.id, s)
+    }
+  }
 
   const send = () => {
-    if (!reply.trim()) return
+    if (!reply.trim() || !c) return
+    const text = reply.trim()
 
     patch((x) => ({
       ...x,
@@ -80,21 +98,29 @@ export default function Complaints({
       messages: [
         ...x.messages,
 
-        { from: "admin", text: reply.trim(), at: "Vừa xong" },
+        { from: "admin", text, at: "Vừa xong" },
       ],
 
       status: x.status === "Mới" ? "Đang xử lý" : x.status,
     }))
 
     setReply("")
+    if (onSendReply) {
+      onSendReply(c.id, text)
+    }
   }
 
-  const escalate = (what: string) =>
+  const escalate = (what: string) => {
+    if (!c) return
     patch((x) => ({
       ...x,
 
       events: [...x.events, { text: what, at: "Vừa xong" }],
     }))
+    if (onEscalate) {
+      onEscalate(c.id, what)
+    }
+  }
 
   return (
     <div className="page">
@@ -315,6 +341,37 @@ export default function Complaints({
                 <div className="ibd-issue">
                   <div className="dsec-label">Nội dung phản ánh</div>
                   <p>{c.body}</p>
+                  {c.proofImageUrls && c.proofImageUrls.length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="dsec-label" style={{ marginBottom: 6 }}>
+                        Ảnh chụp bằng chứng ({c.proofImageUrls.length})
+                      </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        {c.proofImageUrls.map((url, i) => (
+                          <a
+                            key={i}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ display: "inline-block" }}
+                          >
+                            <img
+                              src={url}
+                              alt={`Bằng chứng ${i + 1}`}
+                              style={{
+                                width: 110,
+                                height: 80,
+                                objectFit: "cover",
+                                borderRadius: 8,
+                                border: "1px solid var(--line-soft, #e2e8f0)",
+                                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                              }}
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="ibd-cols">
                   <div className="ibd-thread">

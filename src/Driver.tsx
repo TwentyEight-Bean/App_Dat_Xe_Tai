@@ -1650,8 +1650,28 @@ function ActiveJob({
   updating?: boolean
 }) {
   const [expanded, setExpanded] = useState(true)
-  const [pickupProofUrl, setPickupProofUrl] = useState<string>(booking?.pickupProofImage || "")
-  const [deliveryProofUrl, setDeliveryProofUrl] = useState<string>(booking?.deliveryProofImage || "")
+  const [pickupProofUrls, setPickupProofUrls] = useState<string[]>(() => {
+    if (booking?.pickupProofImage) {
+      try {
+        const parsed = JSON.parse(booking.pickupProofImage)
+        if (Array.isArray(parsed)) return parsed
+      } catch {}
+      return [booking.pickupProofImage]
+    }
+    return []
+  })
+  const pickupProofUrl = pickupProofUrls[0] || ""
+  const [deliveryProofUrls, setDeliveryProofUrls] = useState<string[]>(() => {
+    if (booking?.deliveryProofImage) {
+      try {
+        const parsed = JSON.parse(booking.deliveryProofImage)
+        if (Array.isArray(parsed)) return parsed
+      } catch {}
+      return [booking.deliveryProofImage]
+    }
+    return []
+  })
+  const deliveryProofUrl = deliveryProofUrls[0] || ""
   const [deliveryOtpInput, setDeliveryOtpInput] = useState<string>("")
   const [driverCoords, setDriverCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [bypassGeofence, setBypassGeofence] = useState(false)
@@ -1755,41 +1775,80 @@ function ActiveJob({
   }[job]
 
   const handlePickupPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
     setUploadingPickupPhoto(true)
+    const newUrls: string[] = []
+
     try {
-      const res = await uploadImageWithFallback(file)
-      setPickupProofUrl((res as any)?.url || res)
-    } catch (err) {
-      console.warn("Upload pickup photo error:", err)
-      const reader = new FileReader()
-      reader.onload = () => {
-        if (typeof reader.result === "string") setPickupProofUrl(reader.result)
+      // Cho phép upload tối đa 3 ảnh
+      const filesToUpload = Array.from(files).slice(0, 3 - pickupProofUrls.length)
+
+      for (const file of filesToUpload) {
+        try {
+          const res = await uploadImageWithFallback(file)
+          newUrls.push((res as any)?.url || res)
+        } catch (err) {
+          console.warn("Upload pickup photo error:", err)
+          const dataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "")
+            reader.readAsDataURL(file)
+          })
+          if (dataUrl) newUrls.push(dataUrl)
+        }
       }
-      reader.readAsDataURL(file)
+
+      setPickupProofUrls((prev) => [...prev, ...newUrls].slice(0, 3))
     } finally {
       setUploadingPickupPhoto(false)
+      if (pickupPhotoInputRef.current) {
+        pickupPhotoInputRef.current.value = ""
+      }
     }
   }
 
+  const handleRemovePickupPhoto = (indexToRemove: number) => {
+    setPickupProofUrls((prev) => prev.filter((_, idx) => idx !== indexToRemove))
+  }
+
   const handleDeliveryPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
     setUploadingDeliveryPhoto(true)
+    const newUrls: string[] = []
+
     try {
-      const res = await uploadImageWithFallback(file)
-      setDeliveryProofUrl((res as any)?.url || res)
-    } catch (err) {
-      console.warn("Upload delivery photo error:", err)
-      const reader = new FileReader()
-      reader.onload = () => {
-        if (typeof reader.result === "string") setDeliveryProofUrl(reader.result)
+      const filesToUpload = Array.from(files).slice(0, 3 - deliveryProofUrls.length)
+
+      for (const file of filesToUpload) {
+        try {
+          const res = await uploadImageWithFallback(file)
+          newUrls.push((res as any)?.url || res)
+        } catch (err) {
+          console.warn("Upload delivery photo error:", err)
+          const dataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "")
+            reader.readAsDataURL(file)
+          })
+          if (dataUrl) newUrls.push(dataUrl)
+        }
       }
-      reader.readAsDataURL(file)
+
+      setDeliveryProofUrls((prev) => [...prev, ...newUrls].slice(0, 3))
     } finally {
       setUploadingDeliveryPhoto(false)
+      if (deliveryPhotoInputRef.current) {
+        deliveryPhotoInputRef.current.value = ""
+      }
     }
+  }
+
+  const handleRemoveDeliveryPhoto = (indexToRemove: number) => {
+    setDeliveryProofUrls((prev) => prev.filter((_, idx) => idx !== indexToRemove))
   }
 
   return (
@@ -1865,23 +1924,48 @@ function ActiveJob({
           </div>
         </div>
       ) : (
-        <section className="d-sheet expanded">
-          <div className="sheet-handle" onClick={() => setExpanded(false)} />
-          <div className="d-sheet-head">
-            <span className="d-status">
-              <i />
-              {stepText}
-            </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="d-earn-chip">+{money(earning)}</span>
-              <button
-                aria-label="Thu gọn bảng chuyến đi"
-                className="sheet-collapse-btn"
-                onClick={() => setExpanded(false)}
-                type="button"
-              >
-                <Icon name="chevron-down" size={18} strokeWidth={2.4} />
-              </button>
+        <section
+          className="d-sheet expanded"
+          style={{
+            maxHeight: "80dvh",
+            overflowY: "auto",
+            WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
+            paddingTop: "12px",
+          }}
+        >
+          {/* Thanh nắm kéo gạt & Tiêu đề cố định sticky để không bị che khi cuộn */}
+          <div
+            style={{
+              position: "sticky",
+              top: "-12px",
+              background: "#ffffff",
+              zIndex: 5,
+              paddingTop: "6px",
+              paddingBottom: "8px",
+              margin: "-12px -18px 4px -18px",
+              paddingLeft: "18px",
+              paddingRight: "18px",
+              borderBottom: "1px solid #f1f5f9",
+            }}
+          >
+            <div className="sheet-handle" onClick={() => setExpanded(false)} style={{ margin: "0 auto 8px" }} />
+            <div className="d-sheet-head">
+              <span className="d-status">
+                <i />
+                {stepText}
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="d-earn-chip">+{money(earning)}</span>
+                <button
+                  aria-label="Thu gọn bảng chuyến đi"
+                  className="sheet-collapse-btn"
+                  onClick={() => setExpanded(false)}
+                  type="button"
+                >
+                  <Icon name="chevron-down" size={18} strokeWidth={2.4} />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1975,48 +2059,125 @@ function ActiveJob({
                 boxShadow: "0 2px 8px rgba(2, 132, 199, 0.08)",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                 <strong style={{ color: "#0369a1", fontSize: "13px", fontWeight: 800 }}>
                   📸 1. Ảnh kiện hàng lên xe <span style={{ color: "#dc2626" }}>* Bắt buộc</span>
                 </strong>
-                {pickupProofUrl && <span style={{ color: "#16a34a", fontSize: "12px", fontWeight: 800 }}>✓ Đã chụp</span>}
+                <span style={{ color: pickupProofUrls.length > 0 ? "#16a34a" : "#64748b", fontSize: "12px", fontWeight: 800 }}>
+                  {pickupProofUrls.length > 0 ? `✓ Đã đính kèm (${pickupProofUrls.length}/3 ảnh)` : "Tối đa 3 ảnh"}
+                </span>
               </div>
-              <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#475569", lineHeight: 1.4 }}>
-                Gặp khách tại điểm lấy. Chụp ảnh kiện hàng đã sắp xếp an toàn trên thùng xe để làm căn cứ bảo vệ quyền lợi:
+              <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#475569", lineHeight: 1.4 }}>
+                Gặp khách tại điểm lấy. Chụp ảnh kiện hàng đã sắp xếp an toàn trên thùng xe:
               </p>
+
+              {/* Dòng cảnh báo căn cứ pháp lý & phân xử sự cố */}
+              <div
+                style={{
+                  margin: "0 0 10px",
+                  padding: "8px 10px",
+                  borderRadius: "10px",
+                  background: "#fffbeb",
+                  border: "1px dashed #f59e0b",
+                  fontSize: "11.5px",
+                  color: "#92400e",
+                  lineHeight: 1.45,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "6px",
+                }}
+              >
+                <span style={{ fontSize: "14px", flexShrink: 0, marginTop: "1px" }}>⚠️</span>
+                <span>
+                  <strong>Lưu ý quan trọng:</strong> Vui lòng chụp rõ nét kiện hàng thực tế. Nếu gửi ảnh đại hoặc không đúng thực tế, khi có tranh chấp, sự cố hư hỏng hoặc mất mát xảy ra, hệ thống và cơ quan thẩm quyền sẽ <strong>căn cứ duy nhất vào hình ảnh này</strong> để ra quyết định bồi thường và xử lý trách nhiệm!
+                </span>
+              </div>
+
               <input
                 ref={pickupPhotoInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 style={{ display: "none" }}
                 onChange={handlePickupPhotoSelect}
               />
-              {pickupProofUrl ? (
-                <div style={{ position: "relative", borderRadius: "10px", overflow: "hidden", border: "2px solid #0284c7", maxHeight: "130px" }}>
-                  <img src={pickupProofUrl} alt="Ảnh bốc hàng" style={{ width: "100%", height: "130px", objectFit: "cover" }} />
-                  <button
-                    type="button"
-                    onClick={() => pickupPhotoInputRef.current?.click()}
-                    style={{
-                      position: "absolute",
-                      bottom: "6px",
-                      right: "6px",
-                      padding: "6px 12px",
-                      background: "rgba(15, 23, 42, 0.88)",
-                      color: "#ffffff",
-                      borderRadius: "8px",
-                      fontSize: "11.5px",
-                      border: "none",
-                      cursor: "pointer",
-                      fontWeight: 700,
-                    }}
-                  >
-                    Đổi ảnh khác
-                  </button>
+
+              {/* Danh sách các ảnh đã chụp (tối đa 3 ảnh) */}
+              {pickupProofUrls.length > 0 && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: pickupProofUrls.length === 1 ? "1fr" : pickupProofUrls.length === 2 ? "1fr 1fr" : "repeat(3, 1fr)",
+                    gap: "8px",
+                    marginBottom: "10px",
+                  }}
+                >
+                  {pickupProofUrls.map((url, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        position: "relative",
+                        borderRadius: "10px",
+                        overflow: "hidden",
+                        border: "2px solid #0284c7",
+                        height: pickupProofUrls.length === 1 ? "130px" : "90px",
+                        background: "#000",
+                      }}
+                    >
+                      <img
+                        src={url}
+                        alt={`Ảnh kiện hàng ${idx + 1}`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: "4px",
+                          left: "4px",
+                          background: "rgba(0,0,0,0.65)",
+                          color: "#fff",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: "4px",
+                        }}
+                      >
+                        Ảnh {idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePickupPhoto(idx)}
+                        style={{
+                          position: "absolute",
+                          top: "4px",
+                          right: "4px",
+                          width: "22px",
+                          height: "22px",
+                          borderRadius: "50%",
+                          background: "rgba(220, 38, 38, 0.9)",
+                          color: "#ffffff",
+                          fontSize: "12px",
+                          border: "none",
+                          cursor: "pointer",
+                          display: "grid",
+                          placeItems: "center",
+                          fontWeight: 800,
+                          padding: 0,
+                        }}
+                        title="Xóa ảnh này"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ) : (
+              )}
+
+              {/* Nút thêm ảnh nếu chưa đủ 3 ảnh */}
+              {pickupProofUrls.length < 3 ? (
                 <button
                   type="button"
+                  disabled={uploadingPickupPhoto}
                   onClick={() => pickupPhotoInputRef.current?.click()}
                   style={{
                     display: "flex",
@@ -2024,19 +2185,29 @@ function ActiveJob({
                     justifyContent: "center",
                     gap: "8px",
                     width: "100%",
-                    padding: "11px 14px",
+                    padding: "10px 14px",
                     borderRadius: "10px",
                     border: "1.5px dashed #0284c7",
                     background: "#f0f9ff",
                     color: "#0369a1",
                     fontSize: "13px",
                     fontWeight: 700,
-                    cursor: "pointer",
+                    cursor: uploadingPickupPhoto ? "not-allowed" : "pointer",
                   }}
                 >
                   <Icon name="camera" size={18} strokeWidth={2.4} />
-                  <span>{uploadingPickupPhoto ? "Đang tải ảnh..." : "+ Chụp/Đính kèm ảnh hàng lên xe"}</span>
+                  <span>
+                    {uploadingPickupPhoto
+                      ? "Đang tải ảnh..."
+                      : pickupProofUrls.length > 0
+                        ? `+ Thêm ảnh khác (${pickupProofUrls.length}/3)`
+                        : "+ Chụp/Đính kèm ảnh hàng lên xe (Tối đa 3 ảnh)"}
+                  </span>
                 </button>
+              ) : (
+                <div style={{ textAlign: "center", fontSize: "11.5px", color: "#16a34a", fontWeight: 700 }}>
+                  ✓ Đã đính kèm đủ 3/3 ảnh kiện hàng
+                </div>
               )}
             </div>
           )}
@@ -2061,18 +2232,12 @@ function ActiveJob({
 
             return (
               <div style={{ margin: "6px 0 10px" }}>
-                <div className="d-trip-stats">
+                <div className="d-trip-stats" style={{ gridTemplateColumns: "1fr 1fr" }}>
                   <span>
                     <small>Cước thu khách</small>
                     <strong style={{ color: "#0284c7" }}>{money(booking?.totalPrice || earning)}</strong>
                   </span>
-                  <span>
-                    <small>Hình thức</small>
-                    <strong style={{ fontSize: 12, color: "#92400e", fontWeight: 700 }}>
-                      {booking?.paymentMethod === "CASH" ? "💵 Tiền mặt" : "💳 Chuyển khoản"}
-                    </strong>
-                  </span>
-                  <span>
+                  <span style={{ textAlign: "right" }}>
                     <small>Thực nhận (80%)</small>
                     <strong style={{ color: "#166534" }}>+{money(earning)}</strong>
                   </span>
@@ -2187,45 +2352,122 @@ function ActiveJob({
                     boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                     <strong style={{ color: "#0f172a", fontSize: "13px", fontWeight: 800 }}>
                       📸 1. Ảnh bằng chứng giao hàng (POD) <span style={{ color: "#dc2626" }}>* Bắt buộc</span>
                     </strong>
-                    {deliveryProofUrl && <span style={{ color: "#16a34a", fontSize: "12px", fontWeight: 800 }}>✓ Đã chụp</span>}
+                    <span style={{ color: deliveryProofUrls.length > 0 ? "#16a34a" : "#64748b", fontSize: "12px", fontWeight: 800 }}>
+                      {deliveryProofUrls.length > 0 ? `✓ Đã đính kèm (${deliveryProofUrls.length}/3 ảnh)` : "Tối đa 3 ảnh"}
+                    </span>
                   </div>
+
+                  {/* Cảnh báo căn cứ pháp lý & phân xử sự cố khi giao */}
+                  <div
+                    style={{
+                      margin: "0 0 10px",
+                      padding: "8px 10px",
+                      borderRadius: "10px",
+                      background: "#fffbeb",
+                      border: "1px dashed #f59e0b",
+                      fontSize: "11.5px",
+                      color: "#92400e",
+                      lineHeight: 1.45,
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "6px",
+                    }}
+                  >
+                    <span style={{ fontSize: "14px", flexShrink: 0, marginTop: "1px" }}>⚠️</span>
+                    <span>
+                      <strong>Lưu ý quan trọng:</strong> Chụp rõ nét gói hàng bàn giao cho khách và biên bản ký nhận (nếu có). Căn cứ duy nhất để xử lý khiếu nại bồi thường!
+                    </span>
+                  </div>
+
                   <input
                     ref={deliveryPhotoInputRef}
                     type="file"
                     accept="image/*"
+                    multiple
                     style={{ display: "none" }}
                     onChange={handleDeliveryPhotoSelect}
                   />
-                  {deliveryProofUrl ? (
-                    <div style={{ position: "relative", borderRadius: "10px", overflow: "hidden", border: "2px solid #16a34a", maxHeight: "130px" }}>
-                      <img src={deliveryProofUrl} alt="POD" style={{ width: "100%", height: "130px", objectFit: "cover" }} />
-                      <button
-                        type="button"
-                        onClick={() => deliveryPhotoInputRef.current?.click()}
-                        style={{
-                          position: "absolute",
-                          bottom: "6px",
-                          right: "6px",
-                          padding: "6px 12px",
-                          background: "rgba(15, 23, 42, 0.88)",
-                          color: "#ffffff",
-                          borderRadius: "8px",
-                          fontSize: "11.5px",
-                          border: "none",
-                          cursor: "pointer",
-                          fontWeight: 700,
-                        }}
-                      >
-                        Đổi ảnh khác
-                      </button>
+
+                  {/* Danh sách ảnh POD đã chụp (tối đa 3 ảnh) */}
+                  {deliveryProofUrls.length > 0 && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: deliveryProofUrls.length === 1 ? "1fr" : deliveryProofUrls.length === 2 ? "1fr 1fr" : "repeat(3, 1fr)",
+                        gap: "8px",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      {deliveryProofUrls.map((url, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            position: "relative",
+                            borderRadius: "10px",
+                            overflow: "hidden",
+                            border: "2px solid #16a34a",
+                            height: deliveryProofUrls.length === 1 ? "130px" : "90px",
+                            background: "#000",
+                          }}
+                        >
+                          <img
+                            src={url}
+                            alt={`Ảnh POD ${idx + 1}`}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                          <span
+                            style={{
+                              position: "absolute",
+                              bottom: "4px",
+                              left: "4px",
+                              background: "rgba(0,0,0,0.65)",
+                              color: "#fff",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              padding: "1px 6px",
+                              borderRadius: "4px",
+                            }}
+                          >
+                            Ảnh {idx + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDeliveryPhoto(idx)}
+                            style={{
+                              position: "absolute",
+                              top: "4px",
+                              right: "4px",
+                              width: "22px",
+                              height: "22px",
+                              borderRadius: "50%",
+                              background: "rgba(220, 38, 38, 0.9)",
+                              color: "#ffffff",
+                              fontSize: "12px",
+                              border: "none",
+                              cursor: "pointer",
+                              display: "grid",
+                              placeItems: "center",
+                              fontWeight: 800,
+                              padding: 0,
+                            }}
+                            title="Xóa ảnh này"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ) : (
+                  )}
+
+                  {/* Nút thêm ảnh nếu chưa đủ 3 ảnh */}
+                  {deliveryProofUrls.length < 3 ? (
                     <button
                       type="button"
+                      disabled={uploadingDeliveryPhoto}
                       onClick={() => deliveryPhotoInputRef.current?.click()}
                       style={{
                         display: "flex",
@@ -2233,19 +2475,29 @@ function ActiveJob({
                         justifyContent: "center",
                         gap: "8px",
                         width: "100%",
-                        padding: "11px 14px",
+                        padding: "10px 14px",
                         borderRadius: "10px",
                         border: "1.5px dashed #16a34a",
                         background: "#f0fdf4",
                         color: "#15803d",
                         fontSize: "13px",
                         fontWeight: 700,
-                        cursor: "pointer",
+                        cursor: uploadingDeliveryPhoto ? "not-allowed" : "pointer",
                       }}
                     >
                       <Icon name="camera" size={18} />
-                      <span>{uploadingDeliveryPhoto ? "Đang xử lý ảnh POD..." : "+ Chụp ảnh kiện hàng giao khách"}</span>
+                      <span>
+                        {uploadingDeliveryPhoto
+                          ? "Đang xử lý ảnh POD..."
+                          : deliveryProofUrls.length > 0
+                            ? `+ Thêm ảnh khác (${deliveryProofUrls.length}/3)`
+                            : "+ Chụp ảnh kiện hàng giao khách (Tối đa 3 ảnh)"}
+                      </span>
                     </button>
+                  ) : (
+                    <div style={{ textAlign: "center", fontSize: "11.5px", color: "#16a34a", fontWeight: 700 }}>
+                      ✓ Đã đính kèm đủ 3/3 ảnh bằng chứng giao hàng
+                    </div>
                   )}
                 </div>
 
@@ -2353,12 +2605,14 @@ function ActiveJob({
               <ConfirmButton
                 label={updating ? "ĐANG XỬ LÝ..." : "BẮT ĐẦU VẬN CHUYỂN"}
                 onConfirm={() => {
-                  if (!pickupProofUrl) {
-                    alert("Vui lòng chụp hoặc đính kèm ảnh kiện hàng đã lên xe trước khi bắt đầu vận chuyển!")
+                  if (pickupProofUrls.length === 0) {
+                    alert("Vui lòng chụp hoặc đính kèm ít nhất 1 ảnh kiện hàng đã lên xe trước khi bắt đầu vận chuyển!")
                     pickupPhotoInputRef.current?.click()
                     return
                   }
-                  onNext(pickupProofUrl)
+                  // Lưu danh sách mảng ảnh dạng JSON hoặc URL đầu tiên
+                  const proofPayload = pickupProofUrls.length === 1 ? pickupProofUrls[0] : JSON.stringify(pickupProofUrls)
+                  onNext(proofPayload)
                 }}
               />
             )}
@@ -2366,8 +2620,8 @@ function ActiveJob({
               <ConfirmButton
                 label={updating ? "ĐANG XỬ LÝ..." : "HOÀN THÀNH GIAO HÀNG"}
                 onConfirm={() => {
-                  if (!deliveryProofUrl) {
-                    alert("Vui lòng chụp hoặc đính kèm ảnh bằng chứng giao hàng (POD) trước khi hoàn tất cuốc xe!")
+                  if (deliveryProofUrls.length === 0) {
+                    alert("Vui lòng chụp hoặc đính kèm ít nhất 1 ảnh bằng chứng giao hàng (POD) trước khi hoàn tất cuốc xe!")
                     deliveryPhotoInputRef.current?.click()
                     return
                   }
@@ -2375,6 +2629,8 @@ function ActiveJob({
                     alert("Vui lòng nhập đủ 4 số mã OTP xác nhận từ người nhận hàng!")
                     return
                   }
+
+                  const podPayload = deliveryProofUrls.length === 1 ? deliveryProofUrls[0] : JSON.stringify(deliveryProofUrls)
 
                   const destLat = booking?.destination?.latitude || booking?.destLat
                   const destLng = booking?.destination?.longitude || booking?.destLng
@@ -2399,10 +2655,10 @@ function ActiveJob({
                       }. Bạn có chắc chắn muốn xác nhận hoàn tất? (Hệ thống sẽ ghi nhận ngoại lệ đối soát)`
                     )
                     if (!allow) return
-                    onNext(deliveryProofUrl, deliveryOtpInput.trim(), driverCoords || undefined, true)
+                    onNext(podPayload, deliveryOtpInput.trim(), driverCoords || undefined, true)
                     return
                   }
-                  onNext(deliveryProofUrl, deliveryOtpInput.trim(), driverCoords || undefined, bypassGeofence)
+                  onNext(podPayload, deliveryOtpInput.trim(), driverCoords || undefined, bypassGeofence)
                 }}
               />
             )}
@@ -2646,6 +2902,7 @@ function Earnings({
   const isQualified = wallet ? Boolean(wallet.isDepositQualified) : true
   const minLimit = wallet ? Number(wallet.minDepositLimit) : 200000
   const shortfall = wallet ? Number(wallet.shortfall) : 0
+  const isTrialBonusPhase = wallet ? Boolean(wallet.isTrialBonusPhase) : false
 
   return (
     <section className="d-screen d-tab">
@@ -2657,9 +2914,13 @@ function Earnings({
             <strong>{money(currentBal)}</strong>
             <div style={{ marginTop: "6px", fontSize: "12px" }}>
               {isQualified ? (
-                <span style={{ color: "#4ade80", fontWeight: 600 }}>✓ Đủ điều kiện ký quỹ ({money(minLimit)})</span>
+                isTrialBonusPhase ? (
+                  <span style={{ color: "#4ade80", fontWeight: 600 }}>🎁 Đang dùng vốn tặng chạy thử ({money(currentBal)})</span>
+                ) : (
+                  <span style={{ color: "#4ade80", fontWeight: 600 }}>✓ Đủ điều kiện ký quỹ ({money(minLimit)})</span>
+                )
               ) : (
-                <span style={{ color: "#f87171", fontWeight: 600 }}>⚠ Thiếu ký quỹ: {money(shortfall)}</span>
+                <span style={{ color: "#f87171", fontWeight: 600 }}>⚠ {isTrialBonusPhase ? "Hết vốn chạy thử" : "Thiếu ký quỹ"}: Cần nạp {money(shortfall)}</span>
               )}
             </div>
           </div>
@@ -2887,10 +3148,12 @@ function Trips({
 
 function Account({
   profile,
+  driverKycInfo,
   onLogout,
   onReset,
 }: {
   profile?: any
+  driverKycInfo?: any
   onLogout: () => void
   onReset: () => void
 }) {
@@ -2899,14 +3162,21 @@ function Account({
     profile?.user?.fullName ||
     (typeof window !== "undefined" ? localStorage.getItem("driver_phone") : null) ||
     "Tài xế đối tác"
-  const licensePlate = profile?.licensePlate || "Chưa cập nhật biển số"
-  const vehicleName = profile?.vehicleTypeName || profile?.vehicleType?.name || "Xe tải"
+  const licensePlate =
+    profile?.licensePlate ||
+    driverKycInfo?.licensePlate ||
+    "Chưa cập nhật biển số"
+  const vehicleName =
+    profile?.vehicleTypeName ||
+    profile?.vehicleType?.name ||
+    driverKycInfo?.vehicleType?.name ||
+    "Xe tải"
   const rating = profile?.ratingAvg ? Number(profile.ratingAvg).toFixed(1) : "5.0"
   const kycStatus =
-    profile?.kycStatus === "APPROVED"
+    (profile?.kycStatus || driverKycInfo?.kycStatus) === "APPROVED"
       ? "Đã được duyệt"
-      : profile?.kycStatus === "REJECTED"
-        ? `Bị từ chối: ${profile?.rejectionReason || "Thiếu giấy tờ"}`
+      : (profile?.kycStatus || driverKycInfo?.kycStatus) === "REJECTED"
+        ? `Bị từ chối: ${profile?.rejectionReason || driverKycInfo?.rejectionReason || "Thiếu giấy tờ"}`
         : "Đang chờ duyệt"
 
   const getInitials = (name: string) => {
@@ -2934,9 +3204,9 @@ function Account({
           <span
             className="d-review-tick"
             style={
-              profile?.kycStatus === "APPROVED"
+              (profile?.kycStatus || driverKycInfo?.kycStatus) === "APPROVED"
                 ? { background: "rgba(34, 197, 94, 0.2)", color: "#4ade80" }
-                : profile?.kycStatus === "REJECTED"
+                : (profile?.kycStatus || driverKycInfo?.kycStatus) === "REJECTED"
                 ? { background: "rgba(239, 68, 68, 0.2)", color: "#f87171" }
                 : { background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24" }
             }
@@ -2947,9 +3217,9 @@ function Account({
             <small>Hồ sơ xét duyệt (KYC)</small>
             <strong
               style={
-                profile?.kycStatus === "APPROVED"
+                (profile?.kycStatus || driverKycInfo?.kycStatus) === "APPROVED"
                   ? { color: "#4ade80" }
-                  : profile?.kycStatus === "REJECTED"
+                  : (profile?.kycStatus || driverKycInfo?.kycStatus) === "REJECTED"
                   ? { color: "#f87171" }
                   : { color: "#fbbf24" }
               }
@@ -2971,9 +3241,6 @@ function Account({
         </li>
       </ul>
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "24px" }}>
-        <button className="d-cta ghost" onClick={onReset} type="button">
-          Nộp lại hồ sơ KYC (bản demo)
-        </button>
         <button
           className="d-cta danger"
           onClick={onLogout}
@@ -3003,6 +3270,7 @@ export default function DriverApp() {
       : null,
   )
   const [driverProfile, setDriverProfile] = useState<any>(null)
+  const [driverKycInfo, setDriverKycInfo] = useState<any>(null)
 
   const [registered, setRegistered] = useState(true)
 
@@ -3026,7 +3294,13 @@ export default function DriverApp() {
   const [sheetExpanded, setSheetExpanded] = useState(false)
   const [callModalOpen, setCallModalOpen] = useState(false)
   const [topupModalOpen, setTopupModalOpen] = useState(false)
-  const [driverWallet, setDriverWallet] = useState<any>(null)
+  const [driverWallet, setDriverWallet] = useState<any>({
+    balance: 200000,
+    availableBalance: 200000,
+    minDepositLimit: 200000,
+    isDepositQualified: true,
+    shortfall: 0,
+  })
   const [walletTxs, setWalletTxs] = useState<any[]>([])
   const [driverCallLogs, setDriverCallLogs] = useState<any[]>([])
 
@@ -3125,6 +3399,22 @@ export default function DriverApp() {
         }
       })
       .catch((err) => console.warn("Could not load driver profile:", err))
+
+    // Tải thông tin xét duyệt KYC thực tế
+    fetch("/api/v1/driver/kyc/status", {
+      headers: { Authorization: `Bearer ${driverToken}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          setDriverKycInfo(res.data)
+          // Nếu tài xế chưa có hồ sơ hoặc chưa nộp giấy tờ nào, tự động hiển thị màn hình Onboarding KYC
+          if (res.data.documentsCount === 0 && res.data.kycStatus === "UNSUBMITTED") {
+            setRegistered(false)
+          }
+        }
+      })
+      .catch((err) => console.warn("Could not load driver kyc status:", err))
 
     // Tải thông tin Ví Ký Quỹ thực tế từ DB
     loadDriverWallet()
@@ -3250,7 +3540,7 @@ export default function DriverApp() {
 
     const driverId = driverProfile.id || driverProfile.userId
     const unsubOffer = subscribeRealtime(
-      `driver-${driverId}`,
+      `private-driver-${driverId}`,
       "booking:new-offer",
       (data) => {
         if (data?.bookingId && skippedBookingIdsRef.current.has(data.bookingId)) return
@@ -3263,7 +3553,7 @@ export default function DriverApp() {
     )
 
     const unsubCancelled = subscribeRealtime(
-      `driver-${driverId}`,
+      `private-driver-${driverId}`,
       "offer:cancelled",
       (data) => {
         console.log("⚠️ [Driver UI] Cuốc đã có người nhận:", data)
@@ -3279,7 +3569,7 @@ export default function DriverApp() {
     )
 
     const unsubTripCancelled = subscribeRealtime(
-      `driver-${driverId}`,
+      `private-driver-${driverId}`,
       "booking:cancelled",
       (data) => {
         console.log("🛑 [Driver UI] Khách hủy chuyến:", data)
@@ -3510,7 +3800,7 @@ export default function DriverApp() {
       setActiveBooking(accepted)
       setActiveOffer(null)
       setJob("toPickup")
-      emitLocalRealtime(`trip-${bookingId}`, "booking:accepted", {
+      emitLocalRealtime(`private-trip-${bookingId}`, "booking:accepted", {
         bookingId,
         driver: {
           id: driverProfile?.id,
@@ -3581,7 +3871,7 @@ export default function DriverApp() {
         setActiveBooking(null)
       }
 
-      emitLocalRealtime(`trip-${activeBooking.id}`, "booking:status-change", {
+      emitLocalRealtime(`private-trip-${activeBooking.id}`, "booking:status-change", {
         bookingId: activeBooking.id,
         status: nextStatus,
         pickupProofImage: nextStatus === "IN_TRANSIT" ? proofUrl : undefined,
@@ -3620,7 +3910,7 @@ export default function DriverApp() {
         return
       }
 
-      emitLocalRealtime(`trip-${activeBooking.id}`, "booking:cancelled", {
+      emitLocalRealtime(`private-trip-${activeBooking.id}`, "booking:cancelled", {
         bookingId: activeBooking.id,
         cancelledBy: "DRIVER",
         reason: cancelReason,
@@ -3760,6 +4050,7 @@ export default function DriverApp() {
                   jobState={job}
                   mode="driver"
                   online={online}
+                  bookingId={activeBooking?.id || undefined}
                   pickupAddr={activeBooking?.originAddress || activeOffer?.originAddress || undefined}
                 />
                 {!working && job !== "incoming" && job !== "complete" && (
@@ -3855,14 +4146,21 @@ export default function DriverApp() {
                     </button>
                   </div>
 
-                  {driverWallet && !driverWallet.isDepositQualified && (
+                  {/* Banner kiểm tra trạng thái xét duyệt hồ sơ KYC */}
+                  {driverKycInfo && driverKycInfo.kycStatus !== "APPROVED" && (
                     <div
                       style={{
                         margin: "10px 12px 6px",
                         padding: "11px 14px",
                         borderRadius: "14px",
-                        background: "linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(239, 68, 68, 0.08))",
-                        border: "1px solid rgba(245, 158, 11, 0.35)",
+                        background:
+                          driverKycInfo.kycStatus === "REJECTED"
+                            ? "linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(245, 158, 11, 0.08))"
+                            : "linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08))",
+                        border:
+                          driverKycInfo.kycStatus === "REJECTED"
+                            ? "1px solid rgba(239, 68, 68, 0.35)"
+                            : "1px solid rgba(59, 130, 246, 0.35)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
@@ -3870,24 +4168,47 @@ export default function DriverApp() {
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                        <span style={{ fontSize: "18px" }}>🔔</span>
+                        <span style={{ fontSize: "18px" }}>
+                          {driverKycInfo.kycStatus === "REJECTED" ? "❌" : "⏳"}
+                        </span>
                         <div style={{ minWidth: 0 }}>
-                          <strong style={{ fontSize: "12.5px", color: "#b45309", display: "block" }}>
-                            Ví ký quỹ chưa đủ 200.000đ (Hiện còn {money(driverWallet.balance || 0)})
+                          <strong
+                            style={{
+                              fontSize: "12.5px",
+                              color: driverKycInfo.kycStatus === "REJECTED" ? "#b91c1c" : "#1d4ed8",
+                              display: "block",
+                            }}
+                          >
+                            {driverKycInfo.kycStatus === "REJECTED"
+                              ? "Hồ sơ bị từ chối xét duyệt"
+                              : driverKycInfo.documentsCount > 0
+                                ? "Hồ sơ đang chờ Quản trị viên duyệt"
+                                : "Chưa hoàn tất nộp hồ sơ KYC"}
                           </strong>
-                          <span style={{ fontSize: "11px", color: "#78350f" }}>
-                            Nạp thêm {money(driverWallet.shortfall || Math.max(0, 200000 - Number(driverWallet.balance || 0)))} để sẵn sàng nhận cuốc mới
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: driverKycInfo.kycStatus === "REJECTED" ? "#991b1b" : "#1e40af",
+                            }}
+                          >
+                            {driverKycInfo.rejectionReason
+                              ? `Lý do: ${driverKycInfo.rejectionReason}`
+                              : driverKycInfo.documentsCount > 0
+                                ? "Cần được duyệt để bắt đầu nhận cuốc"
+                                : "Nộp đủ 4 giấy tờ để được kích hoạt tài xế"}
                           </span>
                         </div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setTopupModalOpen(true)}
+                        onClick={() => {
+                          setRegistered(false)
+                        }}
                         style={{
                           flexShrink: 0,
                           padding: "7px 12px",
                           borderRadius: "10px",
-                          background: "#d97706",
+                          background: driverKycInfo.kycStatus === "REJECTED" ? "#dc2626" : "#2563eb",
                           color: "#fff",
                           fontWeight: 700,
                           fontSize: "11.5px",
@@ -3895,9 +4216,150 @@ export default function DriverApp() {
                           cursor: "pointer",
                         }}
                       >
-                        Nạp ngay
+                        {driverKycInfo.kycStatus === "REJECTED" ? "Nộp lại" : "Xem hồ sơ"}
                       </button>
                     </div>
+                  )}
+
+                  {/* Banner hiển thị ví ký quỹ */}
+                  {driverWallet && (
+                    <>
+                      {/* Trường hợp 1: Hết tiền hoặc thiếu tiền ký quỹ (cần nạp thêm) */}
+                      {!driverWallet.isDepositQualified ? (
+                        <div
+                          style={{
+                            margin: "10px 12px 6px",
+                            padding: "11px 14px",
+                            borderRadius: "14px",
+                            background: "linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(239, 68, 68, 0.08))",
+                            border: "1px solid rgba(245, 158, 11, 0.35)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "10px",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                            <span style={{ fontSize: "18px" }}>🔔</span>
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ fontSize: "12.5px", color: "#b45309", display: "block" }}>
+                                {Number(driverWallet.balance || 0) <= 0 
+                                  ? "Đã hết vốn tặng chạy thử (0đ)" 
+                                  : `Ví ký quỹ chưa đủ 200.000đ (Hiện còn ${money(driverWallet.balance || 0)})`}
+                              </strong>
+                              <span style={{ fontSize: "11px", color: "#78350f" }}>
+                                Nạp thêm {money(driverWallet.shortfall || Math.max(0, 200000 - Number(driverWallet.balance || 0)))} để mở nhận cuốc xe
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setTopupModalOpen(true)}
+                            style={{
+                              flexShrink: 0,
+                              padding: "7px 12px",
+                              borderRadius: "10px",
+                              background: "#d97706",
+                              color: "#fff",
+                              fontWeight: 700,
+                              fontSize: "11.5px",
+                              border: "none",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Nạp ngay
+                          </button>
+                        </div>
+                      ) : Number(driverWallet.balance || 0) < 50000 ? (
+                        /* Trường hợp 2: Số dư sắp hết (< 50.000đ), cảnh báo nhẹ để tài xế chuẩn bị nạp */
+                        <div
+                          style={{
+                            margin: "10px 12px 6px",
+                            padding: "10px 14px",
+                            borderRadius: "14px",
+                            background: "rgba(254, 243, 199, 0.7)",
+                            border: "1px solid rgba(245, 158, 11, 0.3)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "10px",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                            <span style={{ fontSize: "18px" }}>⚠️</span>
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ fontSize: "12.5px", color: "#b45309", display: "block" }}>
+                                Số dư ví sắp hết (Còn {money(driverWallet.balance || 0)})
+                              </strong>
+                              <span style={{ fontSize: "11px", color: "#92400e" }}>
+                                {driverWallet.isTrialBonusPhase 
+                                  ? "Đang dùng vốn tặng. Khi về 0đ bạn cần nạp tối thiểu 200.000đ để tiếp tục" 
+                                  : "Bạn nên nạp thêm để duy trì nhận cuốc xe không bị gián đoạn"}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setTopupModalOpen(true)}
+                            style={{
+                              flexShrink: 0,
+                              padding: "6px 11px",
+                              borderRadius: "9px",
+                              background: "#d97706",
+                              color: "#fff",
+                              fontWeight: 700,
+                              fontSize: "11px",
+                              border: "none",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Nạp thêm
+                          </button>
+                        </div>
+                      ) : (
+                        /* Trường hợp 3: Số dư thoải mái, hiển thị badge chào mừng & hỗ trợ khởi nghiệp */
+                        <div
+                          style={{
+                            margin: "10px 12px 6px",
+                            padding: "10px 14px",
+                            borderRadius: "14px",
+                            background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(59, 130, 246, 0.08))",
+                            border: "1px solid rgba(16, 185, 129, 0.3)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "10px",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                            <span style={{ fontSize: "18px" }}>🎁</span>
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ fontSize: "12.5px", color: "#065f46", display: "block" }}>
+                                {driverWallet.isTrialBonusPhase
+                                  ? `Vốn ký quỹ chạy thử: ${money(driverWallet.balance || 200000)} (chạy đến khi về 0đ)`
+                                  : `Số dư ký quỹ: ${money(driverWallet.balance || 0)}`}
+                              </strong>
+                              <span style={{ fontSize: "11px", color: "#047857" }}>
+                                Khấu trừ hoa hồng tự động khi nhận cuốc xe thành công
+                              </span>
+                            </div>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              color: "#059669",
+                              background: "#d1fae5",
+                              padding: "4px 8px",
+                              borderRadius: "8px",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Sẵn sàng 100%
+                          </span>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   <div className="d-control-body">
@@ -4033,6 +4495,7 @@ export default function DriverApp() {
             <div className="tab-screen" key="account">
               <Account
                 profile={driverProfile}
+                driverKycInfo={driverKycInfo}
                 onLogout={handleLogout}
                 onReset={() => {
                   setRegistered(false)

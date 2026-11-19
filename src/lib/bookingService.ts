@@ -426,7 +426,7 @@ export async function acceptBooking(driverUserId: string, bookingId: string) {
     throw new ApiError(
       403,
 
-      `FORBIDDEN: ${depositEligibility.message}`,
+      depositEligibility.message,
 
       "INSUFFICIENT_WALLET_DEPOSIT",
     )
@@ -603,6 +603,7 @@ export async function getBookingById(bookingId: string) {
     `
     SELECT 
       b.id,
+      b.customer_id,
       b.booking_code,
       b.status,
       b.origin_address,
@@ -635,6 +636,7 @@ export async function getBookingById(bookingId: string) {
       u.phone as customer_phone,
       u.avatar_url as customer_avatar,
       b.driver_id,
+      dp.user_id as driver_user_id,
       du.full_name as driver_name,
       du.phone as driver_phone,
       du.avatar_url as driver_avatar,
@@ -665,6 +667,12 @@ export async function getBookingById(bookingId: string) {
 
   return {
     id: r.id,
+
+    customerId: r.customer_id,
+
+    driverId: r.driver_id,
+
+    driverUserId: r.driver_user_id || null,
 
     bookingCode: r.booking_code,
 
@@ -1217,6 +1225,8 @@ export async function updateBookingStatus(
     driverId,
 
     note: note || null,
+
+    deliveryOtp: updatedBooking.delivery_otp || booking.delivery_otp,
   })
 
   // 6. Bắn thông báo đẩy Push Notification FCM đến Khách hàng (Task 3.5)
@@ -1644,7 +1654,7 @@ export async function reassignBookingDriver(
 
   // 2. Bắn sự kiện Pusher thông báo cho tài xế cũ
   if (oldDriverId) {
-    await triggerEvent(`driver-${oldDriverId}`, "booking:cancelled", {
+    await triggerEvent(`private-driver-${oldDriverId}`, "booking:cancelled", {
       bookingId,
       cancelledBy: "SYSTEM",
       reason: reason || "Khách hàng đổi tài xế do thời gian chờ quá lâu",
@@ -1652,7 +1662,7 @@ export async function reassignBookingDriver(
   }
 
   // 3. Bắn sự kiện Pusher cập nhật kênh chuyến đi
-  await triggerEvent(`trip-${bookingId}`, "booking:reassigned", {
+  await triggerEvent(`private-trip-${bookingId}`, "booking:reassigned", {
     bookingId,
     status: "SEARCHING",
     message: "Đang tìm kiếm tài xế xe tải khác gần bạn...",

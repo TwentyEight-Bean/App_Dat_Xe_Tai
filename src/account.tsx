@@ -5,14 +5,23 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react"
+
 import { uploadImageWithFallback } from "./lib/cloudinaryClient"
+
 import {
   registerDeviceTokenToServer,
   removeDeviceTokenFromServer,
 } from "./lib/deviceTokenClient"
+
 import TopUpModal from "./TopUpModal"
+
 import useCustomerDialog from "./customerDialog"
-import { sanitizePhoneInput, validateVietnamesePhone } from "./lib/phoneValidation"
+
+import {
+  sanitizePhoneInput,
+  validateVietnamesePhone,
+} from "./lib/phoneValidation"
+import { validatePinStrength } from "./lib/pinSecurity"
 
 /* ---------- tiny shared store ---------- */
 
@@ -80,7 +89,9 @@ export const useProfile = profileStore.use
 
 export function clearCustomerData() {
   addressStore.set([])
+
   profileStore.set({ name: "Khách hàng", phone: "", email: "", photo: "" })
+
   payStore.set("cash")
 }
 
@@ -98,6 +109,7 @@ export const syncUserProfileFromApi = async () => {
     })
 
     const data = await res.json()
+
     if (localStorage.getItem("auth_token") !== token) return null
 
     if (res.ok && data.success && data.user) {
@@ -127,6 +139,7 @@ export const syncUserProfileFromApi = async () => {
         localStorage.removeItem("auth_token")
 
         localStorage.removeItem("user_phone")
+
         clearCustomerData()
 
         window.dispatchEvent(new Event("customer-auth-changed"))
@@ -157,6 +170,7 @@ export const syncAddressesFromApi = async () => {
     const data = await res.json()
 
     if (localStorage.getItem("auth_token") !== token) return
+
     if (res.ok && data.success && Array.isArray(data.data)) {
       addressStore.set(
         data.data.map((item: any, idx: number) => ({
@@ -184,6 +198,7 @@ export const syncAddressesFromApi = async () => {
 }
 
 const payStore = makeStore<"cash" | "vnpay">("cash")
+
 export const usePaymentPreference = payStore.use
 
 const notifStore = makeStore({ orders: true, messages: true, promos: false })
@@ -192,7 +207,7 @@ const privacyStore = makeStore({ location: true, lock: false })
 
 /* ---------- icons ---------- */
 
-type AI = "back" | "chevron" | "user" | "pin" | "card" | "tag" | "help" | "phone" | "bell" | "shield" | "logout" | "pencil" | "home" | "building" | "plus" | "check" | "camera" | "mail" | "cash" | "wallet" | "box" | "chat"
+type AI = "back" | "chevron" | "user" | "pin" | "card" | "tag" | "help" | "phone" | "bell" | "shield" | "logout" | "pencil" | "home" | "building" | "plus" | "check" | "camera" | "mail" | "cash" | "wallet" | "box" | "chat" | "truck"
 
 function AIcon({
   name,
@@ -328,6 +343,14 @@ function AIcon({
     chat: (
       <path d="M21 12a8 8 0 0 1-9 8 9 9 0 0 1-4-.9L3 21l1.8-4A8 8 0 1 1 21 12Z" />
     ),
+
+    truck: (
+      <>
+        <path d="M3 6h11v11H3zM14 10h4l3 3v4h-7z" />
+        <circle cx="7" cy="18" r="2" />
+        <circle cx="18" cy="18" r="2" />
+      </>
+    ),
   }
 
   return (
@@ -353,6 +376,7 @@ type Page = "home" | "profile" | "addresses" | "addressEdit" | "payment" | "noti
 
 type SubHeadProps = {
   title: string
+
   onBack: () => void
 }
 
@@ -455,6 +479,7 @@ function Toast({ text }: { text: string }) {
 
 export type OrderOption = {
   id: string
+
   label: string
 }
 
@@ -540,17 +565,25 @@ export default function AccountScreen({
   useEffect(() => {
     const syncAuth = () => {
       const loggedIn = Boolean(localStorage.getItem("auth_token"))
+
       setIsLoggedIn(loggedIn)
+
       if (!loggedIn) {
         clearCustomerData()
+
         setPage("home")
+
         setConfirmOut(false)
       }
     }
+
     window.addEventListener("customer-auth-changed", syncAuth)
+
     window.addEventListener("storage", syncAuth)
+
     return () => {
       window.removeEventListener("customer-auth-changed", syncAuth)
+
       window.removeEventListener("storage", syncAuth)
     }
   }, [])
@@ -651,16 +684,6 @@ export default function AccountScreen({
             onClick={() => go("addresses")}
             value={`${addresses.length}`}
           />
-          <Row
-            icon="card"
-            label="Phương thức thanh toán"
-            onClick={() => go("payment")}
-            value={
-              pay === "cash"
-                ? "Tiền mặt"
-                : "Chuyển khoản"
-            }
-          />
         </ul>
 
         <h2 className="conv-section">Ưu đãi</h2>
@@ -693,6 +716,13 @@ export default function AccountScreen({
 
         <h2 className="conv-section">Cài đặt</h2>
         <ul className="acc-list">
+          <Row
+            icon="truck"
+            label="Chuyển sang giao diện Tài xế"
+            onClick={() => {
+              window.location.hash = "driver"
+            }}
+          />
           <Row
             icon="bell"
             label="Thông báo"
@@ -757,11 +787,16 @@ export default function AccountScreen({
                       localStorage.removeItem("auth_token")
 
                       localStorage.removeItem("user_phone")
+
                       addressStore.set([])
+
                       profileStore.set({
                         name: "Khách hàng",
+
                         phone: "",
+
                         email: "",
+
                         photo: "",
                       })
 
@@ -792,13 +827,13 @@ export default function AccountScreen({
             <AIcon name="user" size={28} />
           </span>
           <strong>Bạn đã đăng xuất</strong>
-          <p>Đăng nhập lại bằng OTP để tiếp tục đặt xe và xem đơn hàng.</p>
+          <p>Đăng nhập lại để tiếp tục đặt xe và xem đơn hàng.</p>
           <button
             className="primary-button"
             onClick={() => go("loginOtp")}
             type="button"
           >
-            <span>Đăng nhập bằng OTP</span>
+            <span>Đăng nhập ngay</span>
           </button>
         </div>
       </section>
@@ -843,7 +878,9 @@ export default function AccountScreen({
                 <strong
                   style={{
                     display: "inline-flex",
+
                     alignItems: "center",
+
                     gap: "6px",
                   }}
                 >
@@ -872,8 +909,11 @@ export default function AccountScreen({
                 <div
                   style={{
                     display: "flex",
+
                     gap: "10px",
+
                     marginTop: "2px",
+
                     alignItems: "center",
                   }}
                 >
@@ -904,8 +944,10 @@ export default function AccountScreen({
 
                         if (!token || !a.realId) {
                           setToast("Vui lòng đăng nhập và tải lại địa chỉ")
+
                           return
                         }
+
                         if (token && a.realId) {
                           try {
                             const res = await fetch(
@@ -928,6 +970,7 @@ export default function AccountScreen({
 
                             if (localStorage.getItem("auth_token") !== token)
                               return
+
                             if (data.success) {
                               addressStore.set(
                                 addresses.map((item) => ({
@@ -1038,17 +1081,24 @@ export default function AccountScreen({
           <li
             style={{
               padding: "12px 14px",
+
               background: "var(--brand-50, #eaf5ff)",
+
               borderRadius: "14px",
+
               marginBottom: "12px",
+
               border: "1px solid var(--brand-200, #a9d2f7)",
             }}
           >
             <div
               style={{
                 display: "flex",
+
                 alignItems: "center",
+
                 justifyContent: "space-between",
+
                 gap: "10px",
               }}
             >
@@ -1056,9 +1106,13 @@ export default function AccountScreen({
                 <strong
                   style={{
                     fontSize: "13px",
+
                     color: "var(--ink-900, #17212b)",
+
                     display: "flex",
+
                     alignItems: "center",
+
                     gap: "6px",
                   }}
                 >
@@ -1067,9 +1121,13 @@ export default function AccountScreen({
                 <small
                   style={{
                     color: "var(--ink-500, #697580)",
+
                     display: "block",
+
                     marginTop: "2px",
+
                     fontSize: "11px",
+
                     lineHeight: 1.35,
                   }}
                 >
@@ -1088,8 +1146,11 @@ export default function AccountScreen({
                 }
                 style={{
                   padding: "6px 12px",
+
                   fontSize: "12px",
+
                   borderRadius: "10px",
+
                   whiteSpace: "nowrap",
                 }}
                 onClick={async () => {
@@ -1226,7 +1287,7 @@ export default function AccountScreen({
                 : `Khách hàng (${phone.slice(-4)})`,
           })
 
-          setToast("Đăng nhập OTP thành công!")
+          setToast("Đăng nhập thành công!")
 
           go("home")
         }}
@@ -1248,67 +1309,62 @@ export default function AccountScreen({
 
 function LoginOtpPage({
   onBack,
+
   onSuccess,
 }: {
   onBack: () => void
+
   onSuccess: (phone: string, token: string) => void
 }) {
   const pending = useRef(false)
+
   const requestRef = useRef<AbortController | null>(null)
-  const timerRef = useRef<number | null>(null)
 
   const [mode, setMode] = useState<"login" | "register">("login")
+
   const [authType, setAuthType] = useState<"pin" | "password">("pin")
-  const [phone, setPhone] = useState("0988888888")
+
+  const [phone, setPhone] = useState("")
+
   const [fullName, setFullName] = useState("")
-  const [password, setPassword] = useState("123456")
+
+  const [password, setPassword] = useState("")
+
+  const [regPassword, setRegPassword] = useState("")
+  const [regPin, setRegPin] = useState("")
+  const [otp, setOtp] = useState("")
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpTimer, setOtpTimer] = useState(0)
+  const [otpLoading, setOtpLoading] = useState(false)
+
   const [showPassword, setShowPassword] = useState(false)
 
-  // Trạng thái OTP đăng ký
-  const [registerOtpSent, setRegisterOtpSent] = useState(false)
-  const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""])
-  const [devOtpCode, setDevOtpCode] = useState<string | null>(null)
-  const [countdown, setCountdown] = useState<number>(0)
-
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [infoMsg, setInfoMsg] = useState("")
 
-  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([])
+  const [error, setError] = useState("")
+
+  const [infoMsg, setInfoMsg] = useState("")
 
   useEffect(() => {
     return () => {
       requestRef.current?.abort()
-      if (timerRef.current) window.clearInterval(timerRef.current)
     }
   }, [])
-
-  useEffect(() => {
-    if (countdown > 0) {
-      timerRef.current = window.setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            if (timerRef.current) window.clearInterval(timerRef.current)
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-    }
-    return () => {
-      if (timerRef.current) window.clearInterval(timerRef.current)
-    }
-  }, [countdown])
 
   const handleLogin = async () => {
     if (pending.current) return
 
-    const phoneCheck = validateVietnamesePhone(phone)
-    if (!phoneCheck.valid) {
-      setError(phoneCheck.error || "Số điện thoại không hợp lệ")
+    const rawId = phone.trim()
+    if (!rawId) {
+      setError("Vui lòng nhập Tên đăng nhập hoặc Số điện thoại")
       return
     }
-    const cleanPhone = phoneCheck.phone
+
+    let cleanPhone = rawId
+    const phoneCheck = validateVietnamesePhone(rawId)
+    if (phoneCheck.valid) {
+      cleanPhone = phoneCheck.phone
+    }
 
     if (authType === "pin") {
       if (!/^\d{6}$/.test(password.trim())) {
@@ -1335,6 +1391,7 @@ function LoginOtpPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone: cleanPhone,
+          username: rawId,
           password: password.trim(),
           role: "CUSTOMER",
         }),
@@ -1345,13 +1402,15 @@ function LoginOtpPage({
 
       if (!res.ok || !data.success || !data.token || !data.user?.phone) {
         if (res.status === 404) {
-          setError("Số điện thoại chưa đăng ký. Hãy chuyển sang tab Đăng ký để tạo tài khoản mới.")
+          setError(
+            "Tài khoản chưa đăng ký. Hãy chuyển sang tab Đăng ký để tạo tài khoản mới.",
+          )
         } else {
           setError(
             data.message ||
               (authType === "pin"
                 ? "Mã PIN không chính xác. Vui lòng thử lại."
-                : "Mật khẩu không chính xác. Vui lòng thử lại.")
+                : "Mật khẩu không chính xác. Vui lòng thử lại."),
           )
         }
         return
@@ -1373,8 +1432,55 @@ function LoginOtpPage({
     }
   }
 
-  // Bước 1 đăng ký: Gửi mã OTP xác minh chính chủ
-  const handleSendRegisterOtp = async () => {
+  useEffect(() => {
+    let interval: any
+    if (otpTimer > 0) {
+      interval = setInterval(() => {
+        setOtpTimer((prev) => prev - 1)
+      }, 1000)
+    }
+    return () => clearInterval(interval)
+  }, [otpTimer])
+
+  const handleSendOtp = async () => {
+    const phoneCheck = validateVietnamesePhone(phone)
+    if (!phoneCheck.valid) {
+      setError(phoneCheck.error || "Vui lòng nhập số điện thoại hợp lệ trước khi nhận OTP")
+      return
+    }
+
+    setError("")
+    setInfoMsg("")
+    setOtpLoading(true)
+
+    try {
+      const res = await fetch("/api/v1/auth/request-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneCheck.phone, purpose: "REGISTER" }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setError(data.message || "Không thể gửi mã OTP. Vui lòng thử lại.")
+        return
+      }
+
+      setOtpSent(true)
+      setOtpTimer(60)
+      if (data.devOtp) {
+        setOtp(data.devOtp)
+        setInfoMsg(`Đã tạo mã OTP xác thực: ${data.devOtp} (Môi trường thử nghiệm)`)
+      } else {
+        setInfoMsg("Mã OTP xác thực đã được gửi đến số điện thoại của bạn.")
+      }
+    } catch (err: any) {
+      setError(err.message || "Lỗi kết nối khi gửi mã OTP")
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  const handleDirectRegister = async () => {
     if (pending.current) return
 
     const phoneCheck = validateVietnamesePhone(phone)
@@ -1389,74 +1495,19 @@ function LoginOtpPage({
       return
     }
 
-    if (authType === "pin") {
-      if (!/^\d{6}$/.test(password.trim())) {
-        setError("Vui lòng tạo mã PIN gồm đúng 6 chữ số")
-        return
-      }
-    } else {
-      if (!password || password.trim().length < 6) {
-        setError("Vui lòng tạo mật khẩu tối thiểu 6 ký tự")
-        return
-      }
-    }
-
-    setError("")
-    setLoading(true)
-    pending.current = true
-    const request = new AbortController()
-    requestRef.current = request
-
-    try {
-      const res = await fetch("/api/v1/auth/request-otp", {
-        signal: request.signal,
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: cleanPhone,
-          purpose: "register",
-        }),
-      })
-
-      const data = await res.json()
-      if (request.signal.aborted) return
-
-      if (!res.ok || !data.success) {
-        if (data.message?.includes("đã được đăng ký")) {
-          setError("Số điện thoại này đã có tài khoản. Vui lòng bấm Đăng nhập.")
-        } else {
-          setError(data.message || "Không thể gửi mã OTP. Vui lòng thử lại sau.")
-        }
-        return
-      }
-
-      if (data.devOtp) setDevOtpCode(data.devOtp)
-      setInfoMsg("Mã OTP đã được gửi đến số điện thoại. Vui lòng nhập mã để hoàn tất đăng ký.")
-      setCountdown(data.retryAfterSeconds || 60)
-      setRegisterOtpSent(true)
-      setOtpDigits(["", "", "", "", "", ""])
-
-      setTimeout(() => otpInputRefs.current[0]?.focus(), 100)
-    } catch (err: any) {
-      if (request.signal.aborted) return
-      setError(err.message || "Không thể gửi mã OTP")
-    } finally {
-      pending.current = false
-      if (!request.signal.aborted) setLoading(false)
-    }
-  }
-
-  // Bước 2 đăng ký: Hoàn tất với OTP
-  const handleCompleteRegister = async (otpOverride?: string) => {
-    if (pending.current) return
-
-    const fullOtp = otpOverride || otpDigits.join("").trim()
-    if (fullOtp.length !== 6 || !/^\d{6}$/.test(fullOtp)) {
-      setError("Vui lòng nhập đúng 6 chữ số mã OTP")
+    if (!regPassword || regPassword.trim().length < 6) {
+      setError("Vui lòng tạo mật khẩu chính tối thiểu 6 ký tự")
       return
     }
 
-    const cleanPhone = validateVietnamesePhone(phone).phone
+    if (regPin && regPin.trim()) {
+      const pinCheck = validatePinStrength(regPin.trim(), cleanPhone)
+      if (!pinCheck.valid) {
+        setError(pinCheck.error || "Mã PIN không an toàn")
+        return
+      }
+    }
+
     setError("")
     setLoading(true)
     pending.current = true
@@ -1471,9 +1522,9 @@ function LoginOtpPage({
         body: JSON.stringify({
           phone: cleanPhone,
           fullName: fullName.trim(),
-          password: password.trim(),
+          password: regPassword.trim(),
+          pin: regPin.trim() || undefined,
           role: "CUSTOMER",
-          otp: fullOtp,
         }),
       })
 
@@ -1481,7 +1532,7 @@ function LoginOtpPage({
       if (request.signal.aborted) return
 
       if (!res.ok || !data.success || !data.token || !data.user?.phone) {
-        setError(data.message || "Mã OTP không chính xác hoặc đã hết hạn")
+        setError(data.message || "Đăng ký không thành công")
         return
       }
 
@@ -1501,76 +1552,34 @@ function LoginOtpPage({
     }
   }
 
-  const handleDigitChange = (index: number, val: string) => {
-    const cleanChar = val.replace(/\D/g, "").slice(-1)
-    const newDigits = [...otpDigits]
-    newDigits[index] = cleanChar
-    setOtpDigits(newDigits)
-    setError("")
 
-    if (cleanChar && index < 5) {
-      otpInputRefs.current[index + 1]?.focus()
-    }
-
-    const completeCode = newDigits.join("")
-    if (completeCode.length === 6 && /^\d{6}$/.test(completeCode)) {
-      handleCompleteRegister(completeCode)
-    }
-  }
-
-  const handleDigitKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace") {
-      if (!otpDigits[index] && index > 0) {
-        const newDigits = [...otpDigits]
-        newDigits[index - 1] = ""
-        setOtpDigits(newDigits)
-        otpInputRefs.current[index - 1]?.focus()
-      } else {
-        const newDigits = [...otpDigits]
-        newDigits[index] = ""
-        setOtpDigits(newDigits)
-      }
-    } else if (e.key === "ArrowLeft" && index > 0) {
-      otpInputRefs.current[index - 1]?.focus()
-    } else if (e.key === "ArrowRight" && index < 5) {
-      otpInputRefs.current[index + 1]?.focus()
-    }
-  }
-
-  const handleDigitPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault()
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
-    if (!pasted) return
-
-    const newDigits = [...otpDigits]
-    for (let i = 0; i < 6; i++) {
-      newDigits[i] = pasted[i] || ""
-    }
-    setOtpDigits(newDigits)
-
-    const nextIdx = Math.min(pasted.length, 5)
-    otpInputRefs.current[nextIdx]?.focus()
-
-    if (pasted.length === 6) {
-      handleCompleteRegister(pasted)
-    }
-  }
 
   return (
     <section className="orders-screen account-screen form">
-      <SubHead onBack={onBack} title={mode === "login" ? "Đăng nhập tài khoản" : "Đăng ký tài khoản"} />
+      <SubHead
+        onBack={onBack}
+        title={mode === "login" ? "Đăng nhập tài khoản" : "Đăng ký tài khoản"}
+      />
       <div style={{ padding: "20px 16px" }}>
         <div style={{ textAlign: "center", marginBottom: "20px" }}>
           <div
             style={{
               width: "56px",
+
               height: "56px",
+
               borderRadius: "28px",
+
               background: "#eff6ff",
+
               color: "#2563eb",
+
               display: "inline-flex",
+
               alignItems: "center",
+
               justifyContent: "center",
+
               marginBottom: "12px",
             }}
           >
@@ -1579,12 +1588,14 @@ function LoginOtpPage({
           <h2
             style={{ fontSize: "18px", fontWeight: "bold", margin: "0 0 6px" }}
           >
-            {mode === "login" ? "Chào mừng bạn trở lại!" : "Tạo tài khoản mới (Xác thực OTP)"}
+            {mode === "login"
+              ? "Chào mừng bạn trở lại!"
+              : "Tạo tài khoản mới"}
           </h2>
           <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
             {mode === "login"
-              ? "Đăng nhập bằng số điện thoại và mật khẩu hoặc mã PIN của bạn"
-              : "Xác minh số điện thoại chính chủ qua OTP để chống số điện thoại ảo"}
+              ? "Đăng nhập bằng tên tài khoản hoặc số điện thoại"
+              : "Điền thông tin và mật khẩu để bắt đầu sử dụng"}
           </p>
         </div>
 
@@ -1592,11 +1603,17 @@ function LoginOtpPage({
         <div
           style={{
             display: "grid",
+
             gridTemplateColumns: "1fr 1fr",
+
             background: "#f1f5f9",
+
             padding: "4px",
+
             borderRadius: "12px",
+
             marginBottom: "18px",
+
             gap: "4px",
           }}
         >
@@ -1604,20 +1621,30 @@ function LoginOtpPage({
             type="button"
             onClick={() => {
               setMode("login")
-              setRegisterOtpSent(false)
+
               setError("")
+
               setInfoMsg("")
             }}
             style={{
               padding: "9px 12px",
+
               borderRadius: "10px",
+
               border: "none",
+
               background: mode === "login" ? "#ffffff" : "transparent",
+
               color: mode === "login" ? "#0f172a" : "#64748b",
+
               fontWeight: mode === "login" ? 700 : 500,
+
               fontSize: "13px",
+
               cursor: "pointer",
-              boxShadow: mode === "login" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+
+              boxShadow:
+                mode === "login" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
             }}
           >
             Đăng nhập
@@ -1626,39 +1653,41 @@ function LoginOtpPage({
             type="button"
             onClick={() => {
               setMode("register")
-              setRegisterOtpSent(false)
+
               setError("")
+
               setInfoMsg("")
             }}
             style={{
               padding: "9px 12px",
+
               borderRadius: "10px",
+
               border: "none",
+
               background: mode === "register" ? "#ffffff" : "transparent",
+
               color: mode === "register" ? "#0f172a" : "#64748b",
+
               fontWeight: mode === "register" ? 700 : 500,
+
               fontSize: "13px",
+
               cursor: "pointer",
-              boxShadow: mode === "register" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+
+              boxShadow:
+                mode === "register" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
+
               gap: "6px",
             }}
           >
             <span>Đăng ký mới</span>
-            <span
-              style={{
-                fontSize: "9px",
-                background: "#0284c7",
-                color: "#fff",
-                padding: "1px 5px",
-                borderRadius: "6px",
-                fontWeight: 700,
-              }}
-            >
-              Kèm OTP
-            </span>
           </button>
         </div>
 
@@ -1666,11 +1695,17 @@ function LoginOtpPage({
           <div
             style={{
               background: "#fef2f2",
+
               color: "#b91c1c",
+
               border: "1px solid #fecaca",
+
               padding: "10px 14px",
+
               borderRadius: "10px",
+
               fontSize: "13px",
+
               marginBottom: "16px",
             }}
           >
@@ -1682,11 +1717,17 @@ function LoginOtpPage({
           <div
             style={{
               background: "#f0fdf4",
+
               color: "#15803d",
+
               border: "1px solid #bbf7d0",
+
               padding: "10px 14px",
+
               borderRadius: "10px",
+
               fontSize: "13px",
+
               marginBottom: "16px",
             }}
           >
@@ -1699,12 +1740,303 @@ function LoginOtpPage({
           <form
             onSubmit={(e) => {
               e.preventDefault()
+
               handleLogin()
             }}
           >
-            <label className="acc-field" style={{ marginBottom: "14px", display: "block" }}>
-              <span style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                Số điện thoại
+            <label
+              className="acc-field"
+              style={{ marginBottom: "14px", display: "block" }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#334155",
+                  marginBottom: "6px",
+                }}
+              >
+                Tên tài khoản hoặc Số điện thoại
+              </span>
+              <input
+                type="text"
+                autoComplete="username"
+                disabled={loading}
+                value={phone}
+                maxLength={50}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Nhập họ tên hoặc số điện thoại..."
+                style={{
+                  width: "100%",
+
+                  height: "44px",
+
+                  borderRadius: "10px",
+
+                  border: "1px solid #cbd5e1",
+
+                  padding: "0 14px",
+
+                  fontSize: "14px",
+                }}
+              />
+            </label>
+
+            {/* Lựa chọn phương thức: Mã PIN hoặc Mật khẩu */}
+            <div style={{ marginBottom: "14px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "6px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: "#334155",
+                  }}
+                >
+                  Hình thức xác thực
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    background: "none",
+
+                    border: "none",
+
+                    color: "#2563eb",
+
+                    fontSize: "12px",
+
+                    cursor: "pointer",
+                  }}
+                >
+                  {showPassword ? "Ẩn ký tự" : "Hiện ký tự"}
+                </button>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+
+                  gridTemplateColumns: "1fr 1fr",
+
+                  gap: "6px",
+
+                  background: "#f1f5f9",
+
+                  padding: "3px",
+
+                  borderRadius: "10px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthType("pin")
+
+                    setPassword("")
+
+                    setError("")
+                  }}
+                  style={{
+                    padding: "7px 10px",
+
+                    borderRadius: "8px",
+
+                    border: "none",
+
+                    background: authType === "pin" ? "#ffffff" : "transparent",
+
+                    color: authType === "pin" ? "#2563eb" : "#64748b",
+
+                    fontWeight: authType === "pin" ? 700 : 500,
+
+                    fontSize: "12px",
+
+                    cursor: "pointer",
+
+                    boxShadow:
+                      authType === "pin" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  }}
+                >
+                  🔢 Mã PIN (6 số)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthType("password")
+
+                    setError("")
+                  }}
+                  style={{
+                    padding: "7px 10px",
+
+                    borderRadius: "8px",
+
+                    border: "none",
+
+                    background:
+                      authType === "password" ? "#ffffff" : "transparent",
+
+                    color: authType === "password" ? "#2563eb" : "#64748b",
+
+                    fontWeight: authType === "password" ? 700 : 500,
+
+                    fontSize: "12px",
+
+                    cursor: "pointer",
+
+                    boxShadow:
+                      authType === "password"
+                        ? "0 1px 3px rgba(0,0,0,0.1)"
+                        : "none",
+                  }}
+                >
+                  🔑 Mật khẩu chữ
+                </button>
+              </div>
+            </div>
+
+            <label
+              className="acc-field"
+              style={{ marginBottom: "16px", display: "block" }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#334155",
+                  marginBottom: "6px",
+                }}
+              >
+                {authType === "pin" ? "Nhập mã PIN (6 số)" : "Nhập mật khẩu"}
+              </span>
+              <input
+                type={showPassword ? "text" : "password"}
+                inputMode={authType === "pin" ? "numeric" : "text"}
+                pattern={authType === "pin" ? "[0-9]*" : undefined}
+                maxLength={authType === "pin" ? 6 : 40}
+                autoComplete={
+                  authType === "pin" ? "one-time-code" : "current-password"
+                }
+                disabled={loading}
+                value={password}
+                onChange={(e) => {
+                  if (authType === "pin") {
+                    setPassword(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  } else {
+                    setPassword(e.target.value)
+                  }
+                }}
+                placeholder={
+                  authType === "pin" ? "Ví dụ: 123456" : "Nhập mật khẩu của bạn"
+                }
+                style={{
+                  width: "100%",
+
+                  height: "44px",
+
+                  borderRadius: "10px",
+
+                  border: "1px solid #cbd5e1",
+
+                  padding: "0 14px",
+
+                  fontSize: authType === "pin" ? "18px" : "14px",
+
+                  fontWeight: authType === "pin" ? 700 : 400,
+
+                  letterSpacing: authType === "pin" ? "4px" : "normal",
+
+                  textAlign: authType === "pin" ? "center" : "left",
+                }}
+              />
+            </label>
+
+            <button
+              className="primary-button"
+              style={{
+                width: "100%",
+                height: "48px",
+                borderRadius: "12px",
+                fontSize: "14px",
+                fontWeight: 700,
+              }}
+              disabled={loading || !phone.trim() || !password.trim()}
+              type="submit"
+            >
+              <span>{loading ? "Đang xử lý..." : "Đăng nhập ngay"}</span>
+            </button>
+          </form>
+        )}
+
+        {/* 2. MÀN HÌNH ĐĂNG KÝ */}
+        {mode === "register" && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+
+              handleDirectRegister()
+            }}
+          >
+            <label
+              className="acc-field"
+              style={{ marginBottom: "14px", display: "block" }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#334155",
+                  marginBottom: "6px",
+                }}
+              >
+                Họ và tên <span style={{ color: "#dc2626" }}>*</span>
+              </span>
+              <input
+                type="text"
+                disabled={loading}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Ví dụ: Nguyễn Văn An"
+                style={{
+                  width: "100%",
+
+                  height: "44px",
+
+                  borderRadius: "10px",
+
+                  border: "1px solid #cbd5e1",
+
+                  padding: "0 14px",
+
+                  fontSize: "14px",
+                }}
+              />
+            </label>
+
+            <label
+              className="acc-field"
+              style={{ marginBottom: "14px", display: "block" }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#334155",
+                  marginBottom: "6px",
+                }}
+              >
+                Số điện thoại <span style={{ color: "#dc2626" }}>*</span>
               </span>
               <input
                 type="tel"
@@ -1713,24 +2045,47 @@ function LoginOtpPage({
                 disabled={loading}
                 value={phone}
                 maxLength={12}
-                onChange={(e) => setPhone(sanitizePhoneInput(e.target.value))}
+                onChange={(e) =>
+                  setPhone(sanitizePhoneInput(e.target.value))
+                }
                 placeholder="Ví dụ: 0988888888"
                 style={{
                   width: "100%",
+
                   height: "44px",
+
                   borderRadius: "10px",
+
                   border: "1px solid #cbd5e1",
+
                   padding: "0 14px",
+
                   fontSize: "14px",
                 }}
               />
             </label>
 
-            {/* Lựa chọn phương thức: Mã PIN hoặc Mật khẩu */}
-            <div style={{ marginBottom: "14px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>
-                  Hình thức xác thực
+            {/* 1. Tạo Mật khẩu chính (Bắt buộc) */}
+            <label
+              className="acc-field"
+              style={{ marginBottom: "14px", display: "block" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "6px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: "#334155",
+                  }}
+                >
+                  Tạo Mật khẩu tài khoản <span style={{ color: "#dc2626" }}>*</span>
                 </span>
                 <button
                   type="button"
@@ -1746,411 +2101,86 @@ function LoginOtpPage({
                   {showPassword ? "Ẩn ký tự" : "Hiện ký tự"}
                 </button>
               </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "6px",
-                  background: "#f1f5f9",
-                  padding: "3px",
-                  borderRadius: "10px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthType("pin")
-                    setPassword("123456")
-                    setError("")
-                  }}
-                  style={{
-                    padding: "7px 10px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: authType === "pin" ? "#ffffff" : "transparent",
-                    color: authType === "pin" ? "#2563eb" : "#64748b",
-                    fontWeight: authType === "pin" ? 700 : 500,
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    boxShadow: authType === "pin" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                  }}
-                >
-                  🔢 Mã PIN (6 số)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthType("password")
-                    setError("")
-                  }}
-                  style={{
-                    padding: "7px 10px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: authType === "password" ? "#ffffff" : "transparent",
-                    color: authType === "password" ? "#2563eb" : "#64748b",
-                    fontWeight: authType === "password" ? 700 : 500,
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    boxShadow: authType === "password" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                  }}
-                >
-                  🔑 Mật khẩu chữ
-                </button>
-              </div>
-            </div>
-
-            <label className="acc-field" style={{ marginBottom: "16px", display: "block" }}>
-              <span style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                {authType === "pin" ? "Nhập mã PIN (6 số)" : "Nhập mật khẩu"}
-              </span>
               <input
                 type={showPassword ? "text" : "password"}
-                inputMode={authType === "pin" ? "numeric" : "text"}
-                pattern={authType === "pin" ? "[0-9]*" : undefined}
-                maxLength={authType === "pin" ? 6 : 40}
-                autoComplete={authType === "pin" ? "one-time-code" : "current-password"}
                 disabled={loading}
-                value={password}
-                onChange={(e) => {
-                  if (authType === "pin") {
-                    setPassword(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  } else {
-                    setPassword(e.target.value)
-                  }
-                }}
-                placeholder={authType === "pin" ? "Ví dụ: 123456" : "Nhập mật khẩu của bạn"}
+                value={regPassword}
+                onChange={(e) => setRegPassword(e.target.value)}
+                placeholder="Nhập mật khẩu (tối thiểu 6 ký tự)"
                 style={{
                   width: "100%",
                   height: "44px",
                   borderRadius: "10px",
                   border: "1px solid #cbd5e1",
                   padding: "0 14px",
-                  fontSize: authType === "pin" ? "18px" : "14px",
-                  fontWeight: authType === "pin" ? 700 : 400,
-                  letterSpacing: authType === "pin" ? "4px" : "normal",
-                  textAlign: authType === "pin" ? "center" : "left",
+                  fontSize: "14px",
+                }}
+              />
+            </label>
+
+            {/* 2. Tạo Mã PIN 6 số (Để sau này có thể đăng nhập nhanh bằng PIN) */}
+            <label
+              className="acc-field"
+              style={{ marginBottom: "16px", display: "block" }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#334155",
+                  marginBottom: "6px",
+                }}
+              >
+                Tạo mã PIN 6 số (tùy chọn để mở nhanh bằng PIN)
+              </span>
+              <input
+                type={showPassword ? "text" : "password"}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                disabled={loading}
+                value={regPin}
+                onChange={(e) => setRegPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="Ví dụ: 686868"
+                style={{
+                  width: "100%",
+                  height: "44px",
+                  borderRadius: "10px",
+                  border: "1px solid #cbd5e1",
+                  padding: "0 14px",
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  letterSpacing: "4px",
+                  textAlign: "center",
                 }}
               />
             </label>
 
             <button
               className="primary-button"
-              style={{ width: "100%", height: "48px", borderRadius: "12px", fontSize: "14px", fontWeight: 700 }}
-              disabled={loading || !phone.trim() || !password.trim()}
+              style={{
+                width: "100%",
+                height: "48px",
+                borderRadius: "12px",
+                fontSize: "14px",
+                fontWeight: 700,
+              }}
+              disabled={
+                loading ||
+                !fullName.trim() ||
+                !phone.trim() ||
+                !regPassword.trim()
+              }
               type="submit"
             >
-              <span>{loading ? "Đang xử lý..." : "Đăng nhập ngay"}</span>
+              <span>
+                {loading
+                  ? "Đang xử lý..."
+                  : "Đăng ký tài khoản ngay ➔"}
+              </span>
             </button>
           </form>
-        )}
-
-        {/* 2. MÀN HÌNH ĐĂNG KÝ (KÈM XÁC THỰC OTP CHỐNG SỐ ẢO) */}
-        {mode === "register" && (
-          <div>
-            {!registerOtpSent ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  handleSendRegisterOtp()
-                }}
-              >
-                <label className="acc-field" style={{ marginBottom: "14px", display: "block" }}>
-                  <span style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                    Họ và tên <span style={{ color: "#dc2626" }}>*</span>
-                  </span>
-                  <input
-                    type="text"
-                    disabled={loading}
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Ví dụ: Nguyễn Văn An"
-                    style={{
-                      width: "100%",
-                      height: "44px",
-                      borderRadius: "10px",
-                      border: "1px solid #cbd5e1",
-                      padding: "0 14px",
-                      fontSize: "14px",
-                    }}
-                  />
-                </label>
-
-                <label className="acc-field" style={{ marginBottom: "14px", display: "block" }}>
-                  <span style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                    Số điện thoại chính chủ <span style={{ color: "#dc2626" }}>*</span>
-                  </span>
-                  <input
-                    type="tel"
-                    autoComplete="tel"
-                    inputMode="tel"
-                    disabled={loading}
-                    value={phone}
-                    maxLength={12}
-                    onChange={(e) => setPhone(sanitizePhoneInput(e.target.value))}
-                    placeholder="Ví dụ: 0988888888"
-                    style={{
-                      width: "100%",
-                      height: "44px",
-                      borderRadius: "10px",
-                      border: "1px solid #cbd5e1",
-                      padding: "0 14px",
-                      fontSize: "14px",
-                    }}
-                  />
-                </label>
-
-                {/* Loại bảo mật */}
-                <div style={{ marginBottom: "14px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>
-                      Tạo khóa bảo mật <span style={{ color: "#dc2626" }}>*</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "#2563eb",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {showPassword ? "Ẩn ký tự" : "Hiện ký tự"}
-                    </button>
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "6px",
-                      background: "#f1f5f9",
-                      padding: "3px",
-                      borderRadius: "10px",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthType("pin")
-                        setPassword("123456")
-                        setError("")
-                      }}
-                      style={{
-                        padding: "7px 10px",
-                        borderRadius: "8px",
-                        border: "none",
-                        background: authType === "pin" ? "#ffffff" : "transparent",
-                        color: authType === "pin" ? "#2563eb" : "#64748b",
-                        fontWeight: authType === "pin" ? 700 : 500,
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        boxShadow: authType === "pin" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                      }}
-                    >
-                      🔢 Mã PIN (6 số)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthType("password")
-                        setError("")
-                      }}
-                      style={{
-                        padding: "7px 10px",
-                        borderRadius: "8px",
-                        border: "none",
-                        background: authType === "password" ? "#ffffff" : "transparent",
-                        color: authType === "password" ? "#2563eb" : "#64748b",
-                        fontWeight: authType === "password" ? 700 : 500,
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        boxShadow: authType === "password" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                      }}
-                    >
-                      🔑 Mật khẩu chữ
-                    </button>
-                  </div>
-                </div>
-
-                <label className="acc-field" style={{ marginBottom: "16px", display: "block" }}>
-                  <span style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
-                    {authType === "pin" ? "Tạo mã PIN (6 số)" : "Tạo mật khẩu (tối thiểu 6 ký tự)"}
-                  </span>
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    inputMode={authType === "pin" ? "numeric" : "text"}
-                    pattern={authType === "pin" ? "[0-9]*" : undefined}
-                    maxLength={authType === "pin" ? 6 : 40}
-                    disabled={loading}
-                    value={password}
-                    onChange={(e) => {
-                      if (authType === "pin") {
-                        setPassword(e.target.value.replace(/\D/g, "").slice(0, 6))
-                      } else {
-                        setPassword(e.target.value)
-                      }
-                    }}
-                    placeholder={authType === "pin" ? "Ví dụ: 123456" : "Tạo mật khẩu của bạn"}
-                    style={{
-                      width: "100%",
-                      height: "44px",
-                      borderRadius: "10px",
-                      border: "1px solid #cbd5e1",
-                      padding: "0 14px",
-                      fontSize: authType === "pin" ? "18px" : "14px",
-                      fontWeight: authType === "pin" ? 700 : 400,
-                      letterSpacing: authType === "pin" ? "4px" : "normal",
-                      textAlign: authType === "pin" ? "center" : "left",
-                    }}
-                  />
-                </label>
-
-                <button
-                  className="primary-button"
-                  style={{ width: "100%", height: "48px", borderRadius: "12px", fontSize: "14px", fontWeight: 700 }}
-                  disabled={loading}
-                  type="submit"
-                >
-                  <span>{loading ? "Đang gửi OTP..." : "Xác minh SĐT qua OTP & Tiếp tục ➔"}</span>
-                </button>
-              </form>
-            ) : (
-              <div>
-                {/* Bước 2: Nhập 6 số OTP */}
-                <div
-                  style={{
-                    background: "#f1f5f9",
-                    padding: "10px 14px",
-                    borderRadius: "12px",
-                    marginBottom: "16px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: "11px", color: "#64748b" }}>Số điện thoại xác minh:</div>
-                    <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>📱 {phone}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setRegisterOtpSent(false)}
-                    style={{ background: "none", border: "none", color: "#2563eb", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
-                  >
-                    Sửa SĐT
-                  </button>
-                </div>
-
-                {devOtpCode && (
-                  <div
-                    style={{
-                      background: "#fef3c7",
-                      border: "1px dashed #d97706",
-                      padding: "8px 12px",
-                      borderRadius: "10px",
-                      marginBottom: "16px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <span style={{ fontSize: "12px", color: "#92400e", fontWeight: 700 }}>
-                      Mã thử nghiệm: <strong>{devOtpCode}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const chars = devOtpCode.split("").slice(0, 6)
-                        const newD = ["", "", "", "", "", ""]
-                        chars.forEach((c, i) => (newD[i] = c))
-                        setOtpDigits(newD)
-                        handleCompleteRegister(devOtpCode)
-                      }}
-                      style={{
-                        background: "#b45309",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "6px",
-                        padding: "4px 8px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      ⚡ Điền nhanh
-                    </button>
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(6, 1fr)",
-                    gap: "8px",
-                    maxWidth: "340px",
-                    margin: "0 auto 16px",
-                  }}
-                >
-                  {otpDigits.map((digit, idx) => (
-                    <input
-                      key={idx}
-                      ref={(el) => {
-                        otpInputRefs.current[idx] = el
-                      }}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      disabled={loading}
-                      value={digit}
-                      onChange={(e) => handleDigitChange(idx, e.target.value)}
-                      onKeyDown={(e) => handleDigitKeyDown(idx, e)}
-                      onPaste={handleDigitPaste}
-                      style={{
-                        width: "100%",
-                        height: "50px",
-                        textAlign: "center",
-                        fontSize: "20px",
-                        fontWeight: 800,
-                        borderRadius: "12px",
-                        border: digit ? "2px solid #2563eb" : "1.5px solid #cbd5e1",
-                        background: digit ? "#eff6ff" : "#fff",
-                        outline: "none",
-                      }}
-                    />
-                  ))}
-                </div>
-
-                <div style={{ textAlign: "center", marginBottom: "16px" }}>
-                  {countdown > 0 ? (
-                    <span style={{ fontSize: "12px", color: "#64748b" }}>
-                      Gửi lại mã sau: <strong>{countdown}s</strong>
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={handleSendRegisterOtp}
-                      style={{ background: "none", border: "none", color: "#2563eb", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
-                    >
-                      🔄 Gửi lại mã OTP
-                    </button>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  disabled={loading || otpDigits.join("").length < 6}
-                  onClick={() => handleCompleteRegister()}
-                  className="primary-button"
-                  style={{ width: "100%", height: "48px", borderRadius: "12px", fontSize: "14px", fontWeight: 700 }}
-                >
-                  <span>{loading ? "Đang xử lý..." : "Xác nhận OTP & Hoàn tất Đăng ký ✓"}</span>
-                </button>
-              </div>
-            )}
-          </div>
         )}
 
         <div style={{ textAlign: "center", marginTop: "16px" }}>
@@ -2159,14 +2189,15 @@ function LoginOtpPage({
             className="text-button"
             onClick={() => {
               setMode(mode === "login" ? "register" : "login")
-              setRegisterOtpSent(false)
+
               setError("")
+
               setInfoMsg("")
             }}
             style={{ fontSize: "13px", color: "#2563eb" }}
           >
             {mode === "login"
-              ? "Chưa có tài khoản? Bấm vào đây để đăng ký (kèm OTP)"
+              ? "Chưa có tài khoản? Bấm vào đây để đăng ký"
               : "Đã có tài khoản? Quay lại Đăng nhập"}
           </button>
         </div>
@@ -2301,6 +2332,7 @@ function ProfileForm({
 
       if (!token || localStorage.getItem("auth_token") !== token)
         throw new Error("Vui lòng đăng nhập lại")
+
       profileStore.set({
         ...p,
 
@@ -2358,8 +2390,11 @@ function ProfileForm({
             <small
               style={{
                 color: "#ef4444",
+
                 display: "block",
+
                 fontSize: "11px",
+
                 marginTop: "2px",
               }}
             >
@@ -2404,8 +2439,11 @@ function ProfileForm({
         <div
           style={{
             color: "#ef4444",
+
             fontSize: "12px",
+
             textAlign: "center",
+
             marginBottom: "8px",
           }}
         >
@@ -2477,10 +2515,14 @@ function AddressForm({
 
     if (!token) {
       setError("Vui lòng đăng nhập lại")
+
       setSaving(false)
+
       pending.current = false
+
       return
     }
+
     let serverId = existing?.realId
 
     if (token) {
@@ -2488,6 +2530,7 @@ function AddressForm({
         if (existing?.realId) {
           const res = await fetch(
             `/api/v1/customer/addresses/${existing.realId}`,
+
             {
               method: "PUT",
 
@@ -2502,7 +2545,9 @@ function AddressForm({
                   type === "other" ? name.trim() || "Khác" : typeName[type],
 
                 addressText: address.trim(),
+
                 latitude: null,
+
                 longitude: null,
               }),
             },
@@ -2539,6 +2584,7 @@ function AddressForm({
             throw new Error(data.message || "Không thể thêm địa chỉ")
 
           if (!data.data?.id) throw new Error("Phản hồi thiếu mã địa chỉ")
+
           serverId = data.data.id
         }
       } catch (err) {
@@ -2554,9 +2600,12 @@ function AddressForm({
 
     if (localStorage.getItem("auth_token") !== token) {
       setSaving(false)
+
       pending.current = false
+
       return
     }
+
     const next: SavedAddress = {
       id: existing?.id ?? Date.now(),
 
@@ -2658,6 +2707,7 @@ function AddressForm({
               try {
                 const res = await fetch(
                   `/api/v1/customer/addresses/${existing.realId}`,
+
                   {
                     method: "DELETE",
 
@@ -2688,10 +2738,14 @@ function AddressForm({
               localStorage.getItem("auth_token") !== token
             ) {
               setError("Vui lòng đăng nhập và tải lại địa chỉ")
+
               setSaving(false)
+
               pending.current = false
+
               return
             }
+
             addressStore.set(list.filter((a) => a.id !== existing.id))
 
             onDone("Đã xóa địa chỉ")
@@ -2985,8 +3039,10 @@ function PaymentPageWithHistory({
           throw new Error(res.message || "Không thể tải giao dịch ví")
 
         if (controller.signal.aborted) return
+
         if (!Array.isArray(res.transactions))
           throw new Error("Phản hồi giao dịch ví không hợp lệ")
+
         if (res.success && Array.isArray(res.transactions))
           setWalletTxs(res.transactions)
       })
@@ -3015,6 +3071,7 @@ function PaymentPageWithHistory({
     const load = async (url: string, update: (data: any) => void) => {
       const res = await fetch(url, {
         signal: controller.signal,
+
         headers: { Authorization: `Bearer ${token}` },
       })
 
@@ -3055,6 +3112,7 @@ function PaymentPageWithHistory({
 
     return () => {
       txRequest.current?.abort()
+
       walletRequest.current?.abort()
     }
   }, [])
@@ -3103,15 +3161,25 @@ function PaymentPageWithHistory({
         <div
           style={{
             margin: "12px 16px 20px",
+
             padding: "18px 20px",
+
             borderRadius: "16px",
+
             background: "linear-gradient(135deg, #450a0a, #7f1d1d)",
+
             color: "#fff",
+
             boxShadow: "0 8px 24px rgba(239, 68, 68, 0.25)",
+
             border: "1.5px solid #ef4444",
+
             display: "flex",
+
             justifyContent: "space-between",
+
             alignItems: "center",
+
             gap: "12px",
           }}
         >
@@ -3119,9 +3187,13 @@ function PaymentPageWithHistory({
             <div
               style={{
                 fontSize: "11px",
+
                 color: "#fca5a5",
+
                 textTransform: "uppercase",
+
                 letterSpacing: "0.5px",
+
                 fontWeight: 600,
               }}
             >
@@ -3130,8 +3202,11 @@ function PaymentPageWithHistory({
             <div
               style={{
                 fontSize: "24px",
+
                 fontWeight: 800,
+
                 margin: "4px 0 2px",
+
                 color: "#fef2f2",
               }}
             >
@@ -3146,14 +3221,23 @@ function PaymentPageWithHistory({
             onClick={() => setShowTopUp(true)}
             style={{
               padding: "10px 18px",
+
               borderRadius: "10px",
+
               border: "none",
+
               background: "#ef4444",
+
               color: "#fff",
+
               fontWeight: 700,
+
               fontSize: "13px",
+
               cursor: "pointer",
+
               boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
+
               whiteSpace: "nowrap",
             }}
           >
@@ -3164,20 +3248,30 @@ function PaymentPageWithHistory({
         <div
           style={{
             margin: "12px 16px 20px",
+
             padding: "16px 20px",
+
             borderRadius: "16px",
+
             background: "linear-gradient(135deg, #0f172a, #1e293b)",
+
             color: "#fff",
+
             boxShadow: "0 8px 24px rgba(15, 23, 42, 0.25)",
+
             border: "1px solid rgba(255, 255, 255, 0.1)",
           }}
         >
           <div
             style={{
               fontSize: "11px",
+
               color: "#94a3b8",
+
               textTransform: "uppercase",
+
               letterSpacing: "0.5px",
+
               fontWeight: 600,
             }}
           >
@@ -3186,8 +3280,11 @@ function PaymentPageWithHistory({
           <div
             style={{
               fontSize: "16px",
+
               fontWeight: 700,
+
               margin: "4px 0 2px",
+
               color: "#4ade80",
             }}
           >
@@ -3231,9 +3328,13 @@ function PaymentPageWithHistory({
       <div
         style={{
           margin: "24px 16px 12px",
+
           display: "flex",
+
           gap: "8px",
+
           borderBottom: "1px solid #e2e8f0",
+
           paddingBottom: "8px",
         }}
       >
@@ -3314,9 +3415,13 @@ function PaymentPageWithHistory({
           <div
             style={{
               display: "flex",
+
               gap: "6px",
+
               overflowX: "auto",
+
               padding: "0 16px 8px",
+
               marginBottom: "4px",
             }}
           >
@@ -3370,8 +3475,11 @@ function PaymentPageWithHistory({
             <div
               style={{
                 padding: "16px",
+
                 textAlign: "center",
+
                 color: "#6b7280",
+
                 fontSize: "13px",
               }}
             >
@@ -3381,8 +3489,11 @@ function PaymentPageWithHistory({
             <div
               style={{
                 padding: "20px 16px",
+
                 textAlign: "center",
+
                 color: "#9ca3af",
+
                 fontSize: "13px",
               }}
             >
@@ -3419,7 +3530,9 @@ function PaymentPageWithHistory({
                       <div
                         style={{
                           fontSize: "13px",
+
                           fontWeight: 700,
+
                           color: "#111827",
                         }}
                       >
@@ -3429,7 +3542,9 @@ function PaymentPageWithHistory({
                       <div
                         style={{
                           fontSize: "11px",
+
                           color: "#6b7280",
+
                           marginTop: "2px",
                         }}
                       >
@@ -3440,7 +3555,9 @@ function PaymentPageWithHistory({
                       <div
                         style={{
                           fontSize: "14px",
+
                           fontWeight: 800,
+
                           color: isPlus ? "#059669" : "#dc2626",
                         }}
                       >
@@ -3469,8 +3586,11 @@ function PaymentPageWithHistory({
             <div
               style={{
                 padding: "16px",
+
                 textAlign: "center",
+
                 color: "#6b7280",
+
                 fontSize: "13px",
               }}
             >
@@ -3480,8 +3600,11 @@ function PaymentPageWithHistory({
             <div
               style={{
                 padding: "20px 16px",
+
                 textAlign: "center",
+
                 color: "#9ca3af",
+
                 fontSize: "13px",
               }}
             >
@@ -3520,8 +3643,11 @@ function PaymentPageWithHistory({
                       <div
                         style={{
                           display: "flex",
+
                           alignItems: "center",
+
                           gap: "8px",
+
                           marginBottom: "3px",
                         }}
                       >
@@ -3559,7 +3685,9 @@ function PaymentPageWithHistory({
                       <div
                         style={{
                           fontSize: "13px",
+
                           fontWeight: 700,
+
                           color: "#111827",
                         }}
                       >
@@ -3600,8 +3728,11 @@ function PaymentPageWithHistory({
             <div
               style={{
                 padding: "16px",
+
                 textAlign: "center",
+
                 color: "#6b7280",
+
                 fontSize: "13px",
               }}
             >
@@ -3611,8 +3742,11 @@ function PaymentPageWithHistory({
             <div
               style={{
                 padding: "20px 16px",
+
                 textAlign: "center",
+
                 color: "#9ca3af",
+
                 fontSize: "13px",
               }}
             >
@@ -3653,8 +3787,11 @@ function PaymentPageWithHistory({
                       <div
                         style={{
                           display: "flex",
+
                           alignItems: "center",
+
                           gap: "6px",
+
                           marginBottom: "3px",
                         }}
                       >
@@ -3665,7 +3802,9 @@ function PaymentPageWithHistory({
                         <span
                           style={{
                             fontSize: "11px",
+
                             color: "#2563eb",
+
                             fontWeight: 600,
                           }}
                         >
@@ -3681,7 +3820,9 @@ function PaymentPageWithHistory({
                       <div
                         style={{
                           fontSize: "13px",
+
                           fontWeight: 700,
+
                           color: "#059669",
                         }}
                       >

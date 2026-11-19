@@ -10,6 +10,8 @@ export const DEFAULT_MIN_DEPOSIT_LIMIT = 200000 // Hạn mức ký quỹ tối t
 
 export const DEFAULT_COMMISSION_RATE = 0.2 // Tỷ lệ hoa hồng mặc định: 20%
 
+export const DEFAULT_DRIVER_WELCOME_BONUS = 200000 // Quà tặng ví ký quỹ khởi nghiệp chạy thử: 200.000 VNĐ
+
 export interface TopUpWalletDto {
   userId: string
 
@@ -70,7 +72,16 @@ export async function getOrCreateWallet(userId: string) {
     return existing[0]
   }
 
-  // 2. Nếu chưa có, tạo mới với giá trị mặc định
+  // 2. Nếu chưa có, kiểm tra vai trò người dùng (Tài xế mới được tặng 200.000đ chạy thử)
+  let initialBalance = 0
+  const userRows = await client.unsafe(
+    `SELECT role FROM users WHERE id = $1::uuid LIMIT 1`,
+    [userId],
+  )
+  const isDriver = userRows.length > 0 && userRows[0].role === "DRIVER"
+  if (isDriver) {
+    initialBalance = DEFAULT_DRIVER_WELCOME_BONUS
+  }
 
   const created = await client.unsafe(
     `
@@ -83,9 +94,9 @@ export async function getOrCreateWallet(userId: string) {
       updated_at
     ) VALUES (
       $1::uuid,
-      0.00,
-      0.00,
       $2::numeric,
+      0.00,
+      $3::numeric,
       'VND',
       NOW()
     )
@@ -93,10 +104,49 @@ export async function getOrCreateWallet(userId: string) {
     RETURNING id, user_id, balance, locked_balance, min_deposit_limit, currency, updated_at
     `,
 
-    [userId, DEFAULT_MIN_DEPOSIT_LIMIT],
+    [userId, initialBalance, DEFAULT_MIN_DEPOSIT_LIMIT],
   )
 
-  return created[0]
+  const newWallet = created[0]
+
+  // Nếu là tài xế mới được tặng 200k, ghi lại lịch sử giao dịch BONUS
+  if (isDriver && initialBalance > 0 && newWallet) {
+    try {
+      await client.unsafe(
+        `
+        INSERT INTO wallet_transactions (
+          wallet_id,
+          amount,
+          balance_before,
+          balance_after,
+          type,
+          description,
+          reference_code,
+          created_at
+        ) VALUES (
+          $1::uuid,
+          $2::numeric,
+          0.00,
+          $2::numeric,
+          'BONUS',
+          $3,
+          $4,
+          NOW()
+        )
+        `,
+        [
+          newWallet.id,
+          initialBalance,
+          "Tặng 200.000đ ví ký quỹ chạy thử cho tài xế mới",
+          `WELCOME_BONUS_${Date.now()}`,
+        ],
+      )
+    } catch (txErr) {
+      console.warn("Could not record welcome bonus transaction:", txErr)
+    }
+  }
+
+  return newWallet
 }
 
 /**
@@ -116,9 +166,28 @@ export async function getWalletDetails(userId: string) {
     wallet.min_deposit_limit || DEFAULT_MIN_DEPOSIT_LIMIT,
   )
 
-  // Điều kiện đủ ký quỹ: Số dư khả dụng >= Hạn mức ký quỹ tối thiểu
+  // Kiểm tra xem tài xế đã từng nạp tiền thật (TOPUP) vào ví chưa
+  const topupRows = await client.unsafe(
+    `SELECT id FROM wallet_transactions WHERE wallet_id = $1::uuid AND type = 'TOPUP' LIMIT 1`,
+    [wallet.id],
+  )
+  const hasToppedUp = topupRows.length > 0
 
-  const isDepositQualified = availableBalance >= minDepositLimit
+  // LOGIC 2 GIAI ĐOẠN:
+  // 1. Giai đoạn dùng vốn mồi tặng (Chưa từng nạp tiền):
+  //    Cho phép tài xế chạy trừ dần hoa hồng cho tới khi hết sạch vốn tặng (availableBalance > 0).
+  // 2. Giai đoạn chính thức (Đã từng nạp tiền HOẶC đã tiêu hết vốn mồi về <= 0):
+  //    Bắt buộc số dư khả dụng >= 200.000đ (minDepositLimit) mới đủ điều kiện chạy tiếp.
+  const isTrialBonusPhase = !hasToppedUp && balance > 0
+  const isDepositQualified = isTrialBonusPhase
+    ? availableBalance > 0
+    : availableBalance >= minDepositLimit
+
+  const shortfall = isDepositQualified
+    ? 0
+    : isTrialBonusPhase
+      ? 1 // Chỉ cần số dư > 0
+      : Math.max(0, minDepositLimit - availableBalance)
 
   return {
     walletId: wallet.id,
@@ -135,7 +204,11 @@ export async function getWalletDetails(userId: string) {
 
     isDepositQualified,
 
-    shortfall: isDepositQualified ? 0 : minDepositLimit - availableBalance,
+    isTrialBonusPhase,
+
+    hasToppedUp,
+
+    shortfall,
 
     currency: wallet.currency || "VND",
 
@@ -151,6 +224,10 @@ export async function checkDriverDepositEligibility(driverUserId: string) {
   const wallet = await getWalletDetails(driverUserId)
 
   if (!wallet.isDepositQualified) {
+    const errorMsg = wallet.isTrialBonusPhase
+      ? `Bạn đã sử dụng hết hạn mức vốn ký quỹ chạy thử được tặng (Số dư hiện tại: ${wallet.availableBalance.toLocaleString("vi-VN")} đ). Vui lòng nạp tối thiểu ${wallet.minDepositLimit.toLocaleString("vi-VN")} đ để duy trì điều kiện hoạt động chính thức.`
+      : `Số dư ví ký quỹ khả dụng (${wallet.availableBalance.toLocaleString("vi-VN")} đ) chưa đạt hạn mức tối thiểu (${wallet.minDepositLimit.toLocaleString("vi-VN")} đ). Vui lòng nạp thêm tối thiểu ${wallet.shortfall.toLocaleString("vi-VN")} đ để nhận chuyến.`
+
     return {
       eligible: false,
 
@@ -160,7 +237,9 @@ export async function checkDriverDepositEligibility(driverUserId: string) {
 
       shortfall: wallet.shortfall,
 
-      message: `Số dư ví ký quỹ khả dụng (${wallet.availableBalance.toLocaleString("vi-VN")} đ) chưa đạt hạn mức tối thiểu (${wallet.minDepositLimit.toLocaleString("vi-VN")} đ). Vui lòng nạp thêm tối thiểu ${wallet.shortfall.toLocaleString("vi-VN")} đ để nhận chuyến.`,
+      isTrialBonusPhase: wallet.isTrialBonusPhase,
+
+      message: errorMsg,
     }
   }
 
@@ -173,7 +252,11 @@ export async function checkDriverDepositEligibility(driverUserId: string) {
 
     shortfall: 0,
 
-    message: "Ví ký quỹ đủ điều kiện hoạt động và nhận chuyến.",
+    isTrialBonusPhase: wallet.isTrialBonusPhase,
+
+    message: wallet.isTrialBonusPhase
+      ? "Đang sử dụng vốn ký quỹ chạy thử được tặng. Vui lòng nạp thêm khi số dư về 0đ."
+      : "Ví ký quỹ đủ điều kiện hoạt động và nhận chuyến.",
   }
 }
 

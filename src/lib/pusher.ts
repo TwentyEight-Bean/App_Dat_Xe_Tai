@@ -132,7 +132,7 @@ export async function triggerEvent(
 
 /**
  * 1. Bắn sự kiện "Nổ cuốc mới" đến riêng điện thoại của một tài xế
- * Kênh: driver-{driverId}
+ * Kênh: private-driver-{driverId}
  * Sự kiện: booking:new-offer
  */
 
@@ -157,7 +157,7 @@ export async function triggerDriverNewOffer(
     expiresInSeconds?: number
   },
 ) {
-  const channel = `driver-${driverId}`
+  const channel = `private-driver-${driverId}`
 
   const event = "booking:new-offer"
 
@@ -188,7 +188,7 @@ export async function triggerDriverNewOffer(
 
 /**
  * 2. Bắn sự kiện "Đã có tài xế nhận cuốc" đến khách hàng đang chờ
- * Kênh: trip-{bookingId}
+ * Kênh: private-trip-{bookingId}
  * Sự kiện: booking:accepted
  */
 
@@ -211,7 +211,7 @@ export async function triggerBookingAccepted(
     ratingAvg?: number
   },
 ) {
-  const channel = `trip-${bookingId}`
+  const channel = `private-trip-${bookingId}`
 
   const event = "booking:accepted"
 
@@ -244,7 +244,7 @@ export async function triggerBookingAccepted(
 
 /**
  * 3. Bắn sự kiện "Hủy lời mời" đến các tài xế bấm chậm hơn khi cuốc đã có người nhận
- * Kênh: driver-{driverId}
+ * Kênh: private-driver-{driverId}
  * Sự kiện: offer:cancelled
  */
 
@@ -255,7 +255,7 @@ export async function triggerOfferCancelled(
 
   reason = "TAKEN",
 ) {
-  const channel = `driver-${driverId}`
+  const channel = `private-driver-${driverId}`
 
   const event = "offer:cancelled"
 
@@ -272,7 +272,7 @@ export async function triggerOfferCancelled(
 
 /**
  * 4. Bắn sự kiện "Cập nhật trạng thái chuyến xe" (Đã nhận -> Tới lấy -> Đang giao -> Hoàn thành)
- * Kênh: trip-{bookingId}
+ * Kênh: private-trip-{bookingId}
  * Sự kiện: booking:status-change
  */
 
@@ -287,9 +287,11 @@ export async function triggerBookingStatusChange(
     driverId?: string
 
     note?: string | null
+
+    deliveryOtp?: string | null
   } = {},
 ) {
-  const channel = `trip-${bookingId}`
+  const channel = `private-trip-${bookingId}`
 
   const event = "booking:status-change"
 
@@ -312,7 +314,7 @@ export async function triggerBookingStatusChange(
 
 /**
  * 5. Bắn sự kiện "Hủy chuyến xe" đến cả Khách hàng và Tài xế
- * Kênh: trip-{bookingId} và driver-{driverId}
+ * Kênh: private-trip-{bookingId} và private-driver-{driverId}
  * Sự kiện: booking:cancelled
  */
 
@@ -339,12 +341,12 @@ export async function triggerBookingCancelled(
 
   // Báo trên kênh chuyến đi cho khách
 
-  await triggerEvent(`trip-${bookingId}`, "booking:cancelled", payload)
+  await triggerEvent(`private-trip-${bookingId}`, "booking:cancelled", payload)
 
   // Báo trên kênh riêng của tài xế nếu chuyến đã có tài xế nhận
 
   if (driverId) {
-    await triggerEvent(`driver-${driverId}`, "booking:cancelled", payload)
+    await triggerEvent(`private-driver-${driverId}`, "booking:cancelled", payload)
   }
 
   return true
@@ -352,7 +354,7 @@ export async function triggerBookingCancelled(
 
 /**
  * 6. Bắn sự kiện "Cập nhật tọa độ GPS tài xế" (Live Tracking) cho khách hàng
- * Kênh: trip-{bookingId}
+ * Kênh: private-trip-{bookingId}
  * Sự kiện: driver:location-update
  */
 
@@ -371,7 +373,7 @@ export async function triggerDriverLocationUpdate(
     speed?: number | null
   },
 ) {
-  const channel = `trip-${bookingId}`
+  const channel = `private-trip-${bookingId}`
 
   const event = "driver:location-update"
 
@@ -396,7 +398,7 @@ export async function triggerDriverLocationUpdate(
 
 /**
  * 7. CORE TASK 4.3: Bắn sự kiện "Tin nhắn chat mới" qua Pusher
- * Kênh: chat-{bookingId} và trip-{bookingId}
+ * Kênh: private-chat-{bookingId} và private-trip-{bookingId}
  * Sự kiện: chat:new-message
  */
 
@@ -454,16 +456,16 @@ export async function triggerNewChatMessage(
 
   // Bắn đồng thời trên kênh chat riêng và kênh chuyến đi
 
-  await triggerEvent(`chat-${bookingId}`, "chat:new-message", payload)
+  await triggerEvent(`private-chat-${bookingId}`, "chat:new-message", payload)
 
-  await triggerEvent(`trip-${bookingId}`, "chat:new-message", payload)
+  await triggerEvent(`private-trip-${bookingId}`, "chat:new-message", payload)
 
   return true
 }
 
 /**
  * 8. CORE TASK 4.3: Bắn sự kiện "Đã xem tin nhắn" qua Pusher
- * Kênh: chat-{bookingId}
+ * Kênh: private-chat-{bookingId}
  * Sự kiện: chat:messages-read
  */
 
@@ -480,5 +482,5 @@ export async function triggerMessagesRead(
     timestamp: Date.now(),
   }
 
-  return await triggerEvent(`chat-${bookingId}`, "chat:messages-read", payload)
+  return await triggerEvent(`private-chat-${bookingId}`, "chat:messages-read", payload)
 }

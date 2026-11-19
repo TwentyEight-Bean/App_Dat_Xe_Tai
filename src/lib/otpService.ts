@@ -32,10 +32,10 @@ export interface VerifyOtpResponse {
  * Sinh mã OTP 6 chữ số ngẫu nhiên hoặc mã cố định trong môi trường Test/Dev
  */
 export function generateOtpCode(): string {
-  // Nếu bật chế độ Mock cố định (0đ khi test)
+  // Nếu bật chế độ Mock cố định (0đ khi test, chỉ cho phép khi non-production)
   if (
-    process.env.ENABLE_OTP_MOCK === "true" ||
-    (!process.env.SMS_PROVIDER && process.env.NODE_ENV !== "production")
+    process.env.NODE_ENV !== "production" &&
+    process.env.ENABLE_OTP_MOCK === "true"
   ) {
     return "123456"
   }
@@ -199,17 +199,11 @@ export async function requestOtp(
     ipAddress: clientIp || null,
   })
 
-  const isDevOrMock =
-    process.env.ENABLE_OTP_MOCK === "true" ||
-    (process.env.SMS_PROVIDER || "mock").toLowerCase() === "mock" ||
-    process.env.NODE_ENV !== "production"
-
   return {
     success: true,
     message: "Mã OTP xác thực đã được gửi thành công.",
     phone,
     retryAfterSeconds: 60,
-    ...(isDevOrMock ? { devOtp: otpCode } : {}),
   }
 }
 
@@ -352,15 +346,6 @@ export async function verifyOtp(
       throw new Error(
         "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ bộ phận hỗ trợ khách hàng.",
       )
-    }
-
-    // Nếu đăng nhập từ phía Tài xế và user hiện tại có role CUSTOMER, nâng cấp lên DRIVER
-    if (desiredRole === "DRIVER" && userRecord.role === "CUSTOMER") {
-      await db
-        .update(users)
-        .set({ role: "DRIVER", updatedAt: new Date() })
-        .where(eq(users.id, userRecord.id))
-      userRecord.role = "DRIVER"
     }
   }
 

@@ -1,7 +1,10 @@
 import jwt from "jsonwebtoken"
+import * as dotenv from "dotenv"
+
+dotenv.config()
 
 // Mật khẩu bí mật để ký JWT. Bắt buộc cấu hình trong .env ở môi trường production.
-function getJwtSecret(): string {
+export function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET?.trim()
   if (secret) return secret
   if (process.env.NODE_ENV === "production") {
@@ -11,6 +14,8 @@ function getJwtSecret(): string {
   }
   return "super-secret-key-for-truck-booking-app"
 }
+
+export const JWT_SECRET: string = process.env.JWT_SECRET?.trim() || "super-secret-key-for-truck-booking-app"
 
 const JWT_EXPIRES_IN = "7d" // Token có hạn 7 ngày
 
