@@ -4126,33 +4126,52 @@ body { background: var(--canvas); }
   transform: scale(0.92);
 }
 
+/* Custom glass styling for booking sheet and peek card to keep high contrast & text legibility over map */
+.booking-peek-card.glass-liquid {
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(20px) saturate(1.6) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.6) !important;
+}
+
+.booking-sheet.glass-liquid {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(252, 250, 246, 0.92) 100%
+  ) !important;
+  backdrop-filter: blur(24px) saturate(1.6) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.6) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.85) !important;
+  box-shadow: 0 -12px 36px rgba(15, 23, 42, 0.16) !important;
+}
+
 .booking-sheet.glass-liquid .location-card {
-  background: rgba(255, 255, 255, 0.22);
-  backdrop-filter: blur(4px) saturate(2);
-  -webkit-backdrop-filter: blur(4px) saturate(2);
-  border: 1.5px solid rgba(255, 255, 255, 0.75);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 
 .booking-sheet.glass-liquid .vehicle-option {
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  border: 1.5px solid rgba(255, 255, 255, 0.7);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 
 .booking-sheet.glass-liquid .vehicle-option.selected {
   border-color: var(--brand-500);
-  background: rgba(215, 236, 255, 0.45);
-  box-shadow: 0 0 0 3px rgba(22, 135, 232, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  background: rgba(235, 245, 255, 0.96);
+  box-shadow: 0 0 0 3px rgba(22, 135, 232, 0.22), inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 
 .booking-sheet.glass-liquid .price-row {
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
   border-radius: 16px;
   padding: 10px 14px;
 }
