@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: "Vận Tải Siêu Tốc",
   webDir: "dist",
   server: {
-    androidScheme: "https",
+    url: "https://app-dat-xe-tai.vercel.app",
     cleartext: true,
   },
   android: {
