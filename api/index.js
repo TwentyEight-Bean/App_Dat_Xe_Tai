@@ -10944,7 +10944,7 @@ app.use((req, res) => {
 app.use(errorHandler);
 var router_default = app;
 
-// api/index.ts
+// src/api/serverless.ts
 function handler(req, res) {
   return router_default(req, res);
 }
