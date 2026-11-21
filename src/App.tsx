@@ -1025,17 +1025,13 @@ const DRIVER_PROGRESS: Partial<Record<Phase, {
   delivered: { to: 1, ms: 900 },
 }
 
-const nearbyDrivers = [
-  { left: 66, top: 126 },
-
-  { left: 282, top: 100 },
-
-  { left: 122, top: 172 },
-
-  { left: 300, top: 238 },
-
-  { left: 236, top: 128 },
-]
+const nearbyDrivers: Array<{
+  left: number
+  top: number
+  driverId?: string
+  name?: string
+  licensePlate?: string
+}> = []
 
 const ROUTE_PATH = "M28 148 C78 150 118 184 160 194 S192 198 205 198"
 
@@ -5806,13 +5802,13 @@ export default function App() {
     badge: string
   }> = {
     booking: {
-      text: "Tài xế đang hoạt động gần bạn",
-      badge: displayNearbyCount,
+      text: nearbyDriverCount && nearbyDriverCount > 0 ? "Tài xế đang hoạt động gần bạn" : "Sẵn sàng điều phối xe",
+      badge: nearbyDriverCount && nearbyDriverCount > 0 ? String(nearbyDriverCount) : "Sẵn sàng",
     },
 
     searching: {
-      text: "Đang tìm quanh bạn",
-      badge: `${displayNearbyCount} xe`,
+      text: "Đang tìm xe gần nhất",
+      badge: nearbyDriverCount && nearbyDriverCount > 0 ? `${nearbyDriverCount} xe` : "Quét quanh đây",
     },
 
     found: { text: "Anh Minh đang di chuyển", badge: "4 phút" },

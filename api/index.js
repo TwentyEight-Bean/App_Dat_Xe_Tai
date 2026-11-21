@@ -5400,13 +5400,15 @@ router3.get("/nearby", async (req, res, next) => {
     const radiusMeters = req.query.radiusMeters ? Number(req.query.radiusMeters) : void 0;
     const vehicleTypeId = req.query.vehicleTypeId ? String(req.query.vehicleTypeId) : void 0;
     const limit = req.query.limit ? Number(req.query.limit) : 10;
+    const maxAgeMinutes = req.query.maxAgeMinutes ? Number(req.query.maxAgeMinutes) : 30;
     const drivers = await findNearbyDrivers({
       originLat: lat,
       originLng: lng,
       radiusKm,
       radiusMeters,
       vehicleTypeId,
-      limit
+      limit,
+      maxAgeMinutes
     });
     res.json({
       success: true,

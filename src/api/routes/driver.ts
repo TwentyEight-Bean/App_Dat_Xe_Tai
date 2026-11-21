@@ -69,18 +69,18 @@ router.get("/nearby", async (req, res, next) => {
 
     const limit = req.query.limit ? Number(req.query.limit) : 10
 
+    const maxAgeMinutes = req.query.maxAgeMinutes
+      ? Number(req.query.maxAgeMinutes)
+      : 30
+
     const drivers = await findNearbyDrivers({
       originLat: lat,
-
       originLng: lng,
-
       radiusKm,
-
       radiusMeters,
-
       vehicleTypeId,
-
       limit,
+      maxAgeMinutes,
     })
 
     res.json({
