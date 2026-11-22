@@ -424,56 +424,6 @@ export default function InteractiveMap({
     }
   }, [destAddr])
 
-  // Đồng bộ tức thì khi 2 địa chỉ điểm lấy và điểm giao trùng khớp (như người dùng copy từ A sang B)
-  useEffect(() => {
-    if (
-      pickupAddr &&
-      destAddr &&
-      pickupAddr.trim() !== "" &&
-      pickupAddr.trim().toLowerCase() === destAddr.trim().toLowerCase()
-    ) {
-      if (pickupCoordsRef.current) {
-        destCoordsRef.current = { ...pickupCoordsRef.current }
-        setCurrentDestDisplayAddr(pickupAddr)
-        updateBookingVisuals(pinModeRef.current)
-        emitRouteCoordinates()
-      }
-    }
-  }, [pickupAddr, destAddr, updateBookingVisuals, emitRouteCoordinates])
-
-  // Cập nhật tọa độ khi người dùng chọn từ gợi ý hoặc dán địa chỉ
-  useEffect(() => {
-    if (!manualCoords || !mapRef.current) return
-    const { kind, lat, lng, address } = manualCoords
-
-    if (kind === "pickup") {
-      pickupCoordsRef.current = { lat, lng }
-      if (address) setCurrentDisplayAddr(address)
-    } else {
-      destCoordsRef.current = { lat, lng }
-      if (address) setCurrentDestDisplayAddr(address)
-    }
-
-    updateBookingVisuals(pinModeRef.current)
-    emitRouteCoordinates()
-
-    const p = pickupCoordsRef.current
-    const d = destCoordsRef.current
-    if (p && d && (Math.abs(p.lat - d.lat) > 0.0001 || Math.abs(p.lng - d.lng) > 0.0001)) {
-      try {
-        mapRef.current.fitBounds(
-          L.latLngBounds([
-            [p.lat, p.lng],
-            [d.lat, d.lng],
-          ]),
-          { padding: [50, 50], maxZoom: 16 }
-        )
-      } catch {}
-    } else {
-      mapRef.current.flyTo([lat, lng], 16, { duration: 0.8 })
-    }
-  }, [manualCoords, updateBookingVisuals, emitRouteCoordinates])
-
   // Reverse Geocoding with Debounce via OSM Nominatim (Tiếng Việt)
 
   const reverseGeocodeTimeoutRef = useRef<number | null>(null)
@@ -920,6 +870,60 @@ export default function InteractiveMap({
   useEffect(() => {
     updateBookingVisualsRef.current = updateBookingVisuals
   }, [updateBookingVisuals])
+
+  // Đồng bộ tức thì khi 2 địa chỉ điểm lấy và điểm giao trùng khớp (như người dùng copy từ A sang B)
+  useEffect(() => {
+    if (
+      pickupAddr &&
+      destAddr &&
+      pickupAddr.trim() !== "" &&
+      pickupAddr.trim().toLowerCase() === destAddr.trim().toLowerCase()
+    ) {
+      if (pickupCoordsRef.current) {
+        destCoordsRef.current = { ...pickupCoordsRef.current }
+        setCurrentDestDisplayAddr(pickupAddr)
+        updateBookingVisualsRef.current(pinModeRef.current)
+        emitRouteCoordinates()
+      }
+    }
+  }, [pickupAddr, destAddr, emitRouteCoordinates])
+
+  // Cập nhật tọa độ khi người dùng chọn từ gợi ý hoặc dán địa chỉ
+  useEffect(() => {
+    if (!manualCoords || !mapRef.current) return
+    const { kind, lat, lng, address } = manualCoords
+
+    if (kind === "pickup") {
+      pickupCoordsRef.current = { lat, lng }
+      if (address) setCurrentDisplayAddr(address)
+    } else {
+      destCoordsRef.current = { lat, lng }
+      if (address) setCurrentDestDisplayAddr(address)
+    }
+
+    updateBookingVisualsRef.current(pinModeRef.current)
+    emitRouteCoordinates()
+
+    const p = pickupCoordsRef.current
+    const d = destCoordsRef.current
+    if (
+      p &&
+      d &&
+      (Math.abs(p.lat - d.lat) > 0.0001 || Math.abs(p.lng - d.lng) > 0.0001)
+    ) {
+      try {
+        mapRef.current.fitBounds(
+          L.latLngBounds([
+            [p.lat, p.lng],
+            [d.lat, d.lng],
+          ]),
+          { padding: [50, 50], maxZoom: 16 },
+        )
+      } catch {}
+    } else {
+      mapRef.current.flyTo([lat, lng], 16, { duration: 0.8 })
+    }
+  }, [manualCoords, emitRouteCoordinates])
 
   const handleSwitchPinMode = useCallback(
     (target: "pickup" | "destination") => {
