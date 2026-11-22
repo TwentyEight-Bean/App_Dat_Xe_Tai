@@ -10,6 +10,7 @@ vite.config.*.timestamp-*
 *-debug.log*
 logs/
 *.log
+*.apk
 .claude-replay.*
 .tmp-*
 *.tmp
