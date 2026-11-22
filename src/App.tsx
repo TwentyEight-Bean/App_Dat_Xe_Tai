@@ -205,67 +205,341 @@ function IconButton({
   )
 }
 
+type LocationSuggestion = {
+  title: string
+  subtitle: string
+  fullAddress: string
+  lat: number
+  lng: number
+}
+
 type LocationInputProps = {
   kind: "pickup" | "destination"
-
   value: string
-
   placeholder: string
-
   onChange: (value: string) => void
-
+  onSelectLocation?: (loc: { address: string; lat: number; lng: number }) => void
+  otherAddress?: string
+  otherCoords?: { lat: number; lng: number } | null
+  biasCenter?: { lat: number; lng: number }
   error?: boolean
 }
 
 function LocationInput({
   kind,
-
   value,
-
   placeholder,
-
   onChange,
-
+  onSelectLocation,
+  otherAddress,
+  otherCoords,
+  biasCenter,
   error,
 }: LocationInputProps) {
   const isPickup = kind === "pickup"
+  const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([])
+  const [isOpen, setIsOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const debounceTimerRef = useRef<number | null>(null)
+  const lastGeocodedValRef = useRef<string>("")
+
+  // Bấm ra ngoài để đóng dropdown gợi ý
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const fetchSuggestions = useCallback(
+    async (query: string) => {
+      const trimmed = query.trim()
+      if (!trimmed || trimmed.length < 2) {
+        setSuggestions([])
+        setIsOpen(false)
+        setIsLoading(false)
+        return
+      }
+
+      setIsLoading(true)
+      try {
+        const centerLat = biasCenter?.lat || 10.7769
+        const centerLng = biasCenter?.lng || 106.7009
+        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(trimmed)}&limit=5&lat=${centerLat}&lon=${centerLng}`
+        const res = await fetch(url)
+        if (res.ok) {
+          const data = await res.json()
+          const features = data?.features || []
+          const list: LocationSuggestion[] = features.map((f: any) => {
+            const p = f.properties || {}
+            const name = p.name || ""
+            const street = p.street || ""
+            const housenumber = p.housenumber ? `${p.housenumber} ` : ""
+            const district = p.district || p.suburb || p.locality || ""
+            const city = p.city || p.state || ""
+            let title = name
+            let subtitle = [housenumber + street, district, city].filter(Boolean).join(", ")
+            if (!title && street) {
+              title = housenumber + street
+              subtitle = [district, city].filter(Boolean).join(", ")
+            }
+            if (!title) {
+              title = subtitle || "Vị trí đã chọn"
+              subtitle = ""
+            }
+            const fullAddress = [title, subtitle].filter(Boolean).join(", ")
+            const [lng, lat] = f.geometry?.coordinates || [centerLng, centerLat]
+            return { title, subtitle, fullAddress, lat, lng }
+          })
+
+          setSuggestions(list)
+          setIsOpen(list.length > 0)
+        }
+      } catch {
+        // Fallback im lặng nếu mạng chậm
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [biasCenter],
+  )
+
+  const handleInputChange = (newVal: string) => {
+    onChange(newVal)
+
+    // Nếu người dùng nhập/dán địa chỉ giống hệt điểm còn lại
+    if (
+      otherAddress &&
+      newVal.trim() &&
+      newVal.trim().toLowerCase() === otherAddress.trim().toLowerCase()
+    ) {
+      if (otherCoords) {
+        lastGeocodedValRef.current = newVal.trim()
+        onSelectLocation?.({
+          address: newVal,
+          lat: otherCoords.lat,
+          lng: otherCoords.lng,
+        })
+      }
+      setSuggestions([])
+      setIsOpen(false)
+      return
+    }
+
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current)
+    }
+
+    debounceTimerRef.current = window.setTimeout(() => {
+      fetchSuggestions(newVal)
+    }, 300)
+  }
+
+  const handleSelectSuggestion = (sug: LocationSuggestion) => {
+    lastGeocodedValRef.current = sug.fullAddress
+    onChange(sug.fullAddress)
+    onSelectLocation?.({
+      address: sug.fullAddress,
+      lat: sug.lat,
+      lng: sug.lng,
+    })
+    setSuggestions([])
+    setIsOpen(false)
+  }
+
+  // Khi người dùng rời ô nhập hoặc nhấn Enter mà chưa chọn từ dropdown
+  const handleBlurOrResolve = async () => {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === lastGeocodedValRef.current) return
+
+    // Trùng với điểm còn lại
+    if (otherAddress && trimmed.toLowerCase() === otherAddress.trim().toLowerCase()) {
+      if (otherCoords) {
+        lastGeocodedValRef.current = trimmed
+        onSelectLocation?.({
+          address: trimmed,
+          lat: otherCoords.lat,
+          lng: otherCoords.lng,
+        })
+      }
+      return
+    }
+
+    // Tự động forward-geocode địa chỉ đã gõ/dán
+    try {
+      const centerLat = biasCenter?.lat || 10.7769
+      const centerLng = biasCenter?.lng || 106.7009
+      const res = await fetch(
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(trimmed)}&limit=1&lat=${centerLat}&lon=${centerLng}`,
+      )
+      if (res.ok) {
+        const data = await res.json()
+        const top = data?.features?.[0]
+        if (top) {
+          const [lng, lat] = top.geometry?.coordinates || [centerLng, centerLat]
+          lastGeocodedValRef.current = trimmed
+          onSelectLocation?.({
+            address: trimmed,
+            lat,
+            lng,
+          })
+        }
+      }
+    } catch {}
+  }
 
   return (
-    <div className={`location-field ${error ? "invalid" : ""}`}>
-      <span
-        className={`location-marker ${isPickup ? "pickup" : "destination"}`}
-      >
-        {isPickup ? (
-          <span className="marker-dot" />
-        ) : (
-          <Icon name="arrow" size={15} strokeWidth={2.4} />
-        )}
-      </span>
-      <span className="field-copy">
-        <span className="field-label">
-          {isPickup ? "Điểm lấy hàng" : "Điểm giao hàng"}
-        </span>
-        <input
-          aria-label={isPickup ? "Điểm lấy hàng" : "Điểm giao hàng"}
-          aria-describedby={error ? `${kind}-error` : undefined}
-          aria-invalid={error || undefined}
-          list="saved-addresses"
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          value={value}
-        />
-      </span>
-      {value ? (
-        <button
-          className="clear-button"
-          aria-label={isPickup ? "Xóa điểm lấy" : "Xóa điểm giao"}
-          onClick={() => onChange("")}
-          type="button"
+    <div
+      ref={containerRef}
+      style={{ position: "relative", width: "100%" }}
+    >
+      <div className={`location-field ${error ? "invalid" : ""}`}>
+        <span
+          className={`location-marker ${isPickup ? "pickup" : "destination"}`}
         >
-          <Icon name="close" size={16} />
-        </button>
-      ) : (
-        <Icon name="chevron" size={18} />
+          {isPickup ? (
+            <span className="marker-dot" />
+          ) : (
+            <Icon name="arrow" size={15} strokeWidth={2.4} />
+          )}
+        </span>
+        <span className="field-copy">
+          <span className="field-label">
+            {isPickup ? "Điểm lấy hàng" : "Điểm giao hàng"}
+          </span>
+          <input
+            aria-label={isPickup ? "Điểm lấy hàng" : "Điểm giao hàng"}
+            aria-describedby={error ? `${kind}-error` : undefined}
+            aria-invalid={error || undefined}
+            onChange={(event) => handleInputChange(event.target.value)}
+            onFocus={() => {
+              if (suggestions.length > 0) setIsOpen(true)
+            }}
+            onBlur={handleBlurOrResolve}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                if (suggestions.length > 0) {
+                  handleSelectSuggestion(suggestions[0])
+                } else {
+                  handleBlurOrResolve()
+                }
+              }
+            }}
+            placeholder={placeholder}
+            value={value}
+          />
+        </span>
+        {isLoading && (
+          <span style={{ fontSize: "11px", color: "#64748b", marginRight: "6px" }}>
+            ⏳
+          </span>
+        )}
+        {value ? (
+          <button
+            className="clear-button"
+            aria-label={isPickup ? "Xóa điểm lấy" : "Xóa điểm giao"}
+            onClick={() => {
+              onChange("")
+              setSuggestions([])
+              setIsOpen(false)
+            }}
+            type="button"
+          >
+            <Icon name="close" size={16} />
+          </button>
+        ) : (
+          <Icon name="chevron" size={18} />
+        )}
+      </div>
+
+      {/* Dropdown gợi ý địa chỉ Autocomplete */}
+      {isOpen && suggestions.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            background: "#ffffff",
+            borderRadius: "14px",
+            border: "1.5px solid #cbd5e1",
+            boxShadow:
+              "0 12px 28px -4px rgba(15, 23, 42, 0.18), 0 4px 10px -2px rgba(15, 23, 42, 0.08)",
+            zIndex: 9999,
+            maxHeight: "220px",
+            overflowY: "auto",
+            padding: "4px 0",
+          }}
+        >
+          {suggestions.map((item, idx) => (
+            <div
+              key={`${item.lat}_${item.lng}_${idx}`}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                handleSelectSuggestion(item)
+              }}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "10px",
+                padding: "8px 14px",
+                cursor: "pointer",
+                borderBottom:
+                  idx < suggestions.length - 1 ? "1px solid #f1f5f9" : "none",
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#f8fafc"
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent"
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "15px",
+                  marginTop: "1px",
+                  flexShrink: 0,
+                }}
+              >
+                {isPickup ? "🟢" : "📍"}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: "#0f172a",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {item.title}
+                </div>
+                {item.subtitle && (
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "#64748b",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      marginTop: "1px",
+                    }}
+                  >
+                    {item.subtitle}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -4380,6 +4654,22 @@ export default function App() {
     destLng: number
   } | null>(null)
 
+  const [manualMapCoords, setManualMapCoords] = useState<{
+    kind: "pickup" | "destination"
+    lat: number
+    lng: number
+    address?: string
+  } | null>(null)
+
+  const isSameLocation = Boolean(
+    pickup.trim() &&
+      destination.trim() &&
+      (pickup.trim().toLowerCase() === destination.trim().toLowerCase() ||
+        (routeCoords &&
+          Math.abs(routeCoords.originLat - routeCoords.destLat) < 0.0001 &&
+          Math.abs(routeCoords.originLng - routeCoords.destLng) < 0.0001)),
+  )
+
   const savedAddresses = useAddresses()
 
   const profile = useProfile()
@@ -5151,6 +5441,33 @@ export default function App() {
       }
     }
 
+    // Nếu điểm giao và điểm lấy hàng trùng nhau: không tính cước, báo lỗi ngay lập tức
+    if (isSameLocation) {
+      setEstimateData({
+        distanceKm: 0,
+        durationMinutes: 0,
+        totalPrice: 0,
+        surchargesTotal: 0,
+        originLat: routeCoords?.originLat ?? 10.7769,
+        originLng: routeCoords?.originLng ?? 106.7009,
+        destLat: routeCoords?.destLat ?? 10.7769,
+        destLng: routeCoords?.destLng ?? 106.7009,
+        breakdown: { transportPrice: 0, surchargeTotal: 0 },
+      })
+
+      setEstimateError("Điểm giao hàng không được trùng với điểm lấy hàng")
+
+      setIsEstimating(false)
+
+      setPrice("0đ")
+
+      return () => {
+        isCancelled = true
+
+        controller.abort()
+      }
+    }
+
     const coords = routeCoords || {
       originLat: 10.7769,
 
@@ -5189,9 +5506,17 @@ export default function App() {
 
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 
-      const distanceKm = Math.max(0.6, Number((R * c * 1.35).toFixed(1)))
+      const isPointsSame =
+        Math.abs(coords.destLat - coords.originLat) < 0.0001 &&
+        Math.abs(coords.destLng - coords.originLng) < 0.0001
 
-      const durationMinutes = Math.max(6, Math.round(distanceKm * 3.2))
+      const distanceKm = isPointsSame
+        ? 0
+        : Math.max(0.6, Number((R * c * 1.35).toFixed(1)))
+
+      const durationMinutes = isPointsSame
+        ? 0
+        : Math.max(6, Math.round(distanceKm * 3.2))
 
       const rawBase =
         currentV.rawBasePrice ||
@@ -5204,7 +5529,9 @@ export default function App() {
 
       const extraKm = Math.max(0, distanceKm - baseKm)
 
-      const transportPrice = Math.round(rawBase + extraKm * pricePerKm)
+      const transportPrice = isPointsSame
+        ? 0
+        : Math.round(rawBase + extraKm * pricePerKm)
 
       const surchargeTotal = servicesPayload.reduce((sum, s) => {
         const foundSrv = surchargeServices.find((sv) => sv.code === s.code)
@@ -5398,6 +5725,14 @@ export default function App() {
         .querySelector<HTMLInputElement>('[aria-label="Điểm giao hàng"]')
 
         ?.focus()
+
+      return
+    }
+
+    if (isSameLocation) {
+      setBookingError(
+        "Điểm giao hàng không được trùng với điểm lấy hàng. Vui lòng chọn điểm giao khác.",
+      )
 
       return
     }
@@ -5854,6 +6189,7 @@ export default function App() {
                     }
                   }}
                   onRouteCoordinatesChange={setRouteCoords}
+                  manualCoords={manualMapCoords}
                   phase={phase}
                   pickupAddr={pickup}
                   driverName={activeDriver?.name || "Tài xế FastDrop"}
@@ -6104,6 +6440,28 @@ export default function App() {
 
                             setPickupError(false)
                           }}
+                          onSelectLocation={(loc) => {
+                            setPickup(loc.address)
+                            setPickupError(false)
+                            setManualMapCoords({
+                              kind: "pickup",
+                              lat: loc.lat,
+                              lng: loc.lng,
+                              address: loc.address,
+                            })
+                            setRouteCoords((prev) => ({
+                              originLat: loc.lat,
+                              originLng: loc.lng,
+                              destLat: prev?.destLat ?? loc.lat,
+                              destLng: prev?.destLng ?? loc.lng,
+                            }))
+                          }}
+                          otherAddress={destination}
+                          otherCoords={
+                            routeCoords
+                              ? { lat: routeCoords.destLat, lng: routeCoords.destLng }
+                              : null
+                          }
                           placeholder="Chọn điểm lấy hàng"
                           value={pickup}
                         />
@@ -6116,10 +6474,55 @@ export default function App() {
 
                             if (value.trim()) setDestinationError(false)
                           }}
+                          onSelectLocation={(loc) => {
+                            setDestination(loc.address)
+                            setDestinationError(false)
+                            setManualMapCoords({
+                              kind: "destination",
+                              lat: loc.lat,
+                              lng: loc.lng,
+                              address: loc.address,
+                            })
+                            setRouteCoords((prev) => ({
+                              originLat: prev?.originLat ?? loc.lat,
+                              originLng: prev?.originLng ?? loc.lng,
+                              destLat: loc.lat,
+                              destLng: loc.lng,
+                            }))
+                          }}
+                          otherAddress={pickup}
+                          otherCoords={
+                            routeCoords
+                              ? { lat: routeCoords.originLat, lng: routeCoords.originLng }
+                              : null
+                          }
                           placeholder="Nhập địa chỉ giao hàng"
                           value={destination}
                         />
                       </div>
+                      {isSameLocation && (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: "8px 12px",
+                            borderRadius: "10px",
+                            background: "#fef2f2",
+                            border: "1.5px solid #f87171",
+                            color: "#991b1b",
+                            fontSize: "12px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            fontWeight: 600,
+                          }}
+                          role="alert"
+                        >
+                          <span>⚠️</span>
+                          <span>
+                            Điểm giao hàng không được trùng với điểm lấy hàng (0 km). Vui lòng chọn điểm giao khác.
+                          </span>
+                        </div>
+                      )}
                       {pickupError && (
                         <p
                           id="pickup-error"
@@ -6129,7 +6532,7 @@ export default function App() {
                           Vui lòng nhập điểm lấy hàng
                         </p>
                       )}
-                      {(bookingError || estimateError) && (
+                      {(bookingError || estimateError) && !isSameLocation && (
                         <p className="field-error" role="alert">
                           {bookingError || estimateError}
                         </p>
@@ -6171,6 +6574,33 @@ export default function App() {
                                   setDestination(sa.address)
 
                                   setDestinationError(false)
+
+                                  fetch(
+                                    `https://photon.komoot.io/api/?q=${encodeURIComponent(sa.address)}&limit=1&lat=10.7769&lon=106.7009`,
+                                  )
+                                    .then((r) => r.json())
+                                    .then((data) => {
+                                      const top = data?.features?.[0]
+                                      if (top) {
+                                        const [lng, lat] =
+                                          top.geometry?.coordinates || [
+                                            106.7009, 10.7769,
+                                          ]
+                                        setManualMapCoords({
+                                          kind: "destination",
+                                          lat,
+                                          lng,
+                                          address: sa.address,
+                                        })
+                                        setRouteCoords((prev) => ({
+                                          originLat: prev?.originLat ?? lat,
+                                          originLng: prev?.originLng ?? lng,
+                                          destLat: lat,
+                                          destLng: lng,
+                                        }))
+                                      }
+                                    })
+                                    .catch(() => {})
                                 }}
                                 style={{
                                   display: "inline-flex",
@@ -6259,22 +6689,26 @@ export default function App() {
                           <small>
                             {isEstimating
                               ? "Đang tính giá…"
-                              : estimateData
-                                ? `${estimateData.distanceKm} km · ~${estimateData.durationMinutes} phút`
-                                : "Chưa xác định cước chuyến"}
+                              : isSameLocation
+                                ? "0 km · Trùng điểm đón"
+                                : estimateData
+                                  ? `${estimateData.distanceKm} km · ~${estimateData.durationMinutes} phút`
+                                  : "Chưa xác định cước chuyến"}
                           </small>
                           <strong key={price}>{price}</strong>
                         </span>
                         <span className="price-note">
-                          {estimateData
-                            ? "Giá trọn gói theo km"
-                            : !pickup.trim() && !destination.trim()
-                              ? "Vui lòng chọn điểm đón & điểm đến"
-                              : !destination.trim()
-                                ? "Vui lòng chọn điểm đến"
-                                : !pickup.trim()
-                                  ? "Vui lòng chọn điểm đón"
-                                  : "Đang tính cước phí..."}
+                          {isSameLocation
+                            ? "Vui lòng chọn điểm giao khác"
+                            : estimateData
+                              ? "Giá trọn gói theo km"
+                              : !pickup.trim() && !destination.trim()
+                                ? "Vui lòng chọn điểm đón & điểm đến"
+                                : !destination.trim()
+                                  ? "Vui lòng chọn điểm đến"
+                                  : !pickup.trim()
+                                    ? "Vui lòng chọn điểm đón"
+                                    : "Đang tính cước phí..."}
                         </span>
                       </div>
 
@@ -6524,11 +6958,13 @@ export default function App() {
                           isBookingLoading ||
                           isEstimating ||
                           Boolean(estimateError) ||
+                          isSameLocation ||
                           Boolean(customerWallet && customerWallet.balance < 0)
                         }
                         type="button"
                         style={
-                          customerWallet && customerWallet.balance < 0
+                          isSameLocation ||
+                          (customerWallet && customerWallet.balance < 0)
                             ? {
                                 opacity: 0.65,
                                 cursor: "not-allowed",
@@ -6542,9 +6978,11 @@ export default function App() {
                             ? "Đang đặt xe..."
                             : isEstimating
                               ? "Đang tính giá..."
-                              : customerWallet && customerWallet.balance < 0
-                                ? `Cần trả nợ (${Math.abs(customerWallet.balance).toLocaleString("vi-VN")}đ) để đặt xe`
-                                : "Tìm tài xế"}
+                              : isSameLocation
+                                ? "Điểm giao trùng điểm lấy"
+                                : customerWallet && customerWallet.balance < 0
+                                  ? `Cần trả nợ (${Math.abs(customerWallet.balance).toLocaleString("vi-VN")}đ) để đặt xe`
+                                  : "Tìm tài xế"}
                         </span>
                         <span className="button-icon">
                           <Icon name="chevron" size={20} />

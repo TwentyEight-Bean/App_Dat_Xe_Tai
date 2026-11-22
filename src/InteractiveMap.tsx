@@ -33,6 +33,13 @@ export interface InteractiveMapProps {
 
   destAddr?: string
 
+  manualCoords?: {
+    kind: "pickup" | "destination"
+    lat: number
+    lng: number
+    address?: string
+  } | null
+
   onPickupChange?: (addr: string) => void
 
   onDestChange?: (addr: string) => void
@@ -206,6 +213,8 @@ export default function InteractiveMap({
   pickupAddr,
 
   destAddr,
+
+  manualCoords,
 
   onPickupChange,
 
@@ -414,6 +423,56 @@ export default function InteractiveMap({
       setCurrentDestDisplayAddr(destAddr)
     }
   }, [destAddr])
+
+  // Đồng bộ tức thì khi 2 địa chỉ điểm lấy và điểm giao trùng khớp (như người dùng copy từ A sang B)
+  useEffect(() => {
+    if (
+      pickupAddr &&
+      destAddr &&
+      pickupAddr.trim() !== "" &&
+      pickupAddr.trim().toLowerCase() === destAddr.trim().toLowerCase()
+    ) {
+      if (pickupCoordsRef.current) {
+        destCoordsRef.current = { ...pickupCoordsRef.current }
+        setCurrentDestDisplayAddr(pickupAddr)
+        updateBookingVisuals(pinModeRef.current)
+        emitRouteCoordinates()
+      }
+    }
+  }, [pickupAddr, destAddr, updateBookingVisuals, emitRouteCoordinates])
+
+  // Cập nhật tọa độ khi người dùng chọn từ gợi ý hoặc dán địa chỉ
+  useEffect(() => {
+    if (!manualCoords || !mapRef.current) return
+    const { kind, lat, lng, address } = manualCoords
+
+    if (kind === "pickup") {
+      pickupCoordsRef.current = { lat, lng }
+      if (address) setCurrentDisplayAddr(address)
+    } else {
+      destCoordsRef.current = { lat, lng }
+      if (address) setCurrentDestDisplayAddr(address)
+    }
+
+    updateBookingVisuals(pinModeRef.current)
+    emitRouteCoordinates()
+
+    const p = pickupCoordsRef.current
+    const d = destCoordsRef.current
+    if (p && d && (Math.abs(p.lat - d.lat) > 0.0001 || Math.abs(p.lng - d.lng) > 0.0001)) {
+      try {
+        mapRef.current.fitBounds(
+          L.latLngBounds([
+            [p.lat, p.lng],
+            [d.lat, d.lng],
+          ]),
+          { padding: [50, 50], maxZoom: 16 }
+        )
+      } catch {}
+    } else {
+      mapRef.current.flyTo([lat, lng], 16, { duration: 0.8 })
+    }
+  }, [manualCoords, updateBookingVisuals, emitRouteCoordinates])
 
   // Reverse Geocoding with Debounce via OSM Nominatim (Tiếng Việt)
 
@@ -791,6 +850,26 @@ export default function InteractiveMap({
 
       // Connecting Real Road Route between A and B
       if (pickupCoords && destCoords) {
+        // Nếu 2 điểm đón và giao trùng nhau, dọn sạch polyline và badge lộ trình
+        if (
+          Math.abs(pickupCoords.lat - destCoords.lat) < 0.0001 &&
+          Math.abs(pickupCoords.lng - destCoords.lng) < 0.0001
+        ) {
+          if (bookingRouteCasingRef.current) {
+            bookingRouteCasingRef.current.remove()
+            bookingRouteCasingRef.current = null
+          }
+          if (bookingRoutePolylineRef.current) {
+            bookingRoutePolylineRef.current.remove()
+            bookingRoutePolylineRef.current = null
+          }
+          if (bookingEtaBadgeRef.current) {
+            bookingEtaBadgeRef.current.remove()
+            bookingEtaBadgeRef.current = null
+          }
+          return
+        }
+
         const cacheKey = `${pickupCoords.lat.toFixed(4)},${pickupCoords.lng.toFixed(4)}_${destCoords.lat.toFixed(4)},${destCoords.lng.toFixed(4)}`
         const cached = roadRouteCache.get(cacheKey)
 
