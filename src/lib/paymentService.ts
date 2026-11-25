@@ -954,8 +954,8 @@ export async function reportPaymentTransferred(transactionCode: string) {
 
   // Phát tín hiệu Realtime cho Admin
   try {
-    const { emitLocalRealtime } = await import("./pusher")
-    emitLocalRealtime("admin-channel", "admin:new-topup-request", {
+    const { triggerEvent } = await import("./pusher")
+    await triggerEvent("admin-channel", "admin:new-topup-request", {
       transactionCode,
       amount: Number(tx.amount),
       userId: tx.user_id,
@@ -1076,9 +1076,10 @@ export async function adminApproveTopUpRequest(txId: string, adminUserId: string
     throw new ApiError(400, "Giao dịch này đã được duyệt thành công trước đó")
   }
 
-  await completePayment({
+  await fulfillSuccessfulPayment({
     paymentTxId: tx.id,
     bookingId: tx.booking_id,
+    walletId: tx.wallet_id,
     userId: tx.user_id,
     amount: Number(tx.amount),
     gateway: tx.gateway,
@@ -1093,8 +1094,8 @@ export async function adminApproveTopUpRequest(txId: string, adminUserId: string
 
   // Phát Realtime cho tài xế
   try {
-    const { emitLocalRealtime } = await import("./pusher")
-    emitLocalRealtime(`private-driver-${tx.user_id}`, "wallet:topup-approved", {
+    const { triggerEvent } = await import("./pusher")
+    await triggerEvent(`private-driver-${tx.user_id}`, "wallet:topup-approved", {
       transactionCode: tx.transaction_code,
       amount: Number(tx.amount),
       message: `Admin đã xác nhận chuyển khoản: +${Number(tx.amount).toLocaleString("vi-VN")} đ vào ví ký quỹ.`,
@@ -1145,8 +1146,8 @@ export async function adminRejectTopUpRequest(txId: string, adminUserId: string,
 
   // Phát Realtime cho tài xế
   try {
-    const { emitLocalRealtime } = await import("./pusher")
-    emitLocalRealtime(`private-driver-${tx.user_id}`, "wallet:topup-rejected", {
+    const { triggerEvent } = await import("./pusher")
+    await triggerEvent(`private-driver-${tx.user_id}`, "wallet:topup-rejected", {
       transactionCode: tx.transaction_code,
       reason: rejectReason,
       message: `Yêu cầu nạp tiền bị từ chối: ${rejectReason}`,

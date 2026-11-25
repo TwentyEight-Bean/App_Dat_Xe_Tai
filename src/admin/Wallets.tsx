@@ -168,8 +168,10 @@ export default function Wallets() {
     loadWallets(1, search)
   }
 
-  const loadTopupRequests = async (status = topupFilter, query = topupSearch) => {
-    setLoadingTopups(true)
+  const loadTopupRequests = async (status = topupFilter, query = topupSearch, isSilent = false) => {
+    if (!isSilent && topupRequests.length === 0) {
+      setLoadingTopups(true)
+    }
     try {
       const params = new URLSearchParams()
       if (status) params.set("status", status)
@@ -180,16 +182,18 @@ export default function Wallets() {
     } catch (err: any) {
       console.warn("Lỗi tải yêu cầu nạp tiền:", err)
     } finally {
-      setLoadingTopups(false)
+      if (!isSilent) {
+        setLoadingTopups(false)
+      }
     }
   }
 
-  // Load định kỳ yêu cầu nạp tiền mỗi 6 giây
+  // Load định kỳ yêu cầu nạp tiền mỗi 8 giây (chạy ngầm êm ái, không giật màn hình)
   useEffect(() => {
-    loadTopupRequests(topupFilter, topupSearch)
+    loadTopupRequests(topupFilter, topupSearch, false)
     const interval = setInterval(() => {
-      loadTopupRequests(topupFilter, topupSearch)
-    }, 6000)
+      loadTopupRequests(topupFilter, topupSearch, true)
+    }, 8000)
     return () => clearInterval(interval)
   }, [topupFilter, topupSearch])
 
@@ -865,7 +869,7 @@ export default function Wallets() {
                 </tr>
               </thead>
               <tbody>
-                {loadingTopups ? (
+                {loadingTopups && topupRequests.length === 0 ? (
                   <tr>
                     <td colSpan={8} style={{ padding: 40, textAlign: "center", color: "#6b7280" }}>
                       Đang tải danh sách yêu cầu nạp tiền...

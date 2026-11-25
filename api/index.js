@@ -7049,8 +7049,8 @@ async function reportPaymentTransferred(transactionCode) {
     );
   }
   try {
-    const { emitLocalRealtime } = await Promise.resolve().then(() => (init_pusher(), pusher_exports));
-    emitLocalRealtime("admin-channel", "admin:new-topup-request", {
+    const { triggerEvent: triggerEvent2 } = await Promise.resolve().then(() => (init_pusher(), pusher_exports));
+    await triggerEvent2("admin-channel", "admin:new-topup-request", {
       transactionCode,
       amount: Number(tx.amount),
       userId: tx.user_id
@@ -7153,9 +7153,10 @@ async function adminApproveTopUpRequest(txId, adminUserId) {
   if (tx.status === "SUCCESS") {
     throw new ApiError(400, "Giao d\u1ECBch n\xE0y \u0111\xE3 \u0111\u01B0\u1EE3c duy\u1EC7t th\xE0nh c\xF4ng tr\u01B0\u1EDBc \u0111\xF3");
   }
-  await completePayment({
+  await fulfillSuccessfulPayment({
     paymentTxId: tx.id,
     bookingId: tx.booking_id,
+    walletId: tx.wallet_id,
     userId: tx.user_id,
     amount: Number(tx.amount),
     gateway: tx.gateway,
@@ -7168,8 +7169,8 @@ async function adminApproveTopUpRequest(txId, adminUserId) {
     }
   });
   try {
-    const { emitLocalRealtime } = await Promise.resolve().then(() => (init_pusher(), pusher_exports));
-    emitLocalRealtime(`private-driver-${tx.user_id}`, "wallet:topup-approved", {
+    const { triggerEvent: triggerEvent2 } = await Promise.resolve().then(() => (init_pusher(), pusher_exports));
+    await triggerEvent2(`private-driver-${tx.user_id}`, "wallet:topup-approved", {
       transactionCode: tx.transaction_code,
       amount: Number(tx.amount),
       message: `Admin \u0111\xE3 x\xE1c nh\u1EADn chuy\u1EC3n kho\u1EA3n: +${Number(tx.amount).toLocaleString("vi-VN")} \u0111 v\xE0o v\xED k\xFD qu\u1EF9.`
@@ -7211,8 +7212,8 @@ async function adminRejectTopUpRequest(txId, adminUserId, reason) {
     ]
   );
   try {
-    const { emitLocalRealtime } = await Promise.resolve().then(() => (init_pusher(), pusher_exports));
-    emitLocalRealtime(`private-driver-${tx.user_id}`, "wallet:topup-rejected", {
+    const { triggerEvent: triggerEvent2 } = await Promise.resolve().then(() => (init_pusher(), pusher_exports));
+    await triggerEvent2(`private-driver-${tx.user_id}`, "wallet:topup-rejected", {
       transactionCode: tx.transaction_code,
       reason: rejectReason,
       message: `Y\xEAu c\u1EA7u n\u1EA1p ti\u1EC1n b\u1ECB t\u1EEB ch\u1ED1i: ${rejectReason}`
