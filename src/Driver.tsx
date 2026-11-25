@@ -3477,6 +3477,14 @@ export default function DriverApp() {
 
   const [activeOffer, setActiveOffer] = useState<any>(null)
   const [activeBooking, setActiveBooking] = useState<any>(null)
+  const [customerCancelledInfo, setCustomerCancelledInfo] = useState<{
+    bookingCode?: string
+    reason?: string
+  } | null>(null)
+  const activeBookingRef = useRef<any>(activeBooking)
+  useEffect(() => {
+    activeBookingRef.current = activeBooking
+  }, [activeBooking])
   const [lastCompletedBooking, setLastCompletedBooking] = useState<any>(null)
   const skippedBookingIdsRef = useRef<Set<string>>(new Set())
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false)
@@ -3538,7 +3546,7 @@ export default function DriverApp() {
         e.status !== "Đã hủy",
     ).length
 
-  // 1. Lắng nghe sự kiện Realtime (Nổ cuốc mới, Hủy cuốc)
+  // 1. Lắng nghe sự kiện Realtime (Nổ cuốc mới, Hủy cuốc từ khách)
   useEffect(() => {
     if (!driverProfile?.id && !driverProfile?.userId) return
 
@@ -3572,28 +3580,102 @@ export default function DriverApp() {
       },
     )
 
+    const handleCustomerTripCancelled = (data: any) => {
+      console.log("🛑 [Driver UI] Khách hàng hủy chuyến xe:", data)
+      const current = activeBookingRef.current
+      if (!data?.bookingId || !current || current.id === data.bookingId) {
+        setCustomerCancelledInfo({
+          bookingCode: data?.bookingCode || current?.bookingCode || "",
+          reason: data?.reason || "Khách hàng đổi kế hoạch",
+        })
+        setJob("none")
+        setActiveBooking(null)
+        setNotice(`Khách đã hủy chuyến: ${data?.reason || "Đổi kế hoạch"}`)
+      }
+    }
+
     const unsubTripCancelled = subscribeRealtime(
       `private-driver-${driverId}`,
       "booking:cancelled",
-      (data) => {
-        console.log("🛑 [Driver UI] Khách hủy chuyến:", data)
-        setActiveBooking((curr: any) => {
-          if (curr && curr.id === data.bookingId) {
-            setJob("none")
-            setNotice(`Khách đã hủy chuyến: ${data.reason || "Đổi kế hoạch"}`)
-            return null
-          }
-          return curr
-        })
-      },
+      handleCustomerTripCancelled,
     )
+
+    // Lắng nghe thêm kênh userId nếu khác profile id để không bao giờ bị sót sự kiện
+    let unsubUserCancelled: (() => void) | null = null
+    if (driverProfile.userId && driverProfile.userId !== driverId) {
+      unsubUserCancelled = subscribeRealtime(
+        `private-driver-${driverProfile.userId}`,
+        "booking:cancelled",
+        handleCustomerTripCancelled,
+      )
+    }
 
     return () => {
       unsubOffer()
       unsubCancelled()
       unsubTripCancelled()
+      if (unsubUserCancelled) unsubUserCancelled()
     }
   }, [driverProfile?.id, driverProfile?.userId])
+
+  // 1.1 Lắng nghe trực tiếp trên kênh chuyến đi (private-trip-{id}) khi tài xế đang chạy cuốc
+  useEffect(() => {
+    if (!activeBooking?.id) return
+
+    const tripId = activeBooking.id
+    console.log(`[Driver UI] Đang lắng nghe kênh chuyến đi: private-trip-${tripId}`)
+
+    const unsubTrip = subscribeRealtime(
+      `private-trip-${tripId}`,
+      "booking:cancelled",
+      (data) => {
+        console.log("🛑 [Driver UI] Nhận thông báo hủy chuyến qua kênh trip:", data)
+        setCustomerCancelledInfo({
+          bookingCode: data?.bookingCode || activeBooking.bookingCode || "",
+          reason: data?.reason || "Khách hàng đổi kế hoạch",
+        })
+        setJob("none")
+        setActiveBooking(null)
+        setNotice(`Khách đã hủy chuyến: ${data?.reason || "Đổi kế hoạch"}`)
+      },
+    )
+
+    return () => {
+      unsubTrip()
+    }
+  }, [activeBooking?.id, activeBooking?.bookingCode])
+
+  // 1.2 Fallback Polling định kỳ: Tự động phát hiện khi khách hủy chuyến trong lúc đang chạy
+  useEffect(() => {
+    if (!driverToken || job === "none" || !activeBooking?.id) return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/v1/driver/bookings/active", {
+          headers: { Authorization: `Bearer ${driverToken}` },
+        })
+        const json = await res.json()
+        if (json.success) {
+          // Nếu backend trả về null hoặc status là CANCELLED nghĩa là cuốc đã bị hủy
+          if (!json.data || json.data.status === "CANCELLED") {
+            console.log("🛑 [Driver Poll] Phát hiện chuyến xe đã bị hủy trên hệ thống")
+            const current = activeBookingRef.current
+            setCustomerCancelledInfo({
+              bookingCode: current?.bookingCode || "",
+              reason: json.data?.cancellationReason || "Khách hàng đã hủy chuyến xe",
+            })
+            setJob("none")
+            setActiveBooking(null)
+            setNotice("Khách hàng đã hủy chuyến xe.")
+          }
+        }
+      } catch (err) {
+        // bỏ qua lỗi mạng chập chờn
+      }
+    }, 3500)
+
+    return () => clearInterval(pollInterval)
+  }, [driverToken, job, activeBooking?.id])
 
   // 2. Tự động khôi phục chuyến xe đang chạy khi mở app (GET /bookings/active)
   useEffect(() => {
@@ -4742,6 +4824,101 @@ export default function DriverApp() {
           bookingId={activeBooking?.id}
           driverName={driverProfile?.fullName || "Tài xế"}
         />
+
+        {/* Modal thông báo nổi bật khi Khách hàng hủy chuyến xe */}
+        {customerCancelledInfo && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 99999,
+              background: "rgba(0, 0, 0, 0.8)",
+              backdropFilter: "blur(6px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "20px",
+            }}
+          >
+            <div
+              style={{
+                width: "100%",
+                maxWidth: "380px",
+                background: "#1e293b",
+                borderRadius: "20px",
+                padding: "26px 22px",
+                textAlign: "center",
+                color: "#ffffff",
+                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
+                border: "2px solid #ef4444",
+              }}
+            >
+              <div
+                style={{
+                  width: "68px",
+                  height: "68px",
+                  borderRadius: "50%",
+                  background: "rgba(239, 68, 68, 0.2)",
+                  border: "2px solid #ef4444",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "32px",
+                  margin: "0 auto 16px",
+                  boxShadow: "0 0 20px rgba(239, 68, 68, 0.4)",
+                }}
+              >
+                🛑
+              </div>
+              <h3 style={{ margin: "0 0 8px", fontSize: "20px", fontWeight: 800, color: "#f87171" }}>
+                Khách hàng đã hủy chuyến!
+              </h3>
+              <p style={{ margin: "0 0 16px", fontSize: "13.5px", color: "#cbd5e1", lineHeight: 1.5 }}>
+                {customerCancelledInfo.bookingCode
+                  ? `Chuyến xe mã #${customerCancelledInfo.bookingCode} đã bị khách hàng hủy.`
+                  : "Chuyến xe của bạn vừa bị khách hàng hủy."}
+              </p>
+              <div
+                style={{
+                  background: "rgba(255, 255, 255, 0.06)",
+                  borderRadius: "12px",
+                  padding: "12px 14px",
+                  marginBottom: "20px",
+                  textAlign: "left",
+                  fontSize: "13px",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                }}
+              >
+                <div style={{ color: "#94a3b8", marginBottom: "4px", fontSize: "12px" }}>Lý do hủy từ khách hàng:</div>
+                <div style={{ color: "#fef08a", fontWeight: 600 }}>
+                  {customerCancelledInfo.reason || "Khách hàng đổi kế hoạch"}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerCancelledInfo(null)
+                  setJob("none")
+                  setActiveBooking(null)
+                }}
+                style={{
+                  width: "100%",
+                  padding: "13px",
+                  borderRadius: "12px",
+                  background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(239, 68, 68, 0.45)",
+                }}
+              >
+                ĐÃ HIỂU, QUAY VỀ TRANG CHỦ
+              </button>
+            </div>
+          </div>
+        )}
 
         {showNav && <DriverNav onChange={changeTab} tab={tab} />}
       </section>

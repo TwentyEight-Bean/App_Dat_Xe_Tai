@@ -1480,12 +1480,14 @@ export async function cancelBooking(
 
   const cancelled = updatedRows[0]
 
-  // Bắn sự kiện Pusher thông báo hủy
+  // Bắn sự kiện Pusher thông báo hủy đến cả khách hàng và tài xế
   await triggerBookingCancelled(
     bookingId,
     cancelledBy,
     cancelReason,
     b.driver_id,
+    b.driver_user_id,
+    b.booking_code,
   )
 
   // Bắn thông báo đẩy Push Notification FCM đến đối phương (Task 3.5)

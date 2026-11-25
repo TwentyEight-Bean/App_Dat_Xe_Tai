@@ -32,7 +32,7 @@ import { runTabTransition, type TabDirection } from "./tabMotion"
 
 import InteractiveMap from "./InteractiveMap"
 
-import { subscribeRealtime } from "./lib/pusherClient"
+import { subscribeRealtime, emitLocalRealtime } from "./lib/pusherClient"
 
 import CallingModal from "./CallingModal"
 
@@ -6024,6 +6024,27 @@ export default function App() {
 
       if (res.ok && data.success) {
         fetchCustomerWallet()
+
+        // Bắn sự kiện realtime tức thì để phía tài xế nhận thông báo ngay lập tức
+        emitLocalRealtime(`private-trip-${currentBookingId}`, "booking:cancelled", {
+          bookingId: currentBookingId,
+          cancelledBy: "CUSTOMER",
+          reason: customerCancelReason || "Khách hàng hủy chuyến",
+        })
+        if (activeDriver?.id) {
+          emitLocalRealtime(`private-driver-${activeDriver.id}`, "booking:cancelled", {
+            bookingId: currentBookingId,
+            cancelledBy: "CUSTOMER",
+            reason: customerCancelReason || "Khách hàng hủy chuyến",
+          })
+        }
+        if (activeDriver?.userId) {
+          emitLocalRealtime(`private-driver-${activeDriver.userId}`, "booking:cancelled", {
+            bookingId: currentBookingId,
+            cancelledBy: "CUSTOMER",
+            reason: customerCancelReason || "Khách hàng hủy chuyến",
+          })
+        }
 
         showCustomerToast("Bạn đã hủy chuyến xe thành công.")
 

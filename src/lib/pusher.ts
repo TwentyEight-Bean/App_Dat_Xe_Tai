@@ -320,33 +320,32 @@ export async function triggerBookingStatusChange(
 
 export async function triggerBookingCancelled(
   bookingId: string,
-
   cancelledBy: "CUSTOMER" | "DRIVER" | "SYSTEM",
-
   reason?: string,
-
   driverId?: string | null,
+  driverUserId?: string | null,
+  bookingCode?: string | null,
 ) {
   const payload = {
     bookingId,
-
+    bookingCode: bookingCode || null,
     status: "CANCELLED",
-
     cancelledBy,
-
     reason: reason || "Chuyến xe đã bị hủy",
-
     timestamp: Date.now(),
   }
 
-  // Báo trên kênh chuyến đi cho khách
-
+  // Báo trên kênh chuyến đi cho cả khách và tài xế
   await triggerEvent(`private-trip-${bookingId}`, "booking:cancelled", payload)
 
-  // Báo trên kênh riêng của tài xế nếu chuyến đã có tài xế nhận
-
+  // Báo trên kênh riêng của tài xế nếu chuyến đã có tài xế nhận (driverProfile.id)
   if (driverId) {
     await triggerEvent(`private-driver-${driverId}`, "booking:cancelled", payload)
+  }
+
+  // Báo thêm trên kênh driver userId nếu có để đảm bảo tài xế chắc chắn nhận được
+  if (driverUserId && driverUserId !== driverId) {
+    await triggerEvent(`private-driver-${driverUserId}`, "booking:cancelled", payload)
   }
 
   return true

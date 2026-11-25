@@ -3534,9 +3534,10 @@ async function triggerBookingStatusChange(bookingId, newStatus, extra = {}) {
   };
   return await triggerEvent(channel, event, payload);
 }
-async function triggerBookingCancelled(bookingId, cancelledBy, reason, driverId) {
+async function triggerBookingCancelled(bookingId, cancelledBy, reason, driverId, driverUserId, bookingCode) {
   const payload = {
     bookingId,
+    bookingCode: bookingCode || null,
     status: "CANCELLED",
     cancelledBy,
     reason: reason || "Chuy\u1EBFn xe \u0111\xE3 b\u1ECB h\u1EE7y",
@@ -3545,6 +3546,9 @@ async function triggerBookingCancelled(bookingId, cancelledBy, reason, driverId)
   await triggerEvent(`private-trip-${bookingId}`, "booking:cancelled", payload);
   if (driverId) {
     await triggerEvent(`private-driver-${driverId}`, "booking:cancelled", payload);
+  }
+  if (driverUserId && driverUserId !== driverId) {
+    await triggerEvent(`private-driver-${driverUserId}`, "booking:cancelled", payload);
   }
   return true;
 }
@@ -5080,7 +5084,9 @@ async function cancelBooking(userId, bookingId, reason) {
     bookingId,
     cancelledBy,
     cancelReason,
-    b.driver_id
+    b.driver_id,
+    b.driver_user_id,
+    b.booking_code
   );
   const targetUserId = isCustomer ? b.driver_user_id : b.customer_id;
   if (targetUserId) {
