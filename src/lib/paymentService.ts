@@ -921,3 +921,44 @@ export async function confirmSimulatedPayment(transactionCode: string) {
 
   return { success: true, message: "Xác nhận thanh toán thành công!" }
 }
+
+/**
+ * 8. Ghi nhận thông báo đã chuyển khoản từ phía người dùng / tài xế
+ * Cập nhật trạng thái chờ Admin xác minh và đối soát sao kê
+ */
+export async function reportPaymentTransferred(transactionCode: string) {
+  if (!transactionCode) {
+    throw new ApiError(400, "Thiếu mã giao dịch transactionCode")
+  }
+
+  const txRows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
+    [transactionCode],
+  )
+
+  if (txRows.length === 0) {
+    throw new ApiError(404, "Không tìm thấy giao dịch thanh toán")
+  }
+
+  const tx = txRows[0]
+  if (tx.status === "PENDING") {
+    await client.unsafe(
+      `UPDATE payment_transactions 
+       SET description = COALESCE(description, '') || ' [Tài xế/Khách báo đã chuyển khoản - Chờ Admin đối soát]',
+           updated_at = NOW() 
+       WHERE id = $1`,
+      [tx.id],
+    )
+  }
+
+  return {
+    success: true,
+    message: "Hệ thống đã ghi nhận thông báo chuyển khoản. Đang chờ Admin xác minh.",
+    data: {
+      transactionCode,
+      amount: Number(tx.amount),
+      status: "WAITING_ADMIN",
+    },
+  }
+}
+

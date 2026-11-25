@@ -7,6 +7,7 @@ import {
   getPaymentStatus,
   getUserPaymentHistory,
   confirmSimulatedPayment,
+  reportPaymentTransferred,
 } from "../../lib/paymentService"
 
 import { requireAuth, type AuthRequest } from "../middleware"
@@ -348,6 +349,20 @@ router.post("/confirm-simulated", async (req, res, next) => {
   try {
     const { transactionCode } = req.body
     const result = await confirmSimulatedPayment(transactionCode)
+    res.json(result)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * 8. POST /payments/report-transferred
+ * Người dùng xác nhận đã chuyển khoản xong -> ghi nhận thông báo để Admin đối soát
+ */
+router.post("/report-transferred", async (req, res, next) => {
+  try {
+    const { transactionCode } = req.body
+    const result = await reportPaymentTransferred(transactionCode)
     res.json(result)
   } catch (err) {
     next(err)

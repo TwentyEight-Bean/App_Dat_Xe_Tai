@@ -8810,6 +8810,37 @@ async function confirmSimulatedPayment(transactionCode) {
   }
   return { success: true, message: "X\xE1c nh\u1EADn thanh to\xE1n th\xE0nh c\xF4ng!" };
 }
+async function reportPaymentTransferred(transactionCode) {
+  if (!transactionCode) {
+    throw new ApiError(400, "Thi\u1EBFu m\xE3 giao d\u1ECBch transactionCode");
+  }
+  const txRows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
+    [transactionCode]
+  );
+  if (txRows.length === 0) {
+    throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y giao d\u1ECBch thanh to\xE1n");
+  }
+  const tx = txRows[0];
+  if (tx.status === "PENDING") {
+    await client.unsafe(
+      `UPDATE payment_transactions 
+       SET description = COALESCE(description, '') || ' [T\xE0i x\u1EBF/Kh\xE1ch b\xE1o \u0111\xE3 chuy\u1EC3n kho\u1EA3n - Ch\u1EDD Admin \u0111\u1ED1i so\xE1t]',
+           updated_at = NOW() 
+       WHERE id = $1`,
+      [tx.id]
+    );
+  }
+  return {
+    success: true,
+    message: "H\u1EC7 th\u1ED1ng \u0111\xE3 ghi nh\u1EADn th\xF4ng b\xE1o chuy\u1EC3n kho\u1EA3n. \u0110ang ch\u1EDD Admin x\xE1c minh.",
+    data: {
+      transactionCode,
+      amount: Number(tx.amount),
+      status: "WAITING_ADMIN"
+    }
+  };
+}
 
 // src/api/routes/payment.ts
 var router9 = Router9();
@@ -9058,6 +9089,15 @@ router9.post("/confirm-simulated", async (req, res, next) => {
   try {
     const { transactionCode } = req.body;
     const result = await confirmSimulatedPayment(transactionCode);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+router9.post("/report-transferred", async (req, res, next) => {
+  try {
+    const { transactionCode } = req.body;
+    const result = await reportPaymentTransferred(transactionCode);
     res.json(result);
   } catch (err) {
     next(err);

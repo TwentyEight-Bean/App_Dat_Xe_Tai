@@ -28,6 +28,9 @@ export default function TopUpModal({
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null)
   const [transactionCode, setTransactionCode] = useState<string | null>(null)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [isWaitingAdmin, setIsWaitingAdmin] = useState(false)
+  const [copiedPhone, setCopiedPhone] = useState(false)
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false)
 
   // Reset khi mở lại modal
   useEffect(() => {
@@ -39,6 +42,9 @@ export default function TopUpModal({
       setPaymentUrl(null)
       setTransactionCode(null)
       setIsSuccess(false)
+      setIsWaitingAdmin(false)
+      setCopiedPhone(false)
+      setIsSubmittingReport(false)
     }
   }, [isOpen, initialAmount])
 
@@ -52,6 +58,7 @@ export default function TopUpModal({
         const data = await res.json()
         if (data.success && data.data?.isSuccess) {
           setIsSuccess(true)
+          setIsWaitingAdmin(false)
           clearInterval(interval)
           setTimeout(() => {
             onSuccess(amount)
@@ -67,6 +74,24 @@ export default function TopUpModal({
   }, [transactionCode, isSuccess, amount, onSuccess, onClose])
 
   if (!isOpen) return null
+
+  const handleConfirmTransferred = async () => {
+    setIsSubmittingReport(true)
+    try {
+      if (transactionCode) {
+        await fetch("/api/v1/payments/report-transferred", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transactionCode }),
+        })
+      }
+    } catch (e) {
+      console.warn("Lỗi gửi thông báo chuyển khoản:", e)
+    } finally {
+      setIsSubmittingReport(false)
+      setIsWaitingAdmin(true)
+    }
+  }
 
   const handleStartTopup = async () => {
     setLoading(true)
@@ -195,6 +220,175 @@ export default function TopUpModal({
               Đã cộng +{amount.toLocaleString("vi-VN")} đ vào ví của bạn.
             </p>
           </div>
+        ) : isWaitingAdmin ? (
+          /* Màn hình: ĐANG ĐỢI ADMIN XÁC MINH CHUYỂN KHOẢN */
+          <div style={{ textAlign: "center", padding: "10px 4px 4px" }}>
+            <div
+              style={{
+                width: "64px",
+                height: "64px",
+                borderRadius: "50%",
+                background: "rgba(245, 158, 11, 0.15)",
+                border: "2px solid rgba(245, 158, 11, 0.5)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 14px",
+                boxShadow: "0 0 24px rgba(245, 158, 11, 0.25)",
+              }}
+            >
+              <span style={{ fontSize: "30px" }}>⏳</span>
+            </div>
+
+            <h4 style={{ margin: "0 0 8px", fontSize: "18px", fontWeight: 800, color: "#fbbf24" }}>
+              Đang đợi admin xác minh chuyển khoản
+            </h4>
+
+            <p style={{ margin: "0 auto 14px", fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.5, maxWidth: "340px" }}>
+              Hệ thống đã ghi nhận thông báo chuyển khoản của bạn. Admin đang kiểm tra sao kê ngân hàng và sẽ duyệt cộng tiền vào ví ngay.
+            </p>
+
+            {/* Khối thông tin đối soát */}
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.05)",
+                borderRadius: "12px",
+                padding: "12px 16px",
+                textAlign: "left",
+                fontSize: "12.5px",
+                maxWidth: "340px",
+                margin: "0 auto 14px",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ color: "#94a3b8" }}>Số tiền:</span>
+                <strong style={{ color: "#4ade80", fontSize: "14px" }}>{amount.toLocaleString("vi-VN")} đ</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ color: "#94a3b8" }}>Nội dung CK:</span>
+                <strong style={{ color: "#facc15" }}>{transactionCode || "VIETQR"}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                <span style={{ color: "#94a3b8" }}>Ngân hàng nhận:</span>
+                <span style={{ color: "#ffffff", fontWeight: 600 }}>Vietcombank - TRAN VU HUNG</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#94a3b8" }}>Trạng thái:</span>
+                <span style={{ color: "#fbbf24", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <span>●</span> Chờ xác minh
+                </span>
+              </div>
+            </div>
+
+            {/* BẢNG THÔNG BÁO THEO YÊU CẦU: LIÊN HỆ ADMIN NẾU ĐỢI LÂU */}
+            <div
+              style={{
+                background: "rgba(234, 179, 8, 0.12)",
+                border: "1.5px solid rgba(234, 179, 8, 0.4)",
+                borderRadius: "12px",
+                padding: "12px 16px",
+                maxWidth: "340px",
+                margin: "0 auto 16px",
+                textAlign: "left",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px", color: "#facc15", fontWeight: 700, fontSize: "12.5px" }}>
+                <span>ℹ️</span>
+                <span>THÔNG BÁO:</span>
+              </div>
+              <p style={{ margin: "0 0 10px", fontSize: "12.5px", color: "#fef08a", lineHeight: 1.5 }}>
+                Nếu bạn đợi lâu xin vui lòng liên hệ admin qua số <strong>0363469767</strong> để hỏi thêm thông tin.
+              </p>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <a
+                  href="tel:0363469767"
+                  style={{
+                    flex: 1,
+                    height: "36px",
+                    background: "linear-gradient(135deg, #16a34a, #15803d)",
+                    borderRadius: "8px",
+                    color: "#ffffff",
+                    fontSize: "12.5px",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    textDecoration: "none",
+                    boxShadow: "0 2px 8px rgba(22, 163, 74, 0.3)",
+                  }}
+                >
+                  <span>📞</span>
+                  <span>Gọi 0363469767</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText("0363469767")
+                    setCopiedPhone(true)
+                    setTimeout(() => setCopiedPhone(false), 2000)
+                  }}
+                  style={{
+                    height: "36px",
+                    padding: "0 12px",
+                    background: copiedPhone ? "rgba(34, 197, 94, 0.25)" : "rgba(255, 255, 255, 0.1)",
+                    border: "1px solid rgba(255, 255, 255, 0.2)",
+                    borderRadius: "8px",
+                    color: copiedPhone ? "#4ade80" : "#ffffff",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <span>{copiedPhone ? "✓" : "📋"}</span>
+                  <span>{copiedPhone ? "Đã chép" : "Sao chép"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Các nút hành động */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "340px", margin: "0 auto" }}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: "10px",
+                  background: "rgba(255, 255, 255, 0.12)",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  color: "#ffffff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Tôi đã hiểu, đóng cửa sổ
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsWaitingAdmin(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#94a3b8",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  padding: "4px",
+                }}
+              >
+                ← Xem lại mã QR chuyển khoản
+              </button>
+            </div>
+          </div>
         ) : qrCodeUrl ? (
           /* Màn hình hiển thị QR Code Chuyển khoản ngân hàng */
           <div style={{ textAlign: "center", padding: "8px 0" }}>
@@ -298,35 +492,27 @@ export default function TopUpModal({
             <div style={{ display: "flex", gap: "10px", maxWidth: "340px", margin: "0 auto 12px" }}>
               <button
                 type="button"
-                onClick={async () => {
-                  try {
-                    if (transactionCode) {
-                      await fetch("/api/v1/payments/confirm-simulated", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ transactionCode }),
-                      })
-                    }
-                  } catch (e) {
-                    console.warn(e)
-                  }
-                  onSuccess(amount)
-                  onClose()
-                }}
+                disabled={isSubmittingReport}
+                onClick={handleConfirmTransferred}
                 style={{
                   flex: 1,
-                  padding: "11px",
+                  padding: "12px",
                   borderRadius: "10px",
                   background: "linear-gradient(135deg, #10b981, #059669)",
                   border: "none",
                   color: "#ffffff",
-                  fontSize: "13px",
+                  fontSize: "13.5px",
                   fontWeight: 700,
-                  cursor: "pointer",
+                  cursor: isSubmittingReport ? "wait" : "pointer",
                   boxShadow: "0 4px 12px rgba(16, 185, 129, 0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
                 }}
               >
-                ✓ Tôi đã chuyển khoản xong
+                <span>{isSubmittingReport ? "⏳" : "✓"}</span>
+                <span>{isSubmittingReport ? "Đang gửi thông báo..." : "✓ Tôi đã chuyển khoản xong"}</span>
               </button>
             </div>
 
