@@ -3485,6 +3485,7 @@ export default function DriverApp() {
   useEffect(() => {
     activeBookingRef.current = activeBooking
   }, [activeBooking])
+  const completedTripIdsRef = useRef<Set<string>>(new Set())
   const [lastCompletedBooking, setLastCompletedBooking] = useState<any>(null)
   const skippedBookingIdsRef = useRef<Set<string>>(new Set())
   const [isAcceptingOffer, setIsAcceptingOffer] = useState(false)
@@ -3583,6 +3584,11 @@ export default function DriverApp() {
     const handleCustomerTripCancelled = (data: any) => {
       console.log("🛑 [Driver UI] Khách hàng hủy chuyến xe:", data)
       const current = activeBookingRef.current
+      const tripId = data?.bookingId || current?.id
+      if (tripId && completedTripIdsRef.current.has(tripId)) {
+        console.log("ℹ️ [Driver UI] Chuyến xe đã hoàn thành thành công, bỏ qua thông báo hủy:", tripId)
+        return
+      }
       if (!data?.bookingId || !current || current.id === data.bookingId) {
         setCustomerCancelledInfo({
           bookingCode: data?.bookingCode || current?.bookingCode || "",
@@ -3630,6 +3636,10 @@ export default function DriverApp() {
       "booking:cancelled",
       (data) => {
         console.log("🛑 [Driver UI] Nhận thông báo hủy chuyến qua kênh trip:", data)
+        if (tripId && completedTripIdsRef.current.has(tripId)) {
+          console.log("ℹ️ [Driver UI] Chuyến xe đã hoàn thành thành công, bỏ qua thông báo hủy kênh trip:", tripId)
+          return
+        }
         setCustomerCancelledInfo({
           bookingCode: data?.bookingCode || activeBooking.bookingCode || "",
           reason: data?.reason || "Khách hàng đổi kế hoạch",
@@ -3647,22 +3657,26 @@ export default function DriverApp() {
 
   // 1.2 Fallback Polling định kỳ: Tự động phát hiện khi khách hủy chuyến trong lúc đang chạy
   useEffect(() => {
-    if (!driverToken || job === "none" || !activeBooking?.id) return
+    if (!driverToken || job === "none" || job === "complete" || !activeBooking?.id) return
+    const currentTripId = activeBooking.id
 
     const pollInterval = setInterval(async () => {
+      if (completedTripIdsRef.current.has(currentTripId)) return
+
       try {
-        const res = await fetch("/api/v1/driver/bookings/active", {
+        const res = await fetch(`/api/v1/bookings/${currentTripId}`, {
           headers: { Authorization: `Bearer ${driverToken}` },
         })
         const json = await res.json()
-        if (json.success) {
-          // Nếu backend trả về null hoặc status là CANCELLED nghĩa là cuốc đã bị hủy
-          if (!json.data || json.data.status === "CANCELLED") {
+        if (json.success && json.data) {
+          // Chỉ báo hủy khi trạng thái thực sự là CANCELLED và chưa từng hoàn tất
+          if (json.data.status === "CANCELLED") {
+            if (completedTripIdsRef.current.has(currentTripId)) return
             console.log("🛑 [Driver Poll] Phát hiện chuyến xe đã bị hủy trên hệ thống")
             const current = activeBookingRef.current
             setCustomerCancelledInfo({
-              bookingCode: current?.bookingCode || "",
-              reason: json.data?.cancellationReason || "Khách hàng đã hủy chuyến xe",
+              bookingCode: json.data.bookingCode || current?.bookingCode || "",
+              reason: json.data.cancellationReason || "Khách hàng đã hủy chuyến xe",
             })
             setJob("none")
             setActiveBooking(null)
@@ -3953,6 +3967,9 @@ export default function DriverApp() {
       if (nextStatus === "ARRIVED_AT_PICKUP") setJob("atPickup")
       else if (nextStatus === "IN_TRANSIT") setJob("delivering")
       else if (nextStatus === "COMPLETED") {
+        if (activeBooking?.id) {
+          completedTripIdsRef.current.add(activeBooking.id)
+        }
         complete()
         setActiveBooking(null)
       }
@@ -4015,6 +4032,9 @@ export default function DriverApp() {
 
   const complete = () => {
     if (activeBooking) {
+      if (activeBooking.id) {
+        completedTripIdsRef.current.add(activeBooking.id)
+      }
       setLastCompletedBooking(activeBooking)
     }
     setJob("complete")
