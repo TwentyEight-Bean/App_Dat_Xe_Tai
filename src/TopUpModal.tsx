@@ -64,6 +64,10 @@ export default function TopUpModal({
             onSuccess(amount)
             onClose()
           }, 1500)
+        } else if (data.success && data.data?.status === "FAILED") {
+          setIsWaitingAdmin(false)
+          setError(data.data?.description || "Yêu cầu nạp tiền không được xác nhận hoặc đã bị từ chối.")
+          clearInterval(interval)
         }
       } catch (err) {
         console.warn("Lỗi kiểm tra trạng thái thanh toán:", err)

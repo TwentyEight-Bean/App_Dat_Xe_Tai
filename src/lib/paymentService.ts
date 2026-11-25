@@ -941,15 +941,26 @@ export async function reportPaymentTransferred(transactionCode: string) {
   }
 
   const tx = txRows[0]
-  if (tx.status === "PENDING") {
+  if (tx.status === "PENDING" || !tx.status || tx.status === "WAITING_APPROVAL") {
     await client.unsafe(
       `UPDATE payment_transactions 
-       SET description = COALESCE(description, '') || ' [Tài xế/Khách báo đã chuyển khoản - Chờ Admin đối soát]',
+       SET status = 'WAITING_APPROVAL',
+           description = COALESCE(description, '') || ' [Tài xế đã chuyển khoản - Chờ Admin đối soát]',
            updated_at = NOW() 
        WHERE id = $1`,
       [tx.id],
     )
   }
+
+  // Phát tín hiệu Realtime cho Admin
+  try {
+    const { emitLocalRealtime } = await import("./pusher")
+    emitLocalRealtime("admin-channel", "admin:new-topup-request", {
+      transactionCode,
+      amount: Number(tx.amount),
+      userId: tx.user_id,
+    })
+  } catch (e) {}
 
   return {
     success: true,
@@ -957,8 +968,196 @@ export async function reportPaymentTransferred(transactionCode: string) {
     data: {
       transactionCode,
       amount: Number(tx.amount),
-      status: "WAITING_ADMIN",
+      status: "WAITING_APPROVAL",
     },
+  }
+}
+
+/**
+ * 9. Lấy danh sách các yêu cầu nạp tiền VietQR đang chờ Admin phê duyệt
+ */
+export async function getPendingTopUpRequests(options: { status?: string; search?: string } = {}) {
+  const statusFilter = options.status || "WAITING_APPROVAL"
+  
+  const whereClauses: string[] = ["pt.gateway = 'VIETQR'"]
+  const params: any[] = []
+
+  if (statusFilter === "PENDING_ALL") {
+    whereClauses.push("pt.status IN ('WAITING_APPROVAL', 'PENDING')")
+  } else if (statusFilter !== "ALL") {
+    params.push(statusFilter)
+    whereClauses.push(`pt.status = $${params.length}`)
+  }
+
+  if (options.search?.trim()) {
+    const s = `%${options.search.trim()}%`
+    params.push(s)
+    whereClauses.push(`(u.full_name ILIKE $${params.length} OR u.phone ILIKE $${params.length} OR pt.transaction_code ILIKE $${params.length} OR dp.license_plate ILIKE $${params.length})`)
+  }
+
+  const whereStr = whereClauses.length > 0 ? "WHERE " + whereClauses.join(" AND ") : ""
+
+  const rows = await client.unsafe(
+    `
+    SELECT 
+      pt.id,
+      pt.user_id,
+      pt.wallet_id,
+      pt.amount,
+      pt.gateway,
+      pt.transaction_code,
+      pt.status,
+      pt.description,
+      pt.raw_response,
+      pt.created_at,
+      pt.updated_at,
+      u.full_name as driver_name,
+      u.phone as driver_phone,
+      u.avatar_url as driver_avatar,
+      dp.id as driver_id,
+      dp.license_plate,
+      w.balance as current_balance,
+      w.available_balance
+    FROM payment_transactions pt
+    JOIN users u ON u.id = pt.user_id
+    LEFT JOIN driver_profiles dp ON dp.user_id = u.id
+    LEFT JOIN wallets w ON w.user_id = u.id
+    ${whereStr}
+    ORDER BY pt.created_at DESC
+    LIMIT 100
+    `,
+    params,
+  )
+
+  // Đếm tổng số lượng đang chờ duyệt (WAITING_APPROVAL hoặc PENDING)
+  const countRows = await client.unsafe(
+    `SELECT COUNT(*) as count FROM payment_transactions WHERE gateway = 'VIETQR' AND status IN ('WAITING_APPROVAL', 'PENDING')`
+  )
+  const pendingCount = Number(countRows[0]?.count || 0)
+
+  return {
+    requests: rows.map((r: any) => ({
+      id: r.id,
+      userId: r.user_id,
+      driverId: r.driver_id,
+      driverName: r.driver_name || `Tài xế (${r.driver_phone})`,
+      driverPhone: r.driver_phone,
+      driverAvatar: r.driver_avatar,
+      licensePlate: r.license_plate,
+      amount: Number(r.amount),
+      gateway: r.gateway,
+      transactionCode: r.transaction_code,
+      status: r.status,
+      description: r.description,
+      rawResponse: r.raw_response,
+      currentBalance: Number(r.current_balance || 0),
+      availableBalance: Number(r.available_balance || 0),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    })),
+    pendingCount,
+  }
+}
+
+/**
+ * 10. Admin phê duyệt yêu cầu nạp tiền VietQR:
+ * Chuyển trạng thái sang SUCCESS, cộng tiền vào ví tài xế và gửi thông báo
+ */
+export async function adminApproveTopUpRequest(txId: string, adminUserId: string) {
+  const rows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE id = $1::uuid LIMIT 1`,
+    [txId],
+  )
+  if (rows.length === 0) {
+    throw new ApiError(404, "Không tìm thấy giao dịch nạp tiền")
+  }
+  const tx = rows[0]
+  if (tx.status === "SUCCESS") {
+    throw new ApiError(400, "Giao dịch này đã được duyệt thành công trước đó")
+  }
+
+  await completePayment({
+    paymentTxId: tx.id,
+    bookingId: tx.booking_id,
+    userId: tx.user_id,
+    amount: Number(tx.amount),
+    gateway: tx.gateway,
+    transactionCode: tx.transaction_code,
+    gatewayRefId: `ADMIN_APPROVED_${Date.now()}`,
+    rawResponse: {
+      approvedBy: adminUserId,
+      approvedAt: new Date().toISOString(),
+      method: "ADMIN_MANUAL_VERIFIED",
+    },
+  })
+
+  // Phát Realtime cho tài xế
+  try {
+    const { emitLocalRealtime } = await import("./pusher")
+    emitLocalRealtime(`private-driver-${tx.user_id}`, "wallet:topup-approved", {
+      transactionCode: tx.transaction_code,
+      amount: Number(tx.amount),
+      message: `Admin đã xác nhận chuyển khoản: +${Number(tx.amount).toLocaleString("vi-VN")} đ vào ví ký quỹ.`,
+    })
+  } catch (e) {
+    console.warn("Không thể phát sự kiện realtime duyệt nạp tiền:", e)
+  }
+
+  return {
+    success: true,
+    message: `Đã duyệt thành công nạp ${Number(tx.amount).toLocaleString("vi-VN")} đ vào ví tài xế`,
+    amount: Number(tx.amount),
+    transactionCode: tx.transaction_code,
+  }
+}
+
+/**
+ * 11. Admin từ chối yêu cầu nạp tiền VietQR (Chưa nhận được tiền sao kê / Sai nội dung)
+ */
+export async function adminRejectTopUpRequest(txId: string, adminUserId: string, reason?: string) {
+  const rows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE id = $1::uuid LIMIT 1`,
+    [txId],
+  )
+  if (rows.length === 0) {
+    throw new ApiError(404, "Không tìm thấy giao dịch nạp tiền")
+  }
+  const tx = rows[0]
+  if (tx.status === "SUCCESS") {
+    throw new ApiError(400, "Không thể từ chối giao dịch đã duyệt thành công")
+  }
+
+  const rejectReason = reason?.trim() || "Chưa nhận được tiền vào tài khoản ngân hàng hoặc sai nội dung chuyển khoản"
+
+  await client.unsafe(
+    `UPDATE payment_transactions 
+     SET status = 'FAILED',
+         description = COALESCE(description, '') || ' [Admin từ chối: ' || $1 || ']',
+         raw_response = $2::jsonb,
+         updated_at = NOW()
+     WHERE id = $3::uuid`,
+    [
+      rejectReason,
+      JSON.stringify({ rejectedBy: adminUserId, rejectedAt: new Date().toISOString(), reason: rejectReason }),
+      tx.id,
+    ],
+  )
+
+  // Phát Realtime cho tài xế
+  try {
+    const { emitLocalRealtime } = await import("./pusher")
+    emitLocalRealtime(`private-driver-${tx.user_id}`, "wallet:topup-rejected", {
+      transactionCode: tx.transaction_code,
+      reason: rejectReason,
+      message: `Yêu cầu nạp tiền bị từ chối: ${rejectReason}`,
+    })
+  } catch (e) {}
+
+  return {
+    success: true,
+    message: "Đã từ chối yêu cầu nạp tiền",
+    reason: rejectReason,
+    transactionCode: tx.transaction_code,
   }
 }
 

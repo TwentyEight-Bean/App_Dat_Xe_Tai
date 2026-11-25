@@ -30,6 +30,12 @@ import {
 } from "../../lib/walletService"
 
 import {
+  getPendingTopUpRequests,
+  adminApproveTopUpRequest,
+  adminRejectTopUpRequest,
+} from "../../lib/paymentService"
+
+import {
   getCronSystemStatus,
   autoBlockLowRatingDrivers,
   autoBackupDatabase,
@@ -285,6 +291,51 @@ router.get("/wallets", async (req, res, next) => {
 
       ...result,
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * GET /admin/wallets/topup-requests
+ * Lấy danh sách các yêu cầu nạp tiền VietQR đang chờ Admin xác minh và phê duyệt
+ */
+router.get("/wallets/topup-requests", async (req: AuthRequest, res, next) => {
+  try {
+    const status = req.query.status ? String(req.query.status) : undefined
+    const search = req.query.search ? String(req.query.search) : undefined
+    const result = await getPendingTopUpRequests({ status, search })
+    res.json({
+      success: true,
+      ...result,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /admin/wallets/topup-requests/:id/approve
+ * Admin xác nhận đã nhận được tiền sao kê -> Duyệt nạp tiền vào ví tài xế
+ */
+router.post("/wallets/topup-requests/:id/approve", async (req: AuthRequest, res, next) => {
+  try {
+    const result = await adminApproveTopUpRequest(req.params.id as string, req.user!.userId)
+    res.json(result)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * POST /admin/wallets/topup-requests/:id/reject
+ * Admin từ chối yêu cầu nạp tiền (chưa nhận được tiền hoặc sai nội dung)
+ */
+router.post("/wallets/topup-requests/:id/reject", async (req: AuthRequest, res, next) => {
+  try {
+    const { reason } = req.body
+    const result = await adminRejectTopUpRequest(req.params.id as string, req.user!.userId, reason)
+    res.json(result)
   } catch (err) {
     next(err)
   }

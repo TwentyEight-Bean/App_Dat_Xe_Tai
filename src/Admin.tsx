@@ -262,6 +262,7 @@ export default function Admin() {
 
   const [cs, setCs] = useState<Complaint[]>([])
   const [pendingKycCount, setPendingKycCount] = useState(0)
+  const [pendingTopUpCount, setPendingTopUpCount] = useState(0)
 
   const [csFocus, setCsFocus] = useState<string | undefined>()
 
@@ -329,6 +330,17 @@ export default function Admin() {
         }
       })
       .catch(() => {})
+
+    fetch("/api/v1/admin/wallets/topup-requests?status=WAITING_APPROVAL", {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res?.success && typeof res.pendingCount === "number") {
+          setPendingTopUpCount(res.pendingCount)
+        }
+      })
+      .catch(() => {})
   }, [adminToken, tick, view])
 
   const section: Section = view === "order-detail" ? "orders" : view
@@ -339,6 +351,7 @@ export default function Admin() {
 
   const badge: Partial<Record<Section, number>> = {
     drivers: pendingLeft,
+    wallets: pendingTopUpCount,
   }
 
   const idx = nav.findIndex((n) => n.id === section)

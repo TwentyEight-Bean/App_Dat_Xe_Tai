@@ -1,8 +1,229 @@
 var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
+
+// src/lib/pusher.ts
+var pusher_exports = {};
+__export(pusher_exports, {
+  getRecentEvents: () => getRecentEvents,
+  pusherServer: () => pusherServer,
+  triggerBookingAccepted: () => triggerBookingAccepted,
+  triggerBookingCancelled: () => triggerBookingCancelled,
+  triggerBookingStatusChange: () => triggerBookingStatusChange,
+  triggerDriverLocationUpdate: () => triggerDriverLocationUpdate,
+  triggerDriverNewOffer: () => triggerDriverNewOffer,
+  triggerEvent: () => triggerEvent,
+  triggerMessagesRead: () => triggerMessagesRead,
+  triggerNewChatMessage: () => triggerNewChatMessage,
+  triggerOfferCancelled: () => triggerOfferCancelled
+});
+import Pusher from "pusher";
+import * as dotenv3 from "dotenv";
+function getRecentEvents(channel, sinceTimestamp) {
+  let list = eventBuffer;
+  if (channel) {
+    list = list.filter(
+      (e) => e.channel === channel || e.channel === `private-${channel}` || channel === `private-${e.channel}`
+    );
+  }
+  if (sinceTimestamp) {
+    list = list.filter((e) => e.timestamp > sinceTimestamp);
+  }
+  return list;
+}
+async function triggerEvent(channel, event, data) {
+  try {
+    const record = {
+      id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      channel,
+      event,
+      data,
+      timestamp: Date.now()
+    };
+    eventBuffer.push(record);
+    if (eventBuffer.length > MAX_BUFFER_SIZE) {
+      eventBuffer.shift();
+    }
+    if (pusherServer) {
+      await pusherServer.trigger(channel, event, data);
+      console.log(
+        `\u{1F4E1} [Pusher Event] [${channel}] -> "${event}":`,
+        JSON.stringify(data)
+      );
+      return true;
+    } else {
+      console.log(
+        `\u{1F4E1} [Pusher Mock] [${channel}] -> "${event}":`,
+        JSON.stringify(data)
+      );
+      return true;
+    }
+  } catch (err) {
+    console.error(
+      `\u274C [Pusher Error] Kh\xF4ng th\u1EC3 g\u1EEDi s\u1EF1 ki\u1EC7n [${channel}] -> "${event}":`,
+      err.message
+    );
+    return false;
+  }
+}
+async function triggerDriverNewOffer(driverId, offerData) {
+  const channel = `private-driver-${driverId}`;
+  const event = "booking:new-offer";
+  const payload = {
+    bookingId: offerData.bookingId,
+    bookingCode: offerData.bookingCode,
+    originAddress: offerData.originAddress,
+    destinationAddress: offerData.destinationAddress,
+    distanceKm: offerData.distanceKm,
+    totalPrice: offerData.totalPrice,
+    vehicleTypeName: offerData.vehicleTypeName || null,
+    expiresInSeconds: offerData.expiresInSeconds || 20,
+    timestamp: Date.now()
+  };
+  return await triggerEvent(channel, event, payload);
+}
+async function triggerBookingAccepted(bookingId, driverInfo) {
+  const channel = `private-trip-${bookingId}`;
+  const event = "booking:accepted";
+  const payload = {
+    bookingId,
+    status: "ACCEPTED",
+    driver: {
+      id: driverInfo.driverId,
+      name: driverInfo.driverName,
+      phone: driverInfo.driverPhone,
+      avatarUrl: driverInfo.avatarUrl || null,
+      licensePlate: driverInfo.licensePlate || null,
+      vehicleTypeName: driverInfo.vehicleTypeName || null,
+      ratingAvg: driverInfo.ratingAvg || 5
+    },
+    timestamp: Date.now()
+  };
+  return await triggerEvent(channel, event, payload);
+}
+async function triggerOfferCancelled(driverId, bookingId, reason = "TAKEN") {
+  const channel = `private-driver-${driverId}`;
+  const event = "offer:cancelled";
+  const payload = {
+    bookingId,
+    reason,
+    // 'TAKEN' (Đã có người nhận) hoặc 'EXPIRED' (Hết thời gian chờ)
+    timestamp: Date.now()
+  };
+  return await triggerEvent(channel, event, payload);
+}
+async function triggerBookingStatusChange(bookingId, newStatus, extra = {}) {
+  const channel = `private-trip-${bookingId}`;
+  const event = "booking:status-change";
+  const payload = {
+    bookingId,
+    status: newStatus,
+    message: extra.message || `Chuy\u1EBFn xe \u0111\xE3 c\u1EADp nh\u1EADt tr\u1EA1ng th\xE1i: ${newStatus}`,
+    driverId: extra.driverId || null,
+    note: extra.note || null,
+    timestamp: Date.now()
+  };
+  return await triggerEvent(channel, event, payload);
+}
+async function triggerBookingCancelled(bookingId, cancelledBy, reason, driverId, driverUserId, bookingCode) {
+  const payload = {
+    bookingId,
+    bookingCode: bookingCode || null,
+    status: "CANCELLED",
+    cancelledBy,
+    reason: reason || "Chuy\u1EBFn xe \u0111\xE3 b\u1ECB h\u1EE7y",
+    timestamp: Date.now()
+  };
+  await triggerEvent(`private-trip-${bookingId}`, "booking:cancelled", payload);
+  if (driverId) {
+    await triggerEvent(`private-driver-${driverId}`, "booking:cancelled", payload);
+  }
+  if (driverUserId && driverUserId !== driverId) {
+    await triggerEvent(`private-driver-${driverUserId}`, "booking:cancelled", payload);
+  }
+  return true;
+}
+async function triggerDriverLocationUpdate(bookingId, location) {
+  const channel = `private-trip-${bookingId}`;
+  const event = "driver:location-update";
+  const payload = {
+    bookingId,
+    driverId: location.driverId,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    heading: location.heading !== void 0 ? location.heading : null,
+    speed: location.speed !== void 0 ? location.speed : null,
+    timestamp: Date.now()
+  };
+  return await triggerEvent(channel, event, payload);
+}
+async function triggerNewChatMessage(bookingId, message) {
+  const payload = {
+    messageId: message.messageId,
+    bookingId: message.bookingId,
+    senderId: message.senderId,
+    senderRole: message.senderRole,
+    senderName: message.senderName,
+    senderAvatar: message.senderAvatar || null,
+    messageType: message.messageType,
+    content: message.content,
+    mediaUrl: message.mediaUrl || null,
+    createdAt: message.createdAt instanceof Date ? message.createdAt.toISOString() : message.createdAt,
+    timestamp: Date.now()
+  };
+  await triggerEvent(`private-chat-${bookingId}`, "chat:new-message", payload);
+  await triggerEvent(`private-trip-${bookingId}`, "chat:new-message", payload);
+  return true;
+}
+async function triggerMessagesRead(bookingId, readByUserId) {
+  const payload = {
+    bookingId,
+    readByUserId,
+    timestamp: Date.now()
+  };
+  return await triggerEvent(`private-chat-${bookingId}`, "chat:messages-read", payload);
+}
+var isPusherConfigured, pusherServer, eventBuffer, MAX_BUFFER_SIZE;
+var init_pusher = __esm({
+  "src/lib/pusher.ts"() {
+    "use strict";
+    dotenv3.config();
+    isPusherConfigured = Boolean(
+      process.env.PUSHER_APP_ID && !process.env.PUSHER_APP_ID.startsWith("your_") && process.env.PUSHER_KEY && !process.env.PUSHER_KEY.startsWith("your_") && process.env.PUSHER_SECRET && !process.env.PUSHER_SECRET.startsWith("your_")
+    );
+    pusherServer = isPusherConfigured ? new Pusher({
+      appId: process.env.PUSHER_APP_ID,
+      key: process.env.PUSHER_KEY,
+      secret: process.env.PUSHER_SECRET,
+      cluster: process.env.PUSHER_CLUSTER || "ap1",
+      useTLS: process.env.PUSHER_USE_TLS !== "false"
+    }) : null;
+    if (isPusherConfigured) {
+      console.log(
+        "\u{1F4E1} [Pusher] K\u1EBFt n\u1ED1i d\u1ECBch v\u1EE5 Pusher th\xE0nh c\xF4ng (Cluster:",
+        process.env.PUSHER_CLUSTER || "ap1",
+        ")"
+      );
+    } else {
+      console.log(
+        "\u{1F4E1} [Pusher] Ch\u1EBF \u0111\u1ED9 DEV MOCK: Ch\u01B0a c\u1EA5u h\xECnh Pusher Key. S\u1EF1 ki\u1EC7n Realtime s\u1EBD \u0111\u01B0\u1EE3c m\xF4 ph\u1ECFng log console."
+      );
+    }
+    eventBuffer = [];
+    MAX_BUFFER_SIZE = 200;
+  }
+});
 
 // src/api/router.ts
 import express from "express";
@@ -3401,199 +3622,8 @@ async function setDriverOnlineStatus(userId, isOnline) {
   };
 }
 
-// src/lib/pusher.ts
-import Pusher from "pusher";
-import * as dotenv3 from "dotenv";
-dotenv3.config();
-var isPusherConfigured = Boolean(
-  process.env.PUSHER_APP_ID && !process.env.PUSHER_APP_ID.startsWith("your_") && process.env.PUSHER_KEY && !process.env.PUSHER_KEY.startsWith("your_") && process.env.PUSHER_SECRET && !process.env.PUSHER_SECRET.startsWith("your_")
-);
-var pusherServer = isPusherConfigured ? new Pusher({
-  appId: process.env.PUSHER_APP_ID,
-  key: process.env.PUSHER_KEY,
-  secret: process.env.PUSHER_SECRET,
-  cluster: process.env.PUSHER_CLUSTER || "ap1",
-  useTLS: process.env.PUSHER_USE_TLS !== "false"
-}) : null;
-if (isPusherConfigured) {
-  console.log(
-    "\u{1F4E1} [Pusher] K\u1EBFt n\u1ED1i d\u1ECBch v\u1EE5 Pusher th\xE0nh c\xF4ng (Cluster:",
-    process.env.PUSHER_CLUSTER || "ap1",
-    ")"
-  );
-} else {
-  console.log(
-    "\u{1F4E1} [Pusher] Ch\u1EBF \u0111\u1ED9 DEV MOCK: Ch\u01B0a c\u1EA5u h\xECnh Pusher Key. S\u1EF1 ki\u1EC7n Realtime s\u1EBD \u0111\u01B0\u1EE3c m\xF4 ph\u1ECFng log console."
-  );
-}
-var eventBuffer = [];
-var MAX_BUFFER_SIZE = 200;
-function getRecentEvents(channel, sinceTimestamp) {
-  let list = eventBuffer;
-  if (channel) {
-    list = list.filter(
-      (e) => e.channel === channel || e.channel === `private-${channel}` || channel === `private-${e.channel}`
-    );
-  }
-  if (sinceTimestamp) {
-    list = list.filter((e) => e.timestamp > sinceTimestamp);
-  }
-  return list;
-}
-async function triggerEvent(channel, event, data) {
-  try {
-    const record = {
-      id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      channel,
-      event,
-      data,
-      timestamp: Date.now()
-    };
-    eventBuffer.push(record);
-    if (eventBuffer.length > MAX_BUFFER_SIZE) {
-      eventBuffer.shift();
-    }
-    if (pusherServer) {
-      await pusherServer.trigger(channel, event, data);
-      console.log(
-        `\u{1F4E1} [Pusher Event] [${channel}] -> "${event}":`,
-        JSON.stringify(data)
-      );
-      return true;
-    } else {
-      console.log(
-        `\u{1F4E1} [Pusher Mock] [${channel}] -> "${event}":`,
-        JSON.stringify(data)
-      );
-      return true;
-    }
-  } catch (err) {
-    console.error(
-      `\u274C [Pusher Error] Kh\xF4ng th\u1EC3 g\u1EEDi s\u1EF1 ki\u1EC7n [${channel}] -> "${event}":`,
-      err.message
-    );
-    return false;
-  }
-}
-async function triggerDriverNewOffer(driverId, offerData) {
-  const channel = `private-driver-${driverId}`;
-  const event = "booking:new-offer";
-  const payload = {
-    bookingId: offerData.bookingId,
-    bookingCode: offerData.bookingCode,
-    originAddress: offerData.originAddress,
-    destinationAddress: offerData.destinationAddress,
-    distanceKm: offerData.distanceKm,
-    totalPrice: offerData.totalPrice,
-    vehicleTypeName: offerData.vehicleTypeName || null,
-    expiresInSeconds: offerData.expiresInSeconds || 20,
-    timestamp: Date.now()
-  };
-  return await triggerEvent(channel, event, payload);
-}
-async function triggerBookingAccepted(bookingId, driverInfo) {
-  const channel = `private-trip-${bookingId}`;
-  const event = "booking:accepted";
-  const payload = {
-    bookingId,
-    status: "ACCEPTED",
-    driver: {
-      id: driverInfo.driverId,
-      name: driverInfo.driverName,
-      phone: driverInfo.driverPhone,
-      avatarUrl: driverInfo.avatarUrl || null,
-      licensePlate: driverInfo.licensePlate || null,
-      vehicleTypeName: driverInfo.vehicleTypeName || null,
-      ratingAvg: driverInfo.ratingAvg || 5
-    },
-    timestamp: Date.now()
-  };
-  return await triggerEvent(channel, event, payload);
-}
-async function triggerOfferCancelled(driverId, bookingId, reason = "TAKEN") {
-  const channel = `private-driver-${driverId}`;
-  const event = "offer:cancelled";
-  const payload = {
-    bookingId,
-    reason,
-    // 'TAKEN' (Đã có người nhận) hoặc 'EXPIRED' (Hết thời gian chờ)
-    timestamp: Date.now()
-  };
-  return await triggerEvent(channel, event, payload);
-}
-async function triggerBookingStatusChange(bookingId, newStatus, extra = {}) {
-  const channel = `private-trip-${bookingId}`;
-  const event = "booking:status-change";
-  const payload = {
-    bookingId,
-    status: newStatus,
-    message: extra.message || `Chuy\u1EBFn xe \u0111\xE3 c\u1EADp nh\u1EADt tr\u1EA1ng th\xE1i: ${newStatus}`,
-    driverId: extra.driverId || null,
-    note: extra.note || null,
-    timestamp: Date.now()
-  };
-  return await triggerEvent(channel, event, payload);
-}
-async function triggerBookingCancelled(bookingId, cancelledBy, reason, driverId, driverUserId, bookingCode) {
-  const payload = {
-    bookingId,
-    bookingCode: bookingCode || null,
-    status: "CANCELLED",
-    cancelledBy,
-    reason: reason || "Chuy\u1EBFn xe \u0111\xE3 b\u1ECB h\u1EE7y",
-    timestamp: Date.now()
-  };
-  await triggerEvent(`private-trip-${bookingId}`, "booking:cancelled", payload);
-  if (driverId) {
-    await triggerEvent(`private-driver-${driverId}`, "booking:cancelled", payload);
-  }
-  if (driverUserId && driverUserId !== driverId) {
-    await triggerEvent(`private-driver-${driverUserId}`, "booking:cancelled", payload);
-  }
-  return true;
-}
-async function triggerDriverLocationUpdate(bookingId, location) {
-  const channel = `private-trip-${bookingId}`;
-  const event = "driver:location-update";
-  const payload = {
-    bookingId,
-    driverId: location.driverId,
-    latitude: location.latitude,
-    longitude: location.longitude,
-    heading: location.heading !== void 0 ? location.heading : null,
-    speed: location.speed !== void 0 ? location.speed : null,
-    timestamp: Date.now()
-  };
-  return await triggerEvent(channel, event, payload);
-}
-async function triggerNewChatMessage(bookingId, message) {
-  const payload = {
-    messageId: message.messageId,
-    bookingId: message.bookingId,
-    senderId: message.senderId,
-    senderRole: message.senderRole,
-    senderName: message.senderName,
-    senderAvatar: message.senderAvatar || null,
-    messageType: message.messageType,
-    content: message.content,
-    mediaUrl: message.mediaUrl || null,
-    createdAt: message.createdAt instanceof Date ? message.createdAt.toISOString() : message.createdAt,
-    timestamp: Date.now()
-  };
-  await triggerEvent(`private-chat-${bookingId}`, "chat:new-message", payload);
-  await triggerEvent(`private-trip-${bookingId}`, "chat:new-message", payload);
-  return true;
-}
-async function triggerMessagesRead(bookingId, readByUserId) {
-  const payload = {
-    bookingId,
-    readByUserId,
-    timestamp: Date.now()
-  };
-  return await triggerEvent(`private-chat-${bookingId}`, "chat:messages-read", payload);
-}
-
 // src/lib/dispatchService.ts
+init_pusher();
 var driverLastUpdateMap = /* @__PURE__ */ new Map();
 var MIN_UPDATE_INTERVAL_MS = 2e3;
 async function updateDriverLocation(driverId, coords) {
@@ -3982,6 +4012,9 @@ async function getDemandHotspots(options) {
     };
   }
 }
+
+// src/lib/bookingService.ts
+init_pusher();
 
 // src/lib/distanceService.ts
 function calculateHaversineDistance(lat1, lng1, lat2, lng2) {
@@ -6474,12 +6507,733 @@ async function adminRefundBooking(bookingIdOrCode, reason, adminUserId) {
   return updated;
 }
 
+// src/lib/paymentService.ts
+import crypto from "node:crypto";
+var VNPAY_CONFIG = {
+  tmnCode: process.env.VNPAY_TMN_CODE || "DATXETAI_SANDBOX",
+  hashSecret: process.env.VNPAY_HASH_SECRET || "VNPAY_DATXETAI_HASH_SECRET_KEY_2026",
+  url: process.env.VNPAY_URL || "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
+  defaultReturnUrl: process.env.VNPAY_RETURN_URL || "http://localhost:8443/payment/vnpay-callback"
+};
+var MOMO_CONFIG = {
+  partnerCode: process.env.MOMO_PARTNER_CODE || "MOMO_DATXETAI",
+  accessKey: process.env.MOMO_ACCESS_KEY || "MOMO_ACCESS_KEY_DEV",
+  secretKey: process.env.MOMO_SECRET_KEY || "MOMO_SECRET_KEY_DEV_TRUCK_BOOKING_2026",
+  endpoint: process.env.MOMO_ENDPOINT || "https://test-payment.momo.vn/v2/gateway/api/create",
+  defaultRedirectUrl: process.env.MOMO_REDIRECT_URL || "http://localhost:8443/payment/momo-callback",
+  defaultIpnUrl: process.env.MOMO_IPN_URL || "http://localhost:3000/api/v1/payments/momo-ipn"
+};
+var VIETQR_CONFIG = {
+  bankId: process.env.BANK_ID || "VCB",
+  // Vietcombank
+  bankName: "Vietcombank (VCB)",
+  accountNo: process.env.BANK_ACCOUNT_NO || "1049761056",
+  accountName: process.env.BANK_ACCOUNT_NAME || "TRAN VU HUNG"
+};
+function formatVnpayDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const h = String(date.getHours()).padStart(2, "0");
+  const mi = String(date.getMinutes()).padStart(2, "0");
+  const s = String(date.getSeconds()).padStart(2, "0");
+  return `${y}${m}${d}${h}${mi}${s}`;
+}
+function generateTransactionCode(gateway) {
+  const prefix = gateway.toUpperCase();
+  const timestamp2 = Date.now();
+  const random = Math.floor(1e3 + Math.random() * 9e3);
+  return `${prefix}_${timestamp2}_${random}`;
+}
+async function createPaymentOrder(dto) {
+  const {
+    userId,
+    amount,
+    gateway,
+    purpose,
+    bookingId,
+    ipAddr = "127.0.0.1",
+    bankCode,
+    redirectUrl,
+    description
+  } = dto;
+  if (!userId) {
+    throw new ApiError(401, "Y\xEAu c\u1EA7u \u0111\u0103ng nh\u1EADp ng\u01B0\u1EDDi d\xF9ng");
+  }
+  const numAmount = Number(amount);
+  if (isNaN(numAmount) || numAmount < 1e4) {
+    throw new ApiError(400, "S\u1ED1 ti\u1EC1n thanh to\xE1n t\u1ED1i thi\u1EC3u l\xE0 10.000 VN\u0110");
+  }
+  let walletId = null;
+  let bookingCode = null;
+  if (purpose === "TOPUP_WALLET") {
+    const wallet = await getOrCreateWallet(userId);
+    walletId = wallet.id;
+  } else if (purpose === "PAY_BOOKING") {
+    if (!bookingId) {
+      throw new ApiError(
+        400,
+        "Thi\u1EBFu th\xF4ng tin bookingId \u0111\u1EC3 thanh to\xE1n chuy\u1EBFn xe"
+      );
+    }
+    const bRows = await client.unsafe(
+      `SELECT id, booking_code, status, total_price, payment_status FROM bookings WHERE id = $1::uuid LIMIT 1`,
+      [bookingId]
+    );
+    if (bRows.length === 0) {
+      throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y chuy\u1EBFn xe c\u1EA7n thanh to\xE1n");
+    }
+    if (bRows[0].payment_status === "PAID") {
+      throw new ApiError(400, "Chuy\u1EBFn xe n\xE0y \u0111\xE3 \u0111\u01B0\u1EE3c thanh to\xE1n tr\u01B0\u1EDBc \u0111\xF3");
+    }
+    bookingCode = bRows[0].booking_code;
+  }
+  const transactionCode = generateTransactionCode(gateway);
+  const orderDesc = description || (purpose === "TOPUP_WALLET" ? `N\u1EA1p ${numAmount.toLocaleString("vi-VN")} \u0111 v\xE0o v\xED` : `Thanh to\xE1n chuy\u1EBFn xe ${bookingCode || bookingId}`);
+  let paymentUrl;
+  let qrCodeUrl = null;
+  if (gateway === "VNPAY") {
+    const returnUrl = redirectUrl || VNPAY_CONFIG.defaultReturnUrl;
+    const createDate = formatVnpayDate(/* @__PURE__ */ new Date());
+    const vnpParams = {
+      vnp_Version: "2.1.0",
+      vnp_Command: "pay",
+      vnp_TmnCode: VNPAY_CONFIG.tmnCode,
+      vnp_Locale: "vn",
+      vnp_CurrCode: "VND",
+      vnp_TxnRef: transactionCode,
+      vnp_OrderInfo: orderDesc,
+      vnp_OrderType: purpose === "TOPUP_WALLET" ? "topup" : "billpayment",
+      vnp_Amount: String(numAmount * 100),
+      // VNPay quy ước nhân 100
+      vnp_ReturnUrl: returnUrl,
+      vnp_IpAddr: ipAddr,
+      vnp_CreateDate: createDate
+    };
+    if (bankCode) {
+      vnpParams.vnp_BankCode = bankCode;
+    }
+    const sortedKeys = Object.keys(vnpParams).sort();
+    const signDataParts = [];
+    const queryParts = [];
+    for (const key of sortedKeys) {
+      const val = vnpParams[key];
+      if (val !== void 0 && val !== null && val.length > 0) {
+        signDataParts.push(
+          `${key}=${encodeURIComponent(val).replace(/%20/g, "+")}`
+        );
+        queryParts.push(
+          `${key}=${encodeURIComponent(val).replace(/%20/g, "+")}`
+        );
+      }
+    }
+    const signData = signDataParts.join("&");
+    const hmac = crypto.createHmac("sha512", VNPAY_CONFIG.hashSecret);
+    const secureHash = hmac.update(Buffer.from(signData, "utf-8")).digest("hex");
+    paymentUrl = `${VNPAY_CONFIG.url}?${queryParts.join("&")}&vnp_SecureHash=${secureHash}`;
+    qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentUrl)}`;
+  } else if (gateway === "MOMO") {
+    const returnUrl = redirectUrl || MOMO_CONFIG.defaultRedirectUrl;
+    const ipnUrl = MOMO_CONFIG.defaultIpnUrl;
+    const requestId = `${transactionCode}_REQ`;
+    const extraData = Buffer.from(
+      JSON.stringify({ userId, purpose, bookingId })
+    ).toString("base64");
+    const rawSignature = `accessKey=${MOMO_CONFIG.accessKey}&amount=${numAmount}&extraData=${extraData}&ipnUrl=${ipnUrl}&orderId=${transactionCode}&orderInfo=${orderDesc}&partnerCode=${MOMO_CONFIG.partnerCode}&redirectUrl=${returnUrl}&requestId=${requestId}&requestType=captureWallet`;
+    const signature = crypto.createHmac("sha256", MOMO_CONFIG.secretKey).update(rawSignature).digest("hex");
+    paymentUrl = `https://test-payment.momo.vn/v2/gateway/pay?partnerCode=${MOMO_CONFIG.partnerCode}&orderId=${transactionCode}&requestId=${requestId}&amount=${numAmount}&orderInfo=${encodeURIComponent(orderDesc)}&signature=${signature}`;
+    qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentUrl)}`;
+  } else if (gateway === "VIETQR") {
+    const cleanAccountName = encodeURIComponent(VIETQR_CONFIG.accountName);
+    const transferMemo = encodeURIComponent(`${transactionCode}`);
+    qrCodeUrl = `https://img.vietqr.io/image/${VIETQR_CONFIG.bankId}-${VIETQR_CONFIG.accountNo}-compact2.png?amount=${numAmount}&addInfo=${transferMemo}&accountName=${cleanAccountName}`;
+    paymentUrl = qrCodeUrl;
+  } else {
+    throw new ApiError(400, `C\u1ED5ng thanh to\xE1n "${gateway}" kh\xF4ng \u0111\u01B0\u1EE3c h\u1ED7 tr\u1EE3`);
+  }
+  const inserted = await client.unsafe(
+    `
+    INSERT INTO payment_transactions (
+      user_id,
+      booking_id,
+      wallet_id,
+      amount,
+      gateway,
+      transaction_code,
+      status,
+      payment_url,
+      description,
+      created_at,
+      updated_at
+    ) VALUES (
+      $1::uuid,
+      $2::uuid,
+      $3::uuid,
+      $4::numeric,
+      $5,
+      $6,
+      'PENDING',
+      $7,
+      $8,
+      NOW(),
+      NOW()
+    )
+    RETURNING id, transaction_code, amount, gateway, status, payment_url, created_at
+    `,
+    [
+      userId,
+      bookingId || null,
+      walletId || null,
+      numAmount,
+      gateway,
+      transactionCode,
+      paymentUrl,
+      orderDesc
+    ]
+  );
+  return {
+    paymentId: inserted[0].id,
+    transactionCode,
+    gateway,
+    amount: numAmount,
+    purpose,
+    paymentUrl,
+    qrCodeUrl,
+    bookingCode,
+    description: orderDesc,
+    createdAt: inserted[0].created_at
+  };
+}
+async function processVnpayIpn(query) {
+  const vnpParams = {};
+  let secureHash = "";
+  for (const [key, value] of Object.entries(query)) {
+    if (key === "vnp_SecureHash" || key === "vnp_SecureHashType") {
+      if (key === "vnp_SecureHash") secureHash = String(value);
+      continue;
+    }
+    if (key.startsWith("vnp_")) {
+      vnpParams[key] = String(value);
+    }
+  }
+  const sortedKeys = Object.keys(vnpParams).sort();
+  const signDataParts = [];
+  for (const key of sortedKeys) {
+    const val = vnpParams[key];
+    if (val !== void 0 && val !== null && val.length > 0) {
+      signDataParts.push(
+        `${key}=${encodeURIComponent(val).replace(/%20/g, "+")}`
+      );
+    }
+  }
+  const signData = signDataParts.join("&");
+  const hmac = crypto.createHmac("sha512", VNPAY_CONFIG.hashSecret);
+  const calculatedHash = hmac.update(Buffer.from(signData, "utf-8")).digest("hex");
+  if (calculatedHash.toLowerCase() !== secureHash.toLowerCase()) {
+    return {
+      isValidChecksum: false,
+      response: { RspCode: "97", Message: "Invalid Checksum" }
+    };
+  }
+  const transactionCode = vnpParams["vnp_TxnRef"];
+  const vnpAmount = Number(vnpParams["vnp_Amount"] || 0) / 100;
+  const responseCode = vnpParams["vnp_ResponseCode"];
+  const vnpTransactionNo = vnpParams["vnp_TransactionNo"];
+  const txRows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
+    [transactionCode]
+  );
+  if (txRows.length === 0) {
+    return {
+      isValidChecksum: true,
+      response: { RspCode: "01", Message: "Order Not Found" }
+    };
+  }
+  const tx = txRows[0];
+  if (Number(tx.amount) !== vnpAmount) {
+    return {
+      isValidChecksum: true,
+      response: { RspCode: "04", Message: "Invalid Amount" }
+    };
+  }
+  if (tx.status === "SUCCESS") {
+    return {
+      isValidChecksum: true,
+      response: { RspCode: "02", Message: "Order already confirmed" }
+    };
+  }
+  if (responseCode === "00") {
+    await fulfillSuccessfulPayment({
+      paymentTxId: tx.id,
+      userId: tx.user_id,
+      bookingId: tx.booking_id,
+      walletId: tx.wallet_id,
+      amount: vnpAmount,
+      gateway: "VNPAY",
+      transactionCode,
+      gatewayRefId: vnpTransactionNo,
+      rawResponse: query
+    });
+    return {
+      isValidChecksum: true,
+      success: true,
+      response: { RspCode: "00", Message: "Confirm Success" }
+    };
+  } else {
+    await client.unsafe(
+      `
+      UPDATE payment_transactions
+      SET status = 'FAILED', gateway_ref_id = $1, raw_response = $2::jsonb, updated_at = NOW()
+      WHERE id = $3::uuid
+      `,
+      [vnpTransactionNo, JSON.stringify(query), tx.id]
+    );
+    return {
+      isValidChecksum: true,
+      success: false,
+      response: {
+        RspCode: "00",
+        Message: "Confirm Success (Recorded Failure)"
+      }
+    };
+  }
+}
+async function processMomoIpn(body) {
+  const {
+    partnerCode,
+    orderId,
+    requestId,
+    amount,
+    orderInfo,
+    orderType,
+    transId,
+    resultCode,
+    message,
+    payType,
+    responseTime,
+    extraData,
+    signature
+  } = body;
+  if (!orderId || !signature) {
+    return {
+      isValidChecksum: false,
+      response: { message: "Invalid MoMo Request Payload", status: 400 }
+    };
+  }
+  const rawSignature = `accessKey=${MOMO_CONFIG.accessKey}&amount=${amount}&extraData=${extraData || ""}&message=${message}&orderId=${orderId}&orderInfo=${orderInfo}&orderType=${orderType}&partnerCode=${partnerCode}&payType=${payType}&requestId=${requestId}&responseTime=${responseTime}&resultCode=${resultCode}&transId=${transId}`;
+  const calculatedSignature = crypto.createHmac("sha256", MOMO_CONFIG.secretKey).update(rawSignature).digest("hex");
+  if (calculatedSignature !== signature) {
+    return {
+      isValidChecksum: false,
+      response: { message: "Bad Signature", status: 400 }
+    };
+  }
+  const txRows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
+    [orderId]
+  );
+  if (txRows.length === 0) {
+    return {
+      isValidChecksum: true,
+      response: { message: "Order Not Found", status: 404 }
+    };
+  }
+  const tx = txRows[0];
+  if (tx.status === "SUCCESS") {
+    return {
+      isValidChecksum: true,
+      response: { message: "Order already confirmed", status: 200 }
+    };
+  }
+  if (Number(resultCode) === 0) {
+    await fulfillSuccessfulPayment({
+      paymentTxId: tx.id,
+      userId: tx.user_id,
+      bookingId: tx.booking_id,
+      walletId: tx.wallet_id,
+      amount: Number(amount),
+      gateway: "MOMO",
+      transactionCode: orderId,
+      gatewayRefId: String(transId),
+      rawResponse: body
+    });
+    return {
+      isValidChecksum: true,
+      success: true,
+      response: { message: "Success", status: 200 }
+    };
+  } else {
+    await client.unsafe(
+      `
+      UPDATE payment_transactions
+      SET status = 'FAILED', gateway_ref_id = $1, raw_response = $2::jsonb, updated_at = NOW()
+      WHERE id = $3::uuid
+      `,
+      [String(transId), JSON.stringify(body), tx.id]
+    );
+    return {
+      isValidChecksum: true,
+      success: false,
+      response: { message: "Payment Failed", status: 200 }
+    };
+  }
+}
+async function fulfillSuccessfulPayment(params) {
+  const {
+    paymentTxId,
+    userId,
+    bookingId,
+    amount,
+    gateway,
+    transactionCode,
+    gatewayRefId,
+    rawResponse
+  } = params;
+  return await client.begin(async (sql6) => {
+    await sql6`
+      UPDATE payment_transactions
+      SET 
+        status = 'SUCCESS',
+        gateway_ref_id = ${gatewayRefId},
+        raw_response = ${JSON.stringify(rawResponse)}::jsonb,
+        updated_at = NOW()
+      WHERE id = ${paymentTxId}::uuid
+    `;
+    if (bookingId) {
+      await sql6`
+        UPDATE bookings
+        SET 
+          payment_method = ${gateway}::payment_method,
+          payment_status = 'PAID'::payment_status,
+          updated_at = NOW()
+        WHERE id = ${bookingId}::uuid
+      `;
+    } else {
+      await topUpWallet({
+        userId,
+        amount,
+        description: `N\u1EA1p ${amount.toLocaleString("vi-VN")} \u0111 qua c\u1ED5ng ${gateway} (${transactionCode})`,
+        referenceCode: gatewayRefId || transactionCode
+      });
+    }
+  });
+}
+async function getPaymentStatus(transactionCode) {
+  if (!transactionCode) {
+    throw new ApiError(400, "Thi\u1EBFu m\xE3 giao d\u1ECBch transactionCode");
+  }
+  const rows = await client.unsafe(
+    `
+    SELECT 
+      pt.id,
+      pt.user_id,
+      pt.booking_id,
+      pt.wallet_id,
+      pt.amount,
+      pt.gateway,
+      pt.transaction_code,
+      pt.gateway_ref_id,
+      pt.status,
+      pt.payment_url,
+      pt.description,
+      pt.created_at,
+      pt.updated_at,
+      b.booking_code
+    FROM payment_transactions pt
+    LEFT JOIN bookings b ON b.id = pt.booking_id
+    WHERE pt.transaction_code = $1
+    LIMIT 1
+    `,
+    [transactionCode]
+  );
+  if (rows.length === 0) {
+    throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y th\xF4ng tin giao d\u1ECBch thanh to\xE1n");
+  }
+  const r = rows[0];
+  return {
+    id: r.id,
+    transactionCode: r.transaction_code,
+    gateway: r.gateway,
+    amount: Number(r.amount),
+    status: r.status,
+    isSuccess: r.status === "SUCCESS",
+    gatewayRefId: r.gateway_ref_id,
+    bookingCode: r.booking_code || null,
+    bookingId: r.booking_id || null,
+    description: r.description,
+    paymentUrl: r.payment_url,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  };
+}
+async function getUserPaymentHistory(userId, limit = 20) {
+  const rows = await client.unsafe(
+    `
+    SELECT 
+      pt.id,
+      pt.amount,
+      pt.gateway,
+      pt.transaction_code,
+      pt.gateway_ref_id,
+      pt.status,
+      pt.description,
+      pt.created_at,
+      b.booking_code
+    FROM payment_transactions pt
+    LEFT JOIN bookings b ON b.id = pt.booking_id
+    WHERE pt.user_id = $1::uuid
+    ORDER BY pt.created_at DESC
+    LIMIT $2
+    `,
+    [userId, limit]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    transactionCode: r.transaction_code,
+    gateway: r.gateway,
+    amount: Number(r.amount),
+    status: r.status,
+    gatewayRefId: r.gateway_ref_id,
+    bookingCode: r.booking_code || null,
+    description: r.description,
+    createdAt: r.created_at
+  }));
+}
+async function confirmSimulatedPayment(transactionCode) {
+  if (!transactionCode) {
+    throw new ApiError(400, "Thi\u1EBFu m\xE3 giao d\u1ECBch transactionCode");
+  }
+  const txRows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
+    [transactionCode]
+  );
+  if (txRows.length === 0) {
+    throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y giao d\u1ECBch thanh to\xE1n");
+  }
+  const tx = txRows[0];
+  if (tx.status !== "SUCCESS") {
+    await fulfillSuccessfulPayment({
+      paymentTxId: tx.id,
+      userId: tx.user_id,
+      bookingId: tx.booking_id,
+      walletId: tx.wallet_id,
+      amount: Number(tx.amount),
+      gateway: tx.gateway,
+      transactionCode: tx.transaction_code,
+      gatewayRefId: "SIMULATED_" + Date.now(),
+      rawResponse: { simulated: true, completedAt: (/* @__PURE__ */ new Date()).toISOString() }
+    });
+  }
+  return { success: true, message: "X\xE1c nh\u1EADn thanh to\xE1n th\xE0nh c\xF4ng!" };
+}
+async function reportPaymentTransferred(transactionCode) {
+  if (!transactionCode) {
+    throw new ApiError(400, "Thi\u1EBFu m\xE3 giao d\u1ECBch transactionCode");
+  }
+  const txRows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
+    [transactionCode]
+  );
+  if (txRows.length === 0) {
+    throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y giao d\u1ECBch thanh to\xE1n");
+  }
+  const tx = txRows[0];
+  if (tx.status === "PENDING" || !tx.status || tx.status === "WAITING_APPROVAL") {
+    await client.unsafe(
+      `UPDATE payment_transactions 
+       SET status = 'WAITING_APPROVAL',
+           description = COALESCE(description, '') || ' [T\xE0i x\u1EBF \u0111\xE3 chuy\u1EC3n kho\u1EA3n - Ch\u1EDD Admin \u0111\u1ED1i so\xE1t]',
+           updated_at = NOW() 
+       WHERE id = $1`,
+      [tx.id]
+    );
+  }
+  try {
+    const { emitLocalRealtime } = await Promise.resolve().then(() => (init_pusher(), pusher_exports));
+    emitLocalRealtime("admin-channel", "admin:new-topup-request", {
+      transactionCode,
+      amount: Number(tx.amount),
+      userId: tx.user_id
+    });
+  } catch (e) {
+  }
+  return {
+    success: true,
+    message: "H\u1EC7 th\u1ED1ng \u0111\xE3 ghi nh\u1EADn th\xF4ng b\xE1o chuy\u1EC3n kho\u1EA3n. \u0110ang ch\u1EDD Admin x\xE1c minh.",
+    data: {
+      transactionCode,
+      amount: Number(tx.amount),
+      status: "WAITING_APPROVAL"
+    }
+  };
+}
+async function getPendingTopUpRequests(options = {}) {
+  const statusFilter = options.status || "WAITING_APPROVAL";
+  const whereClauses = ["pt.gateway = 'VIETQR'"];
+  const params = [];
+  if (statusFilter === "PENDING_ALL") {
+    whereClauses.push("pt.status IN ('WAITING_APPROVAL', 'PENDING')");
+  } else if (statusFilter !== "ALL") {
+    params.push(statusFilter);
+    whereClauses.push(`pt.status = $${params.length}`);
+  }
+  if (options.search?.trim()) {
+    const s = `%${options.search.trim()}%`;
+    params.push(s);
+    whereClauses.push(`(u.full_name ILIKE $${params.length} OR u.phone ILIKE $${params.length} OR pt.transaction_code ILIKE $${params.length} OR dp.license_plate ILIKE $${params.length})`);
+  }
+  const whereStr = whereClauses.length > 0 ? "WHERE " + whereClauses.join(" AND ") : "";
+  const rows = await client.unsafe(
+    `
+    SELECT 
+      pt.id,
+      pt.user_id,
+      pt.wallet_id,
+      pt.amount,
+      pt.gateway,
+      pt.transaction_code,
+      pt.status,
+      pt.description,
+      pt.raw_response,
+      pt.created_at,
+      pt.updated_at,
+      u.full_name as driver_name,
+      u.phone as driver_phone,
+      u.avatar_url as driver_avatar,
+      dp.id as driver_id,
+      dp.license_plate,
+      w.balance as current_balance,
+      w.available_balance
+    FROM payment_transactions pt
+    JOIN users u ON u.id = pt.user_id
+    LEFT JOIN driver_profiles dp ON dp.user_id = u.id
+    LEFT JOIN wallets w ON w.user_id = u.id
+    ${whereStr}
+    ORDER BY pt.created_at DESC
+    LIMIT 100
+    `,
+    params
+  );
+  const countRows = await client.unsafe(
+    `SELECT COUNT(*) as count FROM payment_transactions WHERE gateway = 'VIETQR' AND status IN ('WAITING_APPROVAL', 'PENDING')`
+  );
+  const pendingCount = Number(countRows[0]?.count || 0);
+  return {
+    requests: rows.map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      driverId: r.driver_id,
+      driverName: r.driver_name || `T\xE0i x\u1EBF (${r.driver_phone})`,
+      driverPhone: r.driver_phone,
+      driverAvatar: r.driver_avatar,
+      licensePlate: r.license_plate,
+      amount: Number(r.amount),
+      gateway: r.gateway,
+      transactionCode: r.transaction_code,
+      status: r.status,
+      description: r.description,
+      rawResponse: r.raw_response,
+      currentBalance: Number(r.current_balance || 0),
+      availableBalance: Number(r.available_balance || 0),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at
+    })),
+    pendingCount
+  };
+}
+async function adminApproveTopUpRequest(txId, adminUserId) {
+  const rows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE id = $1::uuid LIMIT 1`,
+    [txId]
+  );
+  if (rows.length === 0) {
+    throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y giao d\u1ECBch n\u1EA1p ti\u1EC1n");
+  }
+  const tx = rows[0];
+  if (tx.status === "SUCCESS") {
+    throw new ApiError(400, "Giao d\u1ECBch n\xE0y \u0111\xE3 \u0111\u01B0\u1EE3c duy\u1EC7t th\xE0nh c\xF4ng tr\u01B0\u1EDBc \u0111\xF3");
+  }
+  await completePayment({
+    paymentTxId: tx.id,
+    bookingId: tx.booking_id,
+    userId: tx.user_id,
+    amount: Number(tx.amount),
+    gateway: tx.gateway,
+    transactionCode: tx.transaction_code,
+    gatewayRefId: `ADMIN_APPROVED_${Date.now()}`,
+    rawResponse: {
+      approvedBy: adminUserId,
+      approvedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      method: "ADMIN_MANUAL_VERIFIED"
+    }
+  });
+  try {
+    const { emitLocalRealtime } = await Promise.resolve().then(() => (init_pusher(), pusher_exports));
+    emitLocalRealtime(`private-driver-${tx.user_id}`, "wallet:topup-approved", {
+      transactionCode: tx.transaction_code,
+      amount: Number(tx.amount),
+      message: `Admin \u0111\xE3 x\xE1c nh\u1EADn chuy\u1EC3n kho\u1EA3n: +${Number(tx.amount).toLocaleString("vi-VN")} \u0111 v\xE0o v\xED k\xFD qu\u1EF9.`
+    });
+  } catch (e) {
+    console.warn("Kh\xF4ng th\u1EC3 ph\xE1t s\u1EF1 ki\u1EC7n realtime duy\u1EC7t n\u1EA1p ti\u1EC1n:", e);
+  }
+  return {
+    success: true,
+    message: `\u0110\xE3 duy\u1EC7t th\xE0nh c\xF4ng n\u1EA1p ${Number(tx.amount).toLocaleString("vi-VN")} \u0111 v\xE0o v\xED t\xE0i x\u1EBF`,
+    amount: Number(tx.amount),
+    transactionCode: tx.transaction_code
+  };
+}
+async function adminRejectTopUpRequest(txId, adminUserId, reason) {
+  const rows = await client.unsafe(
+    `SELECT * FROM payment_transactions WHERE id = $1::uuid LIMIT 1`,
+    [txId]
+  );
+  if (rows.length === 0) {
+    throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y giao d\u1ECBch n\u1EA1p ti\u1EC1n");
+  }
+  const tx = rows[0];
+  if (tx.status === "SUCCESS") {
+    throw new ApiError(400, "Kh\xF4ng th\u1EC3 t\u1EEB ch\u1ED1i giao d\u1ECBch \u0111\xE3 duy\u1EC7t th\xE0nh c\xF4ng");
+  }
+  const rejectReason = reason?.trim() || "Ch\u01B0a nh\u1EADn \u0111\u01B0\u1EE3c ti\u1EC1n v\xE0o t\xE0i kho\u1EA3n ng\xE2n h\xE0ng ho\u1EB7c sai n\u1ED9i dung chuy\u1EC3n kho\u1EA3n";
+  await client.unsafe(
+    `UPDATE payment_transactions 
+     SET status = 'FAILED',
+         description = COALESCE(description, '') || ' [Admin t\u1EEB ch\u1ED1i: ' || $1 || ']',
+         raw_response = $2::jsonb,
+         updated_at = NOW()
+     WHERE id = $3::uuid`,
+    [
+      rejectReason,
+      JSON.stringify({ rejectedBy: adminUserId, rejectedAt: (/* @__PURE__ */ new Date()).toISOString(), reason: rejectReason }),
+      tx.id
+    ]
+  );
+  try {
+    const { emitLocalRealtime } = await Promise.resolve().then(() => (init_pusher(), pusher_exports));
+    emitLocalRealtime(`private-driver-${tx.user_id}`, "wallet:topup-rejected", {
+      transactionCode: tx.transaction_code,
+      reason: rejectReason,
+      message: `Y\xEAu c\u1EA7u n\u1EA1p ti\u1EC1n b\u1ECB t\u1EEB ch\u1ED1i: ${rejectReason}`
+    });
+  } catch (e) {
+  }
+  return {
+    success: true,
+    message: "\u0110\xE3 t\u1EEB ch\u1ED1i y\xEAu c\u1EA7u n\u1EA1p ti\u1EC1n",
+    reason: rejectReason,
+    transactionCode: tx.transaction_code
+  };
+}
+
 // src/lib/cronJobs.ts
 import cron from "node-cron";
 import fs from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+init_pusher();
 var execAsync = promisify(exec);
 var systemStatus = {
   isRunning: false,
@@ -7876,6 +8630,36 @@ router6.get("/wallets", async (req, res, next) => {
     next(err);
   }
 });
+router6.get("/wallets/topup-requests", async (req, res, next) => {
+  try {
+    const status = req.query.status ? String(req.query.status) : void 0;
+    const search = req.query.search ? String(req.query.search) : void 0;
+    const result = await getPendingTopUpRequests({ status, search });
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+router6.post("/wallets/topup-requests/:id/approve", async (req, res, next) => {
+  try {
+    const result = await adminApproveTopUpRequest(req.params.id, req.user.userId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+router6.post("/wallets/topup-requests/:id/reject", async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    const result = await adminRejectTopUpRequest(req.params.id, req.user.userId, reason);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 router6.get("/wallets/:userId", async (req, res, next) => {
   try {
     const details = await getWalletDetails(req.params.userId);
@@ -8296,559 +9080,6 @@ var booking_default = router8;
 
 // src/api/routes/payment.ts
 import { Router as Router9 } from "express";
-
-// src/lib/paymentService.ts
-import crypto from "node:crypto";
-var VNPAY_CONFIG = {
-  tmnCode: process.env.VNPAY_TMN_CODE || "DATXETAI_SANDBOX",
-  hashSecret: process.env.VNPAY_HASH_SECRET || "VNPAY_DATXETAI_HASH_SECRET_KEY_2026",
-  url: process.env.VNPAY_URL || "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
-  defaultReturnUrl: process.env.VNPAY_RETURN_URL || "http://localhost:8443/payment/vnpay-callback"
-};
-var MOMO_CONFIG = {
-  partnerCode: process.env.MOMO_PARTNER_CODE || "MOMO_DATXETAI",
-  accessKey: process.env.MOMO_ACCESS_KEY || "MOMO_ACCESS_KEY_DEV",
-  secretKey: process.env.MOMO_SECRET_KEY || "MOMO_SECRET_KEY_DEV_TRUCK_BOOKING_2026",
-  endpoint: process.env.MOMO_ENDPOINT || "https://test-payment.momo.vn/v2/gateway/api/create",
-  defaultRedirectUrl: process.env.MOMO_REDIRECT_URL || "http://localhost:8443/payment/momo-callback",
-  defaultIpnUrl: process.env.MOMO_IPN_URL || "http://localhost:3000/api/v1/payments/momo-ipn"
-};
-var VIETQR_CONFIG = {
-  bankId: process.env.BANK_ID || "VCB",
-  // Vietcombank
-  bankName: "Vietcombank (VCB)",
-  accountNo: process.env.BANK_ACCOUNT_NO || "1049761056",
-  accountName: process.env.BANK_ACCOUNT_NAME || "TRAN VU HUNG"
-};
-function formatVnpayDate(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  const h = String(date.getHours()).padStart(2, "0");
-  const mi = String(date.getMinutes()).padStart(2, "0");
-  const s = String(date.getSeconds()).padStart(2, "0");
-  return `${y}${m}${d}${h}${mi}${s}`;
-}
-function generateTransactionCode(gateway) {
-  const prefix = gateway.toUpperCase();
-  const timestamp2 = Date.now();
-  const random = Math.floor(1e3 + Math.random() * 9e3);
-  return `${prefix}_${timestamp2}_${random}`;
-}
-async function createPaymentOrder(dto) {
-  const {
-    userId,
-    amount,
-    gateway,
-    purpose,
-    bookingId,
-    ipAddr = "127.0.0.1",
-    bankCode,
-    redirectUrl,
-    description
-  } = dto;
-  if (!userId) {
-    throw new ApiError(401, "Y\xEAu c\u1EA7u \u0111\u0103ng nh\u1EADp ng\u01B0\u1EDDi d\xF9ng");
-  }
-  const numAmount = Number(amount);
-  if (isNaN(numAmount) || numAmount < 1e4) {
-    throw new ApiError(400, "S\u1ED1 ti\u1EC1n thanh to\xE1n t\u1ED1i thi\u1EC3u l\xE0 10.000 VN\u0110");
-  }
-  let walletId = null;
-  let bookingCode = null;
-  if (purpose === "TOPUP_WALLET") {
-    const wallet = await getOrCreateWallet(userId);
-    walletId = wallet.id;
-  } else if (purpose === "PAY_BOOKING") {
-    if (!bookingId) {
-      throw new ApiError(
-        400,
-        "Thi\u1EBFu th\xF4ng tin bookingId \u0111\u1EC3 thanh to\xE1n chuy\u1EBFn xe"
-      );
-    }
-    const bRows = await client.unsafe(
-      `SELECT id, booking_code, status, total_price, payment_status FROM bookings WHERE id = $1::uuid LIMIT 1`,
-      [bookingId]
-    );
-    if (bRows.length === 0) {
-      throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y chuy\u1EBFn xe c\u1EA7n thanh to\xE1n");
-    }
-    if (bRows[0].payment_status === "PAID") {
-      throw new ApiError(400, "Chuy\u1EBFn xe n\xE0y \u0111\xE3 \u0111\u01B0\u1EE3c thanh to\xE1n tr\u01B0\u1EDBc \u0111\xF3");
-    }
-    bookingCode = bRows[0].booking_code;
-  }
-  const transactionCode = generateTransactionCode(gateway);
-  const orderDesc = description || (purpose === "TOPUP_WALLET" ? `N\u1EA1p ${numAmount.toLocaleString("vi-VN")} \u0111 v\xE0o v\xED` : `Thanh to\xE1n chuy\u1EBFn xe ${bookingCode || bookingId}`);
-  let paymentUrl;
-  let qrCodeUrl = null;
-  if (gateway === "VNPAY") {
-    const returnUrl = redirectUrl || VNPAY_CONFIG.defaultReturnUrl;
-    const createDate = formatVnpayDate(/* @__PURE__ */ new Date());
-    const vnpParams = {
-      vnp_Version: "2.1.0",
-      vnp_Command: "pay",
-      vnp_TmnCode: VNPAY_CONFIG.tmnCode,
-      vnp_Locale: "vn",
-      vnp_CurrCode: "VND",
-      vnp_TxnRef: transactionCode,
-      vnp_OrderInfo: orderDesc,
-      vnp_OrderType: purpose === "TOPUP_WALLET" ? "topup" : "billpayment",
-      vnp_Amount: String(numAmount * 100),
-      // VNPay quy ước nhân 100
-      vnp_ReturnUrl: returnUrl,
-      vnp_IpAddr: ipAddr,
-      vnp_CreateDate: createDate
-    };
-    if (bankCode) {
-      vnpParams.vnp_BankCode = bankCode;
-    }
-    const sortedKeys = Object.keys(vnpParams).sort();
-    const signDataParts = [];
-    const queryParts = [];
-    for (const key of sortedKeys) {
-      const val = vnpParams[key];
-      if (val !== void 0 && val !== null && val.length > 0) {
-        signDataParts.push(
-          `${key}=${encodeURIComponent(val).replace(/%20/g, "+")}`
-        );
-        queryParts.push(
-          `${key}=${encodeURIComponent(val).replace(/%20/g, "+")}`
-        );
-      }
-    }
-    const signData = signDataParts.join("&");
-    const hmac = crypto.createHmac("sha512", VNPAY_CONFIG.hashSecret);
-    const secureHash = hmac.update(Buffer.from(signData, "utf-8")).digest("hex");
-    paymentUrl = `${VNPAY_CONFIG.url}?${queryParts.join("&")}&vnp_SecureHash=${secureHash}`;
-    qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentUrl)}`;
-  } else if (gateway === "MOMO") {
-    const returnUrl = redirectUrl || MOMO_CONFIG.defaultRedirectUrl;
-    const ipnUrl = MOMO_CONFIG.defaultIpnUrl;
-    const requestId = `${transactionCode}_REQ`;
-    const extraData = Buffer.from(
-      JSON.stringify({ userId, purpose, bookingId })
-    ).toString("base64");
-    const rawSignature = `accessKey=${MOMO_CONFIG.accessKey}&amount=${numAmount}&extraData=${extraData}&ipnUrl=${ipnUrl}&orderId=${transactionCode}&orderInfo=${orderDesc}&partnerCode=${MOMO_CONFIG.partnerCode}&redirectUrl=${returnUrl}&requestId=${requestId}&requestType=captureWallet`;
-    const signature = crypto.createHmac("sha256", MOMO_CONFIG.secretKey).update(rawSignature).digest("hex");
-    paymentUrl = `https://test-payment.momo.vn/v2/gateway/pay?partnerCode=${MOMO_CONFIG.partnerCode}&orderId=${transactionCode}&requestId=${requestId}&amount=${numAmount}&orderInfo=${encodeURIComponent(orderDesc)}&signature=${signature}`;
-    qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentUrl)}`;
-  } else if (gateway === "VIETQR") {
-    const cleanAccountName = encodeURIComponent(VIETQR_CONFIG.accountName);
-    const transferMemo = encodeURIComponent(`${transactionCode}`);
-    qrCodeUrl = `https://img.vietqr.io/image/${VIETQR_CONFIG.bankId}-${VIETQR_CONFIG.accountNo}-compact2.png?amount=${numAmount}&addInfo=${transferMemo}&accountName=${cleanAccountName}`;
-    paymentUrl = qrCodeUrl;
-  } else {
-    throw new ApiError(400, `C\u1ED5ng thanh to\xE1n "${gateway}" kh\xF4ng \u0111\u01B0\u1EE3c h\u1ED7 tr\u1EE3`);
-  }
-  const inserted = await client.unsafe(
-    `
-    INSERT INTO payment_transactions (
-      user_id,
-      booking_id,
-      wallet_id,
-      amount,
-      gateway,
-      transaction_code,
-      status,
-      payment_url,
-      description,
-      created_at,
-      updated_at
-    ) VALUES (
-      $1::uuid,
-      $2::uuid,
-      $3::uuid,
-      $4::numeric,
-      $5,
-      $6,
-      'PENDING',
-      $7,
-      $8,
-      NOW(),
-      NOW()
-    )
-    RETURNING id, transaction_code, amount, gateway, status, payment_url, created_at
-    `,
-    [
-      userId,
-      bookingId || null,
-      walletId || null,
-      numAmount,
-      gateway,
-      transactionCode,
-      paymentUrl,
-      orderDesc
-    ]
-  );
-  return {
-    paymentId: inserted[0].id,
-    transactionCode,
-    gateway,
-    amount: numAmount,
-    purpose,
-    paymentUrl,
-    qrCodeUrl,
-    bookingCode,
-    description: orderDesc,
-    createdAt: inserted[0].created_at
-  };
-}
-async function processVnpayIpn(query) {
-  const vnpParams = {};
-  let secureHash = "";
-  for (const [key, value] of Object.entries(query)) {
-    if (key === "vnp_SecureHash" || key === "vnp_SecureHashType") {
-      if (key === "vnp_SecureHash") secureHash = String(value);
-      continue;
-    }
-    if (key.startsWith("vnp_")) {
-      vnpParams[key] = String(value);
-    }
-  }
-  const sortedKeys = Object.keys(vnpParams).sort();
-  const signDataParts = [];
-  for (const key of sortedKeys) {
-    const val = vnpParams[key];
-    if (val !== void 0 && val !== null && val.length > 0) {
-      signDataParts.push(
-        `${key}=${encodeURIComponent(val).replace(/%20/g, "+")}`
-      );
-    }
-  }
-  const signData = signDataParts.join("&");
-  const hmac = crypto.createHmac("sha512", VNPAY_CONFIG.hashSecret);
-  const calculatedHash = hmac.update(Buffer.from(signData, "utf-8")).digest("hex");
-  if (calculatedHash.toLowerCase() !== secureHash.toLowerCase()) {
-    return {
-      isValidChecksum: false,
-      response: { RspCode: "97", Message: "Invalid Checksum" }
-    };
-  }
-  const transactionCode = vnpParams["vnp_TxnRef"];
-  const vnpAmount = Number(vnpParams["vnp_Amount"] || 0) / 100;
-  const responseCode = vnpParams["vnp_ResponseCode"];
-  const vnpTransactionNo = vnpParams["vnp_TransactionNo"];
-  const txRows = await client.unsafe(
-    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
-    [transactionCode]
-  );
-  if (txRows.length === 0) {
-    return {
-      isValidChecksum: true,
-      response: { RspCode: "01", Message: "Order Not Found" }
-    };
-  }
-  const tx = txRows[0];
-  if (Number(tx.amount) !== vnpAmount) {
-    return {
-      isValidChecksum: true,
-      response: { RspCode: "04", Message: "Invalid Amount" }
-    };
-  }
-  if (tx.status === "SUCCESS") {
-    return {
-      isValidChecksum: true,
-      response: { RspCode: "02", Message: "Order already confirmed" }
-    };
-  }
-  if (responseCode === "00") {
-    await fulfillSuccessfulPayment({
-      paymentTxId: tx.id,
-      userId: tx.user_id,
-      bookingId: tx.booking_id,
-      walletId: tx.wallet_id,
-      amount: vnpAmount,
-      gateway: "VNPAY",
-      transactionCode,
-      gatewayRefId: vnpTransactionNo,
-      rawResponse: query
-    });
-    return {
-      isValidChecksum: true,
-      success: true,
-      response: { RspCode: "00", Message: "Confirm Success" }
-    };
-  } else {
-    await client.unsafe(
-      `
-      UPDATE payment_transactions
-      SET status = 'FAILED', gateway_ref_id = $1, raw_response = $2::jsonb, updated_at = NOW()
-      WHERE id = $3::uuid
-      `,
-      [vnpTransactionNo, JSON.stringify(query), tx.id]
-    );
-    return {
-      isValidChecksum: true,
-      success: false,
-      response: {
-        RspCode: "00",
-        Message: "Confirm Success (Recorded Failure)"
-      }
-    };
-  }
-}
-async function processMomoIpn(body) {
-  const {
-    partnerCode,
-    orderId,
-    requestId,
-    amount,
-    orderInfo,
-    orderType,
-    transId,
-    resultCode,
-    message,
-    payType,
-    responseTime,
-    extraData,
-    signature
-  } = body;
-  if (!orderId || !signature) {
-    return {
-      isValidChecksum: false,
-      response: { message: "Invalid MoMo Request Payload", status: 400 }
-    };
-  }
-  const rawSignature = `accessKey=${MOMO_CONFIG.accessKey}&amount=${amount}&extraData=${extraData || ""}&message=${message}&orderId=${orderId}&orderInfo=${orderInfo}&orderType=${orderType}&partnerCode=${partnerCode}&payType=${payType}&requestId=${requestId}&responseTime=${responseTime}&resultCode=${resultCode}&transId=${transId}`;
-  const calculatedSignature = crypto.createHmac("sha256", MOMO_CONFIG.secretKey).update(rawSignature).digest("hex");
-  if (calculatedSignature !== signature) {
-    return {
-      isValidChecksum: false,
-      response: { message: "Bad Signature", status: 400 }
-    };
-  }
-  const txRows = await client.unsafe(
-    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
-    [orderId]
-  );
-  if (txRows.length === 0) {
-    return {
-      isValidChecksum: true,
-      response: { message: "Order Not Found", status: 404 }
-    };
-  }
-  const tx = txRows[0];
-  if (tx.status === "SUCCESS") {
-    return {
-      isValidChecksum: true,
-      response: { message: "Order already confirmed", status: 200 }
-    };
-  }
-  if (Number(resultCode) === 0) {
-    await fulfillSuccessfulPayment({
-      paymentTxId: tx.id,
-      userId: tx.user_id,
-      bookingId: tx.booking_id,
-      walletId: tx.wallet_id,
-      amount: Number(amount),
-      gateway: "MOMO",
-      transactionCode: orderId,
-      gatewayRefId: String(transId),
-      rawResponse: body
-    });
-    return {
-      isValidChecksum: true,
-      success: true,
-      response: { message: "Success", status: 200 }
-    };
-  } else {
-    await client.unsafe(
-      `
-      UPDATE payment_transactions
-      SET status = 'FAILED', gateway_ref_id = $1, raw_response = $2::jsonb, updated_at = NOW()
-      WHERE id = $3::uuid
-      `,
-      [String(transId), JSON.stringify(body), tx.id]
-    );
-    return {
-      isValidChecksum: true,
-      success: false,
-      response: { message: "Payment Failed", status: 200 }
-    };
-  }
-}
-async function fulfillSuccessfulPayment(params) {
-  const {
-    paymentTxId,
-    userId,
-    bookingId,
-    amount,
-    gateway,
-    transactionCode,
-    gatewayRefId,
-    rawResponse
-  } = params;
-  return await client.begin(async (sql6) => {
-    await sql6`
-      UPDATE payment_transactions
-      SET 
-        status = 'SUCCESS',
-        gateway_ref_id = ${gatewayRefId},
-        raw_response = ${JSON.stringify(rawResponse)}::jsonb,
-        updated_at = NOW()
-      WHERE id = ${paymentTxId}::uuid
-    `;
-    if (bookingId) {
-      await sql6`
-        UPDATE bookings
-        SET 
-          payment_method = ${gateway}::payment_method,
-          payment_status = 'PAID'::payment_status,
-          updated_at = NOW()
-        WHERE id = ${bookingId}::uuid
-      `;
-    } else {
-      await topUpWallet({
-        userId,
-        amount,
-        description: `N\u1EA1p ${amount.toLocaleString("vi-VN")} \u0111 qua c\u1ED5ng ${gateway} (${transactionCode})`,
-        referenceCode: gatewayRefId || transactionCode
-      });
-    }
-  });
-}
-async function getPaymentStatus(transactionCode) {
-  if (!transactionCode) {
-    throw new ApiError(400, "Thi\u1EBFu m\xE3 giao d\u1ECBch transactionCode");
-  }
-  const rows = await client.unsafe(
-    `
-    SELECT 
-      pt.id,
-      pt.user_id,
-      pt.booking_id,
-      pt.wallet_id,
-      pt.amount,
-      pt.gateway,
-      pt.transaction_code,
-      pt.gateway_ref_id,
-      pt.status,
-      pt.payment_url,
-      pt.description,
-      pt.created_at,
-      pt.updated_at,
-      b.booking_code
-    FROM payment_transactions pt
-    LEFT JOIN bookings b ON b.id = pt.booking_id
-    WHERE pt.transaction_code = $1
-    LIMIT 1
-    `,
-    [transactionCode]
-  );
-  if (rows.length === 0) {
-    throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y th\xF4ng tin giao d\u1ECBch thanh to\xE1n");
-  }
-  const r = rows[0];
-  return {
-    id: r.id,
-    transactionCode: r.transaction_code,
-    gateway: r.gateway,
-    amount: Number(r.amount),
-    status: r.status,
-    isSuccess: r.status === "SUCCESS",
-    gatewayRefId: r.gateway_ref_id,
-    bookingCode: r.booking_code || null,
-    bookingId: r.booking_id || null,
-    description: r.description,
-    paymentUrl: r.payment_url,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at
-  };
-}
-async function getUserPaymentHistory(userId, limit = 20) {
-  const rows = await client.unsafe(
-    `
-    SELECT 
-      pt.id,
-      pt.amount,
-      pt.gateway,
-      pt.transaction_code,
-      pt.gateway_ref_id,
-      pt.status,
-      pt.description,
-      pt.created_at,
-      b.booking_code
-    FROM payment_transactions pt
-    LEFT JOIN bookings b ON b.id = pt.booking_id
-    WHERE pt.user_id = $1::uuid
-    ORDER BY pt.created_at DESC
-    LIMIT $2
-    `,
-    [userId, limit]
-  );
-  return rows.map((r) => ({
-    id: r.id,
-    transactionCode: r.transaction_code,
-    gateway: r.gateway,
-    amount: Number(r.amount),
-    status: r.status,
-    gatewayRefId: r.gateway_ref_id,
-    bookingCode: r.booking_code || null,
-    description: r.description,
-    createdAt: r.created_at
-  }));
-}
-async function confirmSimulatedPayment(transactionCode) {
-  if (!transactionCode) {
-    throw new ApiError(400, "Thi\u1EBFu m\xE3 giao d\u1ECBch transactionCode");
-  }
-  const txRows = await client.unsafe(
-    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
-    [transactionCode]
-  );
-  if (txRows.length === 0) {
-    throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y giao d\u1ECBch thanh to\xE1n");
-  }
-  const tx = txRows[0];
-  if (tx.status !== "SUCCESS") {
-    await fulfillSuccessfulPayment({
-      paymentTxId: tx.id,
-      userId: tx.user_id,
-      bookingId: tx.booking_id,
-      walletId: tx.wallet_id,
-      amount: Number(tx.amount),
-      gateway: tx.gateway,
-      transactionCode: tx.transaction_code,
-      gatewayRefId: "SIMULATED_" + Date.now(),
-      rawResponse: { simulated: true, completedAt: (/* @__PURE__ */ new Date()).toISOString() }
-    });
-  }
-  return { success: true, message: "X\xE1c nh\u1EADn thanh to\xE1n th\xE0nh c\xF4ng!" };
-}
-async function reportPaymentTransferred(transactionCode) {
-  if (!transactionCode) {
-    throw new ApiError(400, "Thi\u1EBFu m\xE3 giao d\u1ECBch transactionCode");
-  }
-  const txRows = await client.unsafe(
-    `SELECT * FROM payment_transactions WHERE transaction_code = $1 LIMIT 1`,
-    [transactionCode]
-  );
-  if (txRows.length === 0) {
-    throw new ApiError(404, "Kh\xF4ng t\xECm th\u1EA5y giao d\u1ECBch thanh to\xE1n");
-  }
-  const tx = txRows[0];
-  if (tx.status === "PENDING") {
-    await client.unsafe(
-      `UPDATE payment_transactions 
-       SET description = COALESCE(description, '') || ' [T\xE0i x\u1EBF/Kh\xE1ch b\xE1o \u0111\xE3 chuy\u1EC3n kho\u1EA3n - Ch\u1EDD Admin \u0111\u1ED1i so\xE1t]',
-           updated_at = NOW() 
-       WHERE id = $1`,
-      [tx.id]
-    );
-  }
-  return {
-    success: true,
-    message: "H\u1EC7 th\u1ED1ng \u0111\xE3 ghi nh\u1EADn th\xF4ng b\xE1o chuy\u1EC3n kho\u1EA3n. \u0110ang ch\u1EDD Admin x\xE1c minh.",
-    data: {
-      transactionCode,
-      amount: Number(tx.amount),
-      status: "WAITING_ADMIN"
-    }
-  };
-}
-
-// src/api/routes/payment.ts
 var router9 = Router9();
 router9.post("/create-url", requireAuth, async (req, res, next) => {
   try {
@@ -9115,6 +9346,7 @@ var payment_default = router9;
 import { Router as Router10 } from "express";
 
 // src/lib/chatService.ts
+init_pusher();
 async function sendChatMessage(dto) {
   const {
     bookingId,
@@ -10903,6 +11135,7 @@ var upload_default = router13;
 
 // src/api/routes/pusher.ts
 import { Router as Router14 } from "express";
+init_pusher();
 var router14 = Router14();
 router14.get("/events", requireAuth, (req, res) => {
   const channel = req.query.channel;
