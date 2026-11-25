@@ -10,7 +10,7 @@ export type MapMode = "customer" | "driver"
 
 export type MapLayer = "standard" | "traffic" | "satellite"
 
-export type PinMode = "pickup" | "destination" | "view"
+export type PinMode = "pickup" | "destination"
 
 export interface DemandHotspot {
   district: string
@@ -328,9 +328,9 @@ export default function InteractiveMap({
     destAddr || "Chọn điểm giao trên bản đồ",
   )
 
-  const [pinMode, setPinMode] = useState<PinMode>("view")
+  const [pinMode, setPinMode] = useState<PinMode>("pickup")
 
-  const pinModeRef = useRef<PinMode>("view")
+  const pinModeRef = useRef<PinMode>("pickup")
 
   useEffect(() => {
     pinModeRef.current = pinMode
@@ -644,12 +644,8 @@ export default function InteractiveMap({
 
       emitRouteCoordinates()
 
-      // Fixed Point B (Destination) when user is setting Pickup (A) HOẶC khi đang ở chế độ Xem bản đồ (view)
-
-      if (
-        (targetPinMode === "pickup" || targetPinMode === "view") &&
-        destCoords
-      ) {
+      // Fixed Point B (Destination) when user is setting Pickup (A)
+      if (targetPinMode === "pickup" && destCoords) {
         const isCoincident =
           Boolean(pickupCoords) &&
           Math.abs(pickupCoords!.lat - destCoords.lat) < 0.0001 &&
@@ -702,12 +698,8 @@ export default function InteractiveMap({
         bookingFixedMarkerRef.current = marker
       }
 
-      // Fixed Point A (Pickup) when user is setting Destination (B) HOẶC khi đang ở chế độ Xem bản đồ (view)
-
-      if (
-        (targetPinMode === "destination" || targetPinMode === "view") &&
-        pickupCoords
-      ) {
+      // Fixed Point A (Pickup) when user is setting Destination (B)
+      if (targetPinMode === "destination" && pickupCoords) {
         const isCoincident =
           Boolean(destCoords) &&
           Math.abs(destCoords!.lat - pickupCoords.lat) < 0.0001 &&
@@ -942,33 +934,18 @@ export default function InteractiveMap({
       if (address) setCurrentDestDisplayAddr(address)
     }
 
-    // Tự động chuyển sang chế độ Xem bản đồ (view) để khóa vị trí điểm vừa nhập,
-    // người dùng kéo bản đồ để kiểm tra/soi đường mà KHÔNG làm xê dịch điểm ghim!
-    setPinMode("view")
-    pinModeRef.current = "view"
-
-    updateBookingVisualsRef.current("view")
+    if (kind === "pickup") {
+      setPinMode("pickup")
+      pinModeRef.current = "pickup"
+      updateBookingVisualsRef.current("pickup")
+    } else {
+      setPinMode("destination")
+      pinModeRef.current = "destination"
+      updateBookingVisualsRef.current("destination")
+    }
     emitRouteCoordinates()
 
-    const p = pickupCoordsRef.current
-    const d = destCoordsRef.current
-    if (
-      p &&
-      d &&
-      (Math.abs(p.lat - d.lat) > 0.0001 || Math.abs(p.lng - d.lng) > 0.0001)
-    ) {
-      try {
-        mapRef.current.fitBounds(
-          L.latLngBounds([
-            [p.lat, p.lng],
-            [d.lat, d.lng],
-          ]),
-          { padding: [50, 50], maxZoom: 16 },
-        )
-      } catch {}
-    } else {
-      mapRef.current.flyTo([lat, lng], 16, { duration: 0.8 })
-    }
+    mapRef.current.flyTo([lat, lng], 16, { duration: 0.8 })
   }, [manualCoords, emitRouteCoordinates])
 
   const handleSwitchPinMode = useCallback(
@@ -1020,32 +997,12 @@ export default function InteractiveMap({
           destCoordsRef.current.lng,
           "destination",
         )
-      } else {
-        // target === "view" (Xem bản đồ / Khóa điểm ghim)
-        const p = pickupCoordsRef.current
-        const d = destCoordsRef.current
-        if (
-          p &&
-          d &&
-          (Math.abs(p.lat - d.lat) > 0.0001 || Math.abs(p.lng - d.lng) > 0.0001)
-        ) {
-          try {
-            map.fitBounds(
-              L.latLngBounds([
-                [p.lat, p.lng],
-                [d.lat, d.lng],
-              ]),
-              { padding: [60, 60], maxZoom: 16 },
-            )
-          } catch {}
-        }
       }
 
       setTimeout(() => {
         updateBookingVisuals(target)
       }, 60)
     },
-
     [reverseGeocode, updateBookingVisuals],
   )
 
@@ -1145,12 +1102,6 @@ export default function InteractiveMap({
       setPinLifted(false)
 
       const currentTarget = pinModeRef.current
-
-      // Nếu đang ở chế độ xem bản đồ (view) hoặc đã khóa vị trí: kéo bản đồ chỉ để xem góc nhìn, không di chuyển điểm ghim
-      if (currentTarget === "view") {
-        return
-      }
-
       const center = map.getCenter()
 
       if (currentTarget === "pickup") {
@@ -2149,7 +2100,7 @@ export default function InteractiveMap({
         </div>
       )}
 
-      {/* 3-Mode Switcher (Chuyển giữa Ghim đón 🟢 A, Ghim đến 🔴 B và 🔒 Xem bản đồ) */}
+      {/* 2-Mode Switcher (Chuyển giữa Ghim đón 🟢 A và Ghim đến 🔴 B) */}
       {mode === "customer" && isBooking && (
         <div className="pin-mode-switcher-container">
           <div className="pin-mode-switcher glass">
@@ -2176,24 +2127,12 @@ export default function InteractiveMap({
               <span className="pin-dot-indicator dot-red" />
               <span>Ghim đến (B)</span>
             </button>
-            <div className="pin-toggle-divider" />
-            <button
-              className={`pin-toggle-btn ${
-                pinMode === "view" ? "active-view" : ""
-              }`}
-              onClick={() => handleSwitchPinMode("view")}
-              type="button"
-              title="Khóa vị trí để xem bản đồ tự do mà không làm xê dịch điểm ghim"
-            >
-              <span className="pin-dot-indicator dot-blue" />
-              <span>🔒 Xem bản đồ</span>
-            </button>
           </div>
         </div>
       )}
 
-      {/* Center Draggable Pickup/Destination Pin Overlay (Chỉ hiện khi ở chế độ ghim A hoặc B) */}
-      {isBooking && pinMode !== "view" && (
+      {/* Center Draggable Pickup/Destination Pin Overlay */}
+      {isBooking && (
         <div
           className={`center-pin-overlay mode-${pinMode} ${
             pinLifted ? "is-lifted" : ""
@@ -2228,18 +2167,6 @@ export default function InteractiveMap({
                     ? "Kéo bản đồ để chọn điểm đón (A)"
                     : "Kéo bản đồ để chọn điểm đến (B)"}
               </small>
-
-              <button
-                type="button"
-                className="pin-lock-action-btn"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleSwitchPinMode("view")
-                }}
-                title="Khóa vị trí điểm này và xem toàn cảnh bản đồ"
-              >
-                ✓ Đã chọn điểm này (Khóa vị trí)
-              </button>
             </div>
           </div>
         </div>
