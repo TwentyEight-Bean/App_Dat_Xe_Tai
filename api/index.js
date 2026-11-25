@@ -7103,7 +7103,7 @@ async function getPendingTopUpRequests(options = {}) {
       dp.id as driver_id,
       dp.license_plate,
       w.balance as current_balance,
-      w.available_balance
+      (COALESCE(w.balance, 0) - COALESCE(w.locked_balance, 0)) as available_balance
     FROM payment_transactions pt
     JOIN users u ON u.id = pt.user_id
     LEFT JOIN driver_profiles dp ON dp.user_id = u.id
