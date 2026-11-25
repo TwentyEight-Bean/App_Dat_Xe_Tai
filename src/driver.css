@@ -365,6 +365,11 @@
   border-radius: 20px;
   width: calc(100% - 52px);
   max-width: calc(100% - 52px);
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(16px) saturate(1.6) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.6) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08) !important;
 }
 
 .d-today small {
@@ -453,7 +458,10 @@
 
 /* ---------- Driver Main Home Control (1:1 Light Liquid Glass like Customer) ---------- */
 
-.driver-home-control {
+.driver-home-control,
+.driver-home-control.glass-liquid,
+.driver-peek-card,
+.driver-peek-card.glass-liquid {
   position: absolute !important;
   z-index: 10 !important;
   left: 14px;
@@ -464,8 +472,24 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.96) 100%
+  ) !important;
+  backdrop-filter: blur(24px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.8) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16), 0 2px 10px rgba(0, 0, 0, 0.06) !important;
   animation: peek-appear 320ms cubic-bezier(0.16, 1, 0.3, 1);
   transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.driver-home-control.glass-liquid::before,
+.driver-home-control.glass-liquid::after,
+.driver-peek-card.glass-liquid::before,
+.driver-peek-card.glass-liquid::after {
+  display: none !important;
 }
 
 .d-control-header {

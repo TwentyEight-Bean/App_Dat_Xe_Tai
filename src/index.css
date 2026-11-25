@@ -4145,6 +4145,26 @@ body { background: var(--canvas); }
   box-shadow: 0 -12px 36px rgba(15, 23, 42, 0.16) !important;
 }
 
+.driver-home-control.glass-liquid,
+.driver-peek-card.glass-liquid {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.96) 100%
+  ) !important;
+  backdrop-filter: blur(24px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.8) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16), 0 2px 10px rgba(0, 0, 0, 0.06) !important;
+}
+
+.driver-home-control.glass-liquid::before,
+.driver-home-control.glass-liquid::after,
+.driver-peek-card.glass-liquid::before,
+.driver-peek-card.glass-liquid::after {
+  display: none !important;
+}
+
 .booking-sheet.glass-liquid .location-card {
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(12px) saturate(1.4);
