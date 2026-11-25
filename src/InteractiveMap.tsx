@@ -10,6 +10,8 @@ export type MapMode = "customer" | "driver"
 
 export type MapLayer = "standard" | "traffic" | "satellite"
 
+export type PinMode = "pickup" | "destination" | "view"
+
 export interface DemandHotspot {
   district: string
 
@@ -326,9 +328,9 @@ export default function InteractiveMap({
     destAddr || "Chọn điểm giao trên bản đồ",
   )
 
-  const [pinMode, setPinMode] = useState<"pickup" | "destination">("pickup")
+  const [pinMode, setPinMode] = useState<PinMode>("view")
 
-  const pinModeRef = useRef<"pickup" | "destination">("pickup")
+  const pinModeRef = useRef<PinMode>("view")
 
   useEffect(() => {
     pinModeRef.current = pinMode
@@ -337,6 +339,8 @@ export default function InteractiveMap({
   const pickupCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
 
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
+
+  const hasCustomDestRef = useRef<boolean>(false)
 
   const bookingFixedMarkerRef = useRef<L.Marker | null>(null)
 
@@ -426,21 +430,29 @@ export default function InteractiveMap({
 
   // Reverse Geocoding with Debounce via OSM Nominatim (Tiếng Việt)
 
-  const reverseGeocodeTimeoutRef = useRef<number | null>(null)
+  const reverseGeocodeTimeoutsRef = useRef<{
+    pickup: number | null
+    destination: number | null
+  }>({
+    pickup: null,
+    destination: null,
+  })
 
   const reverseGeocode = useCallback(
     (
       lat: number,
       lng: number,
-      targetMode: "pickup" | "destination" = pinModeRef.current,
+      targetMode: "pickup" | "destination" = pinModeRef.current === "destination"
+        ? "destination"
+        : "pickup",
     ) => {
-      if (reverseGeocodeTimeoutRef.current) {
-        window.clearTimeout(reverseGeocodeTimeoutRef.current)
+      if (reverseGeocodeTimeoutsRef.current[targetMode]) {
+        window.clearTimeout(reverseGeocodeTimeoutsRef.current[targetMode]!)
       }
 
       setGeocodingLoading(true)
 
-      reverseGeocodeTimeoutRef.current = window.setTimeout(async () => {
+      reverseGeocodeTimeoutsRef.current[targetMode] = window.setTimeout(async () => {
         try {
           let formatted = ""
 
@@ -583,13 +595,13 @@ export default function InteractiveMap({
   )
 
   const handleSwitchPinModeRef = useRef<(
-    mode: "pickup" | "destination",
+    mode: PinMode,
   ) => void>(() => {})
 
   // Dual-Pin logic: Render fixed other point and connecting dashed route line
 
   const updateBookingVisuals = useCallback(
-    (targetPinMode: "pickup" | "destination" = pinModeRef.current) => {
+    (targetPinMode: PinMode = pinModeRef.current) => {
       if (!mapRef.current || !bookingLayerRef.current) return
 
       if (mode !== "customer" || phase !== "booking") {
@@ -609,20 +621,22 @@ export default function InteractiveMap({
 
         if (!destCoordsRef.current) {
           destCoordsRef.current = {
-            lat: center.lat - 0.0035,
-            lng: center.lng + 0.0035,
+            lat: center.lat,
+            lng: center.lng,
           }
         }
-      } else {
+      } else if (targetPinMode === "destination") {
         destCoordsRef.current = { lat: center.lat, lng: center.lng }
+        hasCustomDestRef.current = true
 
         if (!pickupCoordsRef.current) {
           pickupCoordsRef.current = {
-            lat: center.lat + 0.0035,
-            lng: center.lng - 0.0035,
+            lat: center.lat,
+            lng: center.lng,
           }
         }
       }
+      // Khi ở chế độ "view": giữ nguyên tọa độ A và B hiện tại, không gán theo tâm bản đồ!
 
       const pickupCoords = pickupCoordsRef.current
 
@@ -630,11 +644,19 @@ export default function InteractiveMap({
 
       emitRouteCoordinates()
 
-      // Fixed Point B (Destination) when user is setting Pickup (A)
+      // Fixed Point B (Destination) when user is setting Pickup (A) HOẶC khi đang ở chế độ Xem bản đồ (view)
 
-      if (targetPinMode === "pickup" && destCoords) {
+      if (
+        (targetPinMode === "pickup" || targetPinMode === "view") &&
+        destCoords
+      ) {
+        const isCoincident =
+          Boolean(pickupCoords) &&
+          Math.abs(pickupCoords!.lat - destCoords.lat) < 0.0001 &&
+          Math.abs(pickupCoords!.lng - destCoords.lng) < 0.0001
+
         const destFixedIcon = L.divIcon({
-          className: "fixed-map-pin pin-dest-fixed",
+          className: `fixed-map-pin pin-dest-fixed ${isCoincident ? "pin-overlapping" : ""}`,
 
           html: `
             <div class="fixed-pin-bubble">
@@ -649,7 +671,7 @@ export default function InteractiveMap({
 
           iconSize: [44, 58],
 
-          iconAnchor: [22, 54],
+          iconAnchor: isCoincident ? [4, 54] : [22, 54],
         })
 
         const marker = L.marker([destCoords.lat, destCoords.lng], {
@@ -664,22 +686,35 @@ export default function InteractiveMap({
           handleSwitchPinModeRef.current("destination")
         })
 
-        marker.bindTooltip("Chạm để chỉnh Điểm đến (B)", {
-          direction: "top",
+        marker.bindTooltip(
+          targetPinMode === "view"
+            ? "Điểm đến (B) · Chạm để ghim chỉnh"
+            : "Chạm để chỉnh Điểm đến (B)",
+          {
+            direction: "top",
 
-          offset: [0, -48],
+            offset: [0, -48],
 
-          className: "pin-interactive-tooltip",
-        })
+            className: "pin-interactive-tooltip",
+          },
+        )
 
         bookingFixedMarkerRef.current = marker
       }
 
-      // Fixed Point A (Pickup) when user is setting Destination (B)
+      // Fixed Point A (Pickup) when user is setting Destination (B) HOẶC khi đang ở chế độ Xem bản đồ (view)
 
-      if (targetPinMode === "destination" && pickupCoords) {
+      if (
+        (targetPinMode === "destination" || targetPinMode === "view") &&
+        pickupCoords
+      ) {
+        const isCoincident =
+          Boolean(destCoords) &&
+          Math.abs(destCoords!.lat - pickupCoords.lat) < 0.0001 &&
+          Math.abs(destCoords!.lng - pickupCoords.lng) < 0.0001
+
         const pickupFixedIcon = L.divIcon({
-          className: "fixed-map-pin pin-pickup-fixed",
+          className: `fixed-map-pin pin-pickup-fixed ${isCoincident ? "pin-overlapping" : ""}`,
 
           html: `
             <div class="fixed-pin-bubble">
@@ -694,7 +729,7 @@ export default function InteractiveMap({
 
           iconSize: [44, 58],
 
-          iconAnchor: [22, 54],
+          iconAnchor: isCoincident ? [40, 54] : [22, 54],
         })
 
         const marker = L.marker([pickupCoords.lat, pickupCoords.lng], {
@@ -709,13 +744,18 @@ export default function InteractiveMap({
           handleSwitchPinModeRef.current("pickup")
         })
 
-        marker.bindTooltip("Chạm để chỉnh Điểm đón (A)", {
-          direction: "top",
+        marker.bindTooltip(
+          targetPinMode === "view"
+            ? "Điểm đón (A) · Chạm để ghim chỉnh"
+            : "Chạm để chỉnh Điểm đón (A)",
+          {
+            direction: "top",
 
-          offset: [0, -48],
+            offset: [0, -48],
 
-          className: "pin-interactive-tooltip",
-        })
+            className: "pin-interactive-tooltip",
+          },
+        )
 
         bookingFixedMarkerRef.current = marker
       }
@@ -898,10 +938,16 @@ export default function InteractiveMap({
       if (address) setCurrentDisplayAddr(address)
     } else {
       destCoordsRef.current = { lat, lng }
+      hasCustomDestRef.current = true
       if (address) setCurrentDestDisplayAddr(address)
     }
 
-    updateBookingVisualsRef.current(pinModeRef.current)
+    // Tự động chuyển sang chế độ Xem bản đồ (view) để khóa vị trí điểm vừa nhập,
+    // người dùng kéo bản đồ để kiểm tra/soi đường mà KHÔNG làm xê dịch điểm ghim!
+    setPinMode("view")
+    pinModeRef.current = "view"
+
+    updateBookingVisualsRef.current("view")
     emitRouteCoordinates()
 
     const p = pickupCoordsRef.current
@@ -926,7 +972,7 @@ export default function InteractiveMap({
   }, [manualCoords, emitRouteCoordinates])
 
   const handleSwitchPinMode = useCallback(
-    (target: "pickup" | "destination") => {
+    (target: PinMode) => {
       setPinMode(target)
 
       pinModeRef.current = target
@@ -951,13 +997,13 @@ export default function InteractiveMap({
             "pickup",
           )
         }
-      } else {
+      } else if (target === "destination") {
         if (!destCoordsRef.current) {
           const center = map.getCenter()
 
           destCoordsRef.current = {
-            lat: center.lat + 0.007,
-            lng: center.lng + 0.009,
+            lat: center.lat,
+            lng: center.lng,
           }
         }
 
@@ -974,6 +1020,25 @@ export default function InteractiveMap({
           destCoordsRef.current.lng,
           "destination",
         )
+      } else {
+        // target === "view" (Xem bản đồ / Khóa điểm ghim)
+        const p = pickupCoordsRef.current
+        const d = destCoordsRef.current
+        if (
+          p &&
+          d &&
+          (Math.abs(p.lat - d.lat) > 0.0001 || Math.abs(p.lng - d.lng) > 0.0001)
+        ) {
+          try {
+            map.fitBounds(
+              L.latLngBounds([
+                [p.lat, p.lng],
+                [d.lat, d.lng],
+              ]),
+              { padding: [60, 60], maxZoom: 16 },
+            )
+          } catch {}
+        }
       }
 
       setTimeout(() => {
@@ -1040,8 +1105,8 @@ export default function InteractiveMap({
     const initialPickup = { lat: defaultCity.lat, lng: defaultCity.lng }
 
     const initialDest = {
-      lat: defaultCity.lat - 0.0035,
-      lng: defaultCity.lng + 0.0035,
+      lat: defaultCity.lat,
+      lng: defaultCity.lng,
     }
 
     if (!pickupCoordsRef.current) {
@@ -1052,8 +1117,8 @@ export default function InteractiveMap({
       destCoordsRef.current = initialDest
 
       reverseGeocode(
-        defaultCity.lat - 0.0035,
-        defaultCity.lng + 0.0035,
+        defaultCity.lat,
+        defaultCity.lng,
         "destination",
       )
     }
@@ -1061,7 +1126,7 @@ export default function InteractiveMap({
     emitRouteCoordinates()
 
     setTimeout(() => {
-      updateBookingVisualsRef.current?.("pickup")
+      updateBookingVisualsRef.current?.("view")
     }, 100)
 
     // Invalidate size once DOM stabilizes
@@ -1079,14 +1144,20 @@ export default function InteractiveMap({
     map.on("moveend", () => {
       setPinLifted(false)
 
-      const center = map.getCenter()
-
       const currentTarget = pinModeRef.current
+
+      // Nếu đang ở chế độ xem bản đồ (view) hoặc đã khóa vị trí: kéo bản đồ chỉ để xem góc nhìn, không di chuyển điểm ghim
+      if (currentTarget === "view") {
+        return
+      }
+
+      const center = map.getCenter()
 
       if (currentTarget === "pickup") {
         pickupCoordsRef.current = { lat: center.lat, lng: center.lng }
       } else {
         destCoordsRef.current = { lat: center.lat, lng: center.lng }
+        hasCustomDestRef.current = true
       }
 
       reverseGeocode(center.lat, center.lng, currentTarget)
@@ -1113,21 +1184,16 @@ export default function InteractiveMap({
           ) {
             updateUserLocationMarker(latitude, longitude, accuracy)
 
+            // Cả 2 điểm A (lấy hàng) và B (giao hàng) đều nằm tại vị trí người đứng khi bật định vị
             pickupCoordsRef.current = { lat: latitude, lng: longitude }
-
-            const gpsDest = { lat: latitude - 0.0035, lng: longitude + 0.0035 }
-
-            if (!destCoordsRef.current) {
-              destCoordsRef.current = gpsDest
-            }
+            destCoordsRef.current = { lat: latitude, lng: longitude }
 
             map.flyTo([latitude, longitude], 16, { duration: 1.2 })
 
             reverseGeocode(latitude, longitude, "pickup")
+            reverseGeocode(latitude, longitude, "destination")
 
-            reverseGeocode(latitude - 0.0035, longitude + 0.0035, "destination")
-
-            updateBookingVisualsRef.current?.("pickup")
+            updateBookingVisualsRef.current?.("view")
 
             emitRouteCoordinates()
           }
@@ -1142,8 +1208,11 @@ export default function InteractiveMap({
     }
 
     return () => {
-      if (reverseGeocodeTimeoutRef.current) {
-        window.clearTimeout(reverseGeocodeTimeoutRef.current)
+      if (reverseGeocodeTimeoutsRef.current.pickup) {
+        window.clearTimeout(reverseGeocodeTimeoutsRef.current.pickup)
+      }
+      if (reverseGeocodeTimeoutsRef.current.destination) {
+        window.clearTimeout(reverseGeocodeTimeoutsRef.current.destination)
       }
 
       if (userLocationMarkerRef.current) {
@@ -1309,7 +1378,8 @@ export default function InteractiveMap({
 
       pickupCoordsRef.current = { lat: city.lat, lng: city.lng }
 
-      destCoordsRef.current = { lat: city.lat - 0.0035, lng: city.lng + 0.0035 }
+      destCoordsRef.current = { lat: city.lat, lng: city.lng }
+      hasCustomDestRef.current = false
 
       emitRouteCoordinates()
 
@@ -1320,14 +1390,14 @@ export default function InteractiveMap({
 
         reverseGeocode(city.lat, city.lng, "pickup")
 
-        reverseGeocode(city.lat - 0.0035, city.lng + 0.0035, "destination")
+        reverseGeocode(city.lat, city.lng, "destination")
 
         setTimeout(() => {
           updateBookingVisualsRef.current?.(pinModeRef.current)
         }, 300)
       }
     },
-    [reverseGeocode],
+    [reverseGeocode, emitRouteCoordinates],
   )
 
   // 4. GPS "Locate Me" Button with Permission Handling & Fallbacks
@@ -1378,8 +1448,43 @@ export default function InteractiveMap({
 
       if (target === "pickup") {
         pickupCoordsRef.current = { lat: latitude, lng: longitude }
-      } else {
+        reverseGeocode(latitude, longitude, "pickup")
+
+        // Khi người dùng bấm định vị vị trí tại điểm đón A:
+        // Đặt cả điểm B về vị trí người đứng nếu chưa chọn điểm đến riêng biệt
+        const shouldSyncDest =
+          !hasCustomDestRef.current ||
+          !destCoordsRef.current ||
+          (pickupCoordsRef.current &&
+            destCoordsRef.current &&
+            Math.abs(pickupCoordsRef.current.lat - destCoordsRef.current.lat) < 0.0001 &&
+            Math.abs(pickupCoordsRef.current.lng - destCoordsRef.current.lng) < 0.0001)
+
+        if (shouldSyncDest) {
+          destCoordsRef.current = { lat: latitude, lng: longitude }
+          reverseGeocode(latitude, longitude, "destination")
+        }
+      } else if (target === "destination") {
         destCoordsRef.current = { lat: latitude, lng: longitude }
+        hasCustomDestRef.current = true
+        reverseGeocode(latitude, longitude, "destination")
+      } else {
+        // target === "view"
+        pickupCoordsRef.current = { lat: latitude, lng: longitude }
+        reverseGeocode(latitude, longitude, "pickup")
+
+        const shouldSyncDest =
+          !hasCustomDestRef.current ||
+          !destCoordsRef.current ||
+          (pickupCoordsRef.current &&
+            destCoordsRef.current &&
+            Math.abs(pickupCoordsRef.current.lat - destCoordsRef.current.lat) < 0.0001 &&
+            Math.abs(pickupCoordsRef.current.lng - destCoordsRef.current.lng) < 0.0001)
+
+        if (shouldSyncDest) {
+          destCoordsRef.current = { lat: latitude, lng: longitude }
+          reverseGeocode(latitude, longitude, "destination")
+        }
       }
 
       if (mapRef.current) {
@@ -1387,8 +1492,6 @@ export default function InteractiveMap({
           duration: 1.2,
         })
       }
-
-      reverseGeocode(latitude, longitude, target)
 
       updateBookingVisualsRef.current?.(target)
 
@@ -2046,7 +2149,7 @@ export default function InteractiveMap({
         </div>
       )}
 
-      {/* 2-Pin Mode Switcher (Chuyển giữa Tâm đón 🟢 A và Tâm đến 🔴 B) */}
+      {/* 3-Mode Switcher (Chuyển giữa Ghim đón 🟢 A, Ghim đến 🔴 B và 🔒 Xem bản đồ) */}
       {mode === "customer" && isBooking && (
         <div className="pin-mode-switcher-container">
           <div className="pin-mode-switcher glass">
@@ -2056,10 +2159,10 @@ export default function InteractiveMap({
               }`}
               onClick={() => handleSwitchPinMode("pickup")}
               type="button"
-              title="Chuyển tâm ghim để chọn Vị trí đón / lấy hàng"
+              title="Kéo bản đồ để chọn Vị trí đón / lấy hàng"
             >
               <span className="pin-dot-indicator dot-green" />
-              <span>Điểm đón (A)</span>
+              <span>Ghim đón (A)</span>
             </button>
             <div className="pin-toggle-divider" />
             <button
@@ -2068,17 +2171,29 @@ export default function InteractiveMap({
               }`}
               onClick={() => handleSwitchPinMode("destination")}
               type="button"
-              title="Chuyển tâm ghim để chọn Điểm đến / giao hàng"
+              title="Kéo bản đồ để chọn Điểm đến / giao hàng"
             >
               <span className="pin-dot-indicator dot-red" />
-              <span>Điểm đến (B)</span>
+              <span>Ghim đến (B)</span>
+            </button>
+            <div className="pin-toggle-divider" />
+            <button
+              className={`pin-toggle-btn ${
+                pinMode === "view" ? "active-view" : ""
+              }`}
+              onClick={() => handleSwitchPinMode("view")}
+              type="button"
+              title="Khóa vị trí để xem bản đồ tự do mà không làm xê dịch điểm ghim"
+            >
+              <span className="pin-dot-indicator dot-blue" />
+              <span>🔒 Xem bản đồ</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Center Draggable Pickup/Destination Pin Overlay (Khi đang đặt xe) */}
-      {isBooking && (
+      {/* Center Draggable Pickup/Destination Pin Overlay (Chỉ hiện khi ở chế độ ghim A hoặc B) */}
+      {isBooking && pinMode !== "view" && (
         <div
           className={`center-pin-overlay mode-${pinMode} ${
             pinLifted ? "is-lifted" : ""
@@ -2113,6 +2228,18 @@ export default function InteractiveMap({
                     ? "Kéo bản đồ để chọn điểm đón (A)"
                     : "Kéo bản đồ để chọn điểm đến (B)"}
               </small>
+
+              <button
+                type="button"
+                className="pin-lock-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleSwitchPinMode("view")
+                }}
+                title="Khóa vị trí điểm này và xem toàn cảnh bản đồ"
+              >
+                ✓ Đã chọn điểm này (Khóa vị trí)
+              </button>
             </div>
           </div>
         </div>

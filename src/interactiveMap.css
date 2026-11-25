@@ -1083,6 +1083,13 @@
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.28);
 }
 
+.pin-toggle-btn.active-view {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  color: #1d4ed8;
+  border-color: #93c5fd;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.28);
+}
+
 .pin-toggle-divider {
   width: 1px;
   height: 14px;
@@ -1105,6 +1112,35 @@
 .pin-dot-indicator.dot-red {
   background: #ef4444;
   box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+.pin-dot-indicator.dot-blue {
+  background: #2563eb;
+  box-shadow: 0 0 6px rgba(37, 99, 235, 0.6);
+}
+
+.pin-lock-action-btn {
+  margin-top: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 160ms ease;
+}
+
+.pin-lock-action-btn:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.45);
 }
 
 
@@ -1165,6 +1201,18 @@
   border: none !important;
   pointer-events: auto;
   cursor: pointer;
+}
+
+.fixed-map-pin.pin-overlapping {
+  z-index: 610 !important;
+}
+
+.fixed-map-pin.pin-overlapping .fixed-pin-marker {
+  transform: scale(0.96);
+}
+
+.fixed-map-pin.pin-overlapping:hover .fixed-pin-marker {
+  transform: translateY(-4px) scale(1.08);
 }
 
 .fixed-pin-bubble {

@@ -336,6 +336,10 @@ export const bookings = pgTable(
     pickupProofImage: text("pickup_proof_image"),
     deliveryProofImage: text("delivery_proof_image"),
 
+    // Chính sách hủy chuyến mới: Ghi nhận thời điểm nhận đơn và khoảng cách ban đầu
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    initialDistanceToPickup: decimal("initial_distance_to_pickup", { precision: 10, scale: 2 }),
+
     // Sprint 3.5: Chống gian lận hoàn thành cuốc (Anti-Fraud)
     deliveryOtp: varchar("delivery_otp", { length: 10 }),
     completedLat: decimal("completed_lat", { precision: 10, scale: 7 }),

@@ -24,70 +24,30 @@ function formatDisplayPhone(p: string) {
 export default function CallingModal({
   isOpen,
   onClose,
-  bookingId,
   partnerName,
   partnerRole,
   partnerAvatar,
   partnerPhone,
   licensePlate,
   vehicleType,
-  authToken,
 }: CallingModalProps) {
-  const [callStatus, setCallStatus] = useState<"CONNECTING" | "RINGING" | "IN_CALL" | "ENDED">("CONNECTING")
   const [duration, setDuration] = useState(0)
-  const [hotline, setHotline] = useState("1900-8888")
-  const [realPhone, setRealPhone] = useState(partnerPhone || "")
   const [copied, setCopied] = useState(false)
-  const [stringeeCallId, setStringeeCallId] = useState<string | null>(null)
   const timerRef = useRef<number | null>(null)
   const autoDialedRef = useRef(false)
 
-  const activePhone = realPhone || partnerPhone || "0903124486"
+  const activePhone = partnerPhone || (partnerRole === "DRIVER" ? "0903124486" : "0903888999")
   const cleanPhone = activePhone.replace(/\D/g, "")
 
   useEffect(() => {
     if (!isOpen) {
       if (timerRef.current) clearInterval(timerRef.current)
-      setCallStatus("CONNECTING")
       setDuration(0)
       autoDialedRef.current = false
       return
     }
 
-    const token =
-      authToken ||
-      (typeof window !== "undefined"
-        ? localStorage.getItem("driver_auth_token") || localStorage.getItem("token")
-        : "")
-
-    // 1. Cấp phép cuộc gọi và lấy số điện thoại thật của đối tác
-    if (bookingId && token) {
-      fetch("/api/v1/calls/authorize", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ bookingId }),
-      })
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.success && data.data) {
-            if (data.data.callee?.phone) {
-              setRealPhone(data.data.callee.phone)
-            }
-            if (data.data.callee?.maskedDisplayNumber) {
-              setHotline(data.data.callee.maskedDisplayNumber)
-            }
-            if (data.data.stringeeCallId) {
-              setStringeeCallId(data.data.stringeeCallId)
-            }
-          }
-        })
-        .catch((err) => console.warn("Lỗi gọi API authorize call:", err))
-    }
-
-    // 2. Tự động mở trình quay số điện thoại SIM ngay lần đầu mở
+    // Tự động mở trình quay số điện thoại SIM ngay lần đầu mở modal
     if (!autoDialedRef.current && cleanPhone) {
       autoDialedRef.current = true
       try {
@@ -97,24 +57,15 @@ export default function CallingModal({
       }
     }
 
-    // 3. Đếm thời gian đàm thoại
-    const ringTimeout = setTimeout(() => {
-      setCallStatus("RINGING")
-    }, 1200)
-
-    const answerTimeout = setTimeout(() => {
-      setCallStatus("IN_CALL")
-      timerRef.current = window.setInterval(() => {
-        setDuration((d) => d + 1)
-      }, 1000)
-    }, 3500)
+    // Đếm thời gian cuộc gọi
+    timerRef.current = window.setInterval(() => {
+      setDuration((d) => d + 1)
+    }, 1000)
 
     return () => {
-      clearTimeout(ringTimeout)
-      clearTimeout(answerTimeout)
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [isOpen, bookingId, authToken, cleanPhone])
+  }, [isOpen, cleanPhone])
 
   if (!isOpen) return null
 
@@ -125,24 +76,8 @@ export default function CallingModal({
   }
 
   const handleEndCall = () => {
-    setCallStatus("ENDED")
     if (timerRef.current) clearInterval(timerRef.current)
-
-    if (stringeeCallId || bookingId) {
-      fetch("/api/v1/calls/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          call_id: stringeeCallId,
-          event: "ended",
-          duration: duration,
-        }),
-      }).catch((err) => console.warn("Lỗi ghi nhận kết thúc cuộc gọi:", err))
-    }
-
-    setTimeout(() => {
-      onClose()
-    }, 400)
+    onClose()
   }
 
   return (
@@ -178,15 +113,24 @@ export default function CallingModal({
             border: "1.5px solid rgba(74, 222, 128, 0.4)",
           }}
         >
-          <span>📶 CUỘC GỌI SIM DI ĐỘNG THỰC TẾ</span>
+          <span>📶 CUỘC GỌI SIM DI ĐỘNG TRỰC TIẾP</span>
         </div>
         <p style={{ margin: "8px 0 0", fontSize: "12px", color: "rgba(255, 255, 255, 0.7)" }}>
-          Đã kích hoạt trình gọi điện của máy tới số điện thoại đối tác
+          Đã kích hoạt ứng dụng gọi điện trên máy tới số điện thoại đối tác
         </p>
       </div>
 
       {/* Center: Avatar, Partner info & Phone badge */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", width: "100%", maxWidth: "360px" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "14px",
+          width: "100%",
+          maxWidth: "360px",
+        }}
+      >
         <div
           style={{
             width: "96px",
@@ -200,15 +144,16 @@ export default function CallingModal({
             fontWeight: 700,
             color: "#ffffff",
             overflow: "hidden",
-            boxShadow:
-              callStatus === "IN_CALL"
-                ? "0 0 0 10px rgba(34, 197, 94, 0.25), 0 0 30px rgba(34, 197, 94, 0.4)"
-                : "0 0 0 6px rgba(255, 255, 255, 0.1)",
+            boxShadow: "0 0 0 8px rgba(34, 197, 94, 0.25), 0 0 30px rgba(34, 197, 94, 0.4)",
             transition: "all 0.3s ease",
           }}
         >
           {partnerAvatar ? (
-            <img src={partnerAvatar} alt={partnerName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img
+              src={partnerAvatar}
+              alt={partnerName}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
           ) : partnerName ? (
             partnerName.charAt(0).toUpperCase()
           ) : (
@@ -217,7 +162,9 @@ export default function CallingModal({
         </div>
 
         <div style={{ textAlign: "center" }}>
-          <h2 style={{ margin: 0, fontSize: "22px", fontWeight: 800, color: "#ffffff" }}>{partnerName}</h2>
+          <h2 style={{ margin: 0, fontSize: "22px", fontWeight: 800, color: "#ffffff" }}>
+            {partnerName}
+          </h2>
           <p style={{ margin: "4px 0 0", fontSize: "14px", color: "rgba(255, 255, 255, 0.75)" }}>
             {partnerRole === "DRIVER" ? "Tài xế nhận chuyến" : "Khách hàng đặt xe"}
             {licensePlate && ` · ${licensePlate}`}
@@ -231,7 +178,7 @@ export default function CallingModal({
             background: "rgba(255, 255, 255, 0.08)",
             border: "1.5px solid rgba(255, 255, 255, 0.18)",
             borderRadius: "16px",
-            padding: "10px 18px",
+            padding: "12px 18px",
             textAlign: "center",
             width: "100%",
             display: "flex",
@@ -240,43 +187,48 @@ export default function CallingModal({
             gap: "4px",
           }}
         >
-          <span style={{ fontSize: "11.5px", color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Số điện thoại đối tác
+          <span
+            style={{
+              fontSize: "11.5px",
+              color: "#94a3b8",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}
+          >
+            Số điện thoại {partnerRole === "DRIVER" ? "tài xế" : "khách hàng"}
           </span>
-          <span style={{ fontSize: "24px", fontWeight: 900, color: "#38bdf8", letterSpacing: "1px" }}>
+          <span style={{ fontSize: "25px", fontWeight: 900, color: "#38bdf8", letterSpacing: "1px" }}>
             {formatDisplayPhone(activePhone)}
           </span>
         </div>
 
-        {/* Status duration */}
+        {/* Call Duration */}
         <div>
-          {callStatus === "CONNECTING" && (
-            <span style={{ fontSize: "14px", color: "#93c5fd" }}>Đang khởi tạo cuộc gọi...</span>
-          )}
-          {callStatus === "RINGING" && (
-            <span style={{ fontSize: "14px", color: "#fef08a" }}>Đang đổ chuông máy đối tác...</span>
-          )}
-          {callStatus === "IN_CALL" && (
-            <span
-              style={{
-                fontSize: "17px",
-                fontWeight: 700,
-                color: "#4ade80",
-                letterSpacing: "1px",
-              }}
-            >
-              {formatTime(duration)}
-            </span>
-          )}
-          {callStatus === "ENDED" && (
-            <span style={{ fontSize: "14px", color: "#f87171" }}>Cuộc gọi đã kết thúc</span>
-          )}
+          <span
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#4ade80",
+              letterSpacing: "1px",
+            }}
+          >
+            Đang gọi: {formatTime(duration)}
+          </span>
         </div>
       </div>
 
       {/* Action Buttons */}
-      <div style={{ width: "100%", maxWidth: "340px", display: "flex", flexDirection: "column", gap: "12px" }}>
-        {/* Nút gọi lại qua SIM ngay lập tức */}
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "340px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+        }}
+      >
+        {/* Nút bấm gọi qua SIM */}
         <a
           href={`tel:${cleanPhone}`}
           style={{
@@ -285,7 +237,7 @@ export default function CallingModal({
             borderRadius: "27px",
             background: "linear-gradient(135deg, #16a34a, #15803d)",
             color: "#ffffff",
-            fontSize: "16px",
+            fontSize: "15px",
             fontWeight: 800,
             display: "flex",
             alignItems: "center",
@@ -296,7 +248,7 @@ export default function CallingModal({
           }}
         >
           <span style={{ fontSize: "20px" }}>📞</span>
-          <span>BẤM GỌI SIM: {formatDisplayPhone(activePhone)}</span>
+          <span>BẤM GỌI: {formatDisplayPhone(activePhone)}</span>
         </a>
 
         {/* Nút sao chép số */}

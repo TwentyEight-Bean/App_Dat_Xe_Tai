@@ -331,6 +331,9 @@ var bookings = pgTable(
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     pickupProofImage: text("pickup_proof_image"),
     deliveryProofImage: text("delivery_proof_image"),
+    // Chính sách hủy chuyến mới: Ghi nhận thời điểm nhận đơn và khoảng cách ban đầu
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    initialDistanceToPickup: decimal("initial_distance_to_pickup", { precision: 10, scale: 2 }),
     // Sprint 3.5: Chống gian lận hoàn thành cuốc (Anti-Fraud)
     deliveryOtp: varchar("delivery_otp", { length: 10 }),
     completedLat: decimal("completed_lat", { precision: 10, scale: 7 }),
@@ -4372,6 +4375,14 @@ async function acceptBooking(driverUserId, bookingId) {
     SET 
       driver_id = $1::uuid,
       status = 'ACCEPTED',
+      accepted_at = NOW(),
+      initial_distance_to_pickup = (
+        SELECT ST_Distance(dl.location_point::geography, b.origin_point::geography)
+        FROM bookings b
+        LEFT JOIN driver_locations dl ON dl.driver_id = $1::uuid
+        WHERE b.id = $2::uuid
+        LIMIT 1
+      ),
       updated_at = NOW()
     WHERE id = $2::uuid
       AND status = 'SEARCHING'
@@ -4484,6 +4495,9 @@ async function getBookingById(bookingId) {
       b.completed_at,
       b.created_at,
       b.updated_at,
+      b.accepted_at,
+      b.initial_distance_to_pickup,
+      ST_Distance(dl.location_point::geography, b.origin_point::geography) as current_driver_distance,
       u.full_name as customer_name,
       u.phone as customer_phone,
       u.avatar_url as customer_avatar,
@@ -4573,6 +4587,38 @@ async function getBookingById(bookingId) {
     completedLng: r.completed_lng !== null ? Number(r.completed_lng) : null,
     inTransitAt: r.in_transit_at || null,
     completedAt: r.completed_at || null,
+    acceptedAt: r.accepted_at || null,
+    canCustomerCancel: (() => {
+      if (r.status === "SEARCHING" || r.status === "PENDING") return true;
+      if (r.status === "IN_TRANSIT" || r.status === "COMPLETED" || r.status === "CANCELLED") return false;
+      if (r.status === "ACCEPTED" || r.status === "ARRIVED_AT_PICKUP") {
+        const acceptedTime = r.accepted_at ? new Date(r.accepted_at).getTime() : new Date(r.updated_at || r.created_at).getTime();
+        const elapsedMinutes = (Date.now() - acceptedTime) / (1e3 * 60);
+        if (elapsedMinutes > 15) return false;
+        if (elapsedMinutes <= 2) return true;
+        if (r.status === "ARRIVED_AT_PICKUP") return false;
+        const initialDist = r.initial_distance_to_pickup != null ? Number(r.initial_distance_to_pickup) : null;
+        const currentDist = r.current_driver_distance != null ? Number(r.current_driver_distance) : null;
+        if (initialDist != null && currentDist != null && initialDist - currentDist >= 250) return false;
+        return true;
+      }
+      return true;
+    })(),
+    customerCancelBlockReason: (() => {
+      if (r.status === "IN_TRANSIT") return "H\xE0ng h\xF3a \u0111ang \u0111\u01B0\u1EE3c v\u1EADn chuy\u1EC3n, kh\xF4ng th\u1EC3 h\u1EE7y chuy\u1EBFn.";
+      if (r.status === "ACCEPTED" || r.status === "ARRIVED_AT_PICKUP") {
+        const acceptedTime = r.accepted_at ? new Date(r.accepted_at).getTime() : new Date(r.updated_at || r.created_at).getTime();
+        const elapsedMinutes = (Date.now() - acceptedTime) / (1e3 * 60);
+        if (elapsedMinutes > 15) return "\u0110\xE3 qu\xE1 15 ph\xFAt k\u1EC3 t\u1EEB khi t\xE0i x\u1EBF nh\u1EADn cu\u1ED1c. Ch\u1EC9 t\xE0i x\u1EBF m\u1EDBi c\xF3 th\u1EC3 h\u1EE7y cu\u1ED1c l\xFAc n\xE0y.";
+        if (r.status === "ARRIVED_AT_PICKUP") return "T\xE0i x\u1EBF \u0111\xE3 c\xF3 m\u1EB7t t\u1EA1i \u0111i\u1EC3m l\u1EA5y h\xE0ng. Vui l\xF2ng li\xEAn h\u1EC7 t\xE0i x\u1EBF n\u1EBFu c\u1EA7n h\u1EE7y.";
+        const initialDist = r.initial_distance_to_pickup != null ? Number(r.initial_distance_to_pickup) : null;
+        const currentDist = r.current_driver_distance != null ? Number(r.current_driver_distance) : null;
+        if (initialDist != null && currentDist != null && initialDist - currentDist >= 250) {
+          return "T\xE0i x\u1EBF \u0111\xE3 di chuy\u1EC3n \u0111\xFAng \u0111\u01B0\u1EDDng v\u1EC1 ph\xEDa b\u1EA1n. N\xFAt h\u1EE7y \u0111\xE3 b\u1ECB kh\xF3a \u0111\u1EC3 b\u1EA3o v\u1EC7 t\xE0i x\u1EBF.";
+        }
+      }
+      return null;
+    })(),
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
@@ -4938,9 +4984,21 @@ async function cancelBooking(userId, bookingId, reason) {
   }
   const rows = await client.unsafe(
     `
-    SELECT b.id, b.booking_code, b.status, b.customer_id, b.driver_id, dp.user_id as driver_user_id
+    SELECT 
+      b.id, 
+      b.booking_code, 
+      b.status, 
+      b.customer_id, 
+      b.driver_id, 
+      dp.user_id as driver_user_id,
+      b.accepted_at,
+      b.initial_distance_to_pickup,
+      b.created_at,
+      b.updated_at,
+      ST_Distance(dl.location_point::geography, b.origin_point::geography) as current_driver_distance
     FROM bookings b
     LEFT JOIN driver_profiles dp ON dp.id = b.driver_id
+    LEFT JOIN driver_locations dl ON dl.driver_id = dp.id
     WHERE b.id = $1::uuid
     LIMIT 1
     `,
@@ -4969,19 +5027,39 @@ async function cancelBooking(userId, bookingId, reason) {
   if (b.status === "IN_TRANSIT") {
     throw new ApiError(
       400,
-      "H\xE0ng h\xF3a \u0111ang \u0111\u01B0\u1EE3c v\u1EADn chuy\u1EC3n tr\xEAn \u0111\u01B0\u1EDDng, kh\xF4ng th\u1EC3 h\u1EE7y chuy\u1EBFn xe. Vui l\xF2ng li\xEAn h\u1EC7 t\u1ED5ng \u0111\xE0i \u0111\u1EC3 \u0111\u01B0\u1EE3c h\u1ED7 tr\u1EE3."
+      "H\xE0ng h\xF3a \u0111\xE3 \u0111\u01B0\u1EE3c nh\u1EADn l\xEAn xe v\xE0 \u0111ang tr\xEAn \u0111\u01B0\u1EDDng v\u1EADn chuy\u1EC3n, kh\xF4ng th\u1EC3 h\u1EE7y chuy\u1EBFn xe. Vui l\xF2ng li\xEAn h\u1EC7 t\u1ED5ng \u0111\xE0i \u0111\u1EC3 \u0111\u01B0\u1EE3c h\u1ED7 tr\u1EE3."
     );
+  }
+  if (isCustomer) {
+    if (b.status === "ACCEPTED" || b.status === "ARRIVED_AT_PICKUP") {
+      const acceptedTime = b.accepted_at ? new Date(b.accepted_at).getTime() : new Date(b.updated_at || b.created_at).getTime();
+      const now = Date.now();
+      const elapsedMinutes = (now - acceptedTime) / (1e3 * 60);
+      if (elapsedMinutes > 15) {
+        throw new ApiError(
+          400,
+          "\u0110\xE3 qu\xE1 15 ph\xFAt k\u1EC3 t\u1EEB khi t\xE0i x\u1EBF nh\u1EADn cu\u1ED1c. \u0110\u1EC3 b\u1EA3o v\u1EC7 quy\u1EC1n l\u1EE3i t\xE0i x\u1EBF \u0111ang di chuy\u1EC3n \u0111\u1EBFn, b\u1EA1n kh\xF4ng th\u1EC3 t\u1EF1 h\u1EE7y l\xFAc n\xE0y. Vui l\xF2ng li\xEAn h\u1EC7 t\xE0i x\u1EBF \u0111\u1EC3 th\u01B0\u01A1ng l\u01B0\u1EE3ng.",
+          "CANCELLATION_TIME_EXCEEDED"
+        );
+      }
+      if (elapsedMinutes > 2) {
+        const initialDist = b.initial_distance_to_pickup != null ? Number(b.initial_distance_to_pickup) : null;
+        const currentDist = b.current_driver_distance != null ? Number(b.current_driver_distance) : null;
+        if (b.status === "ARRIVED_AT_PICKUP" || initialDist != null && currentDist != null && initialDist - currentDist >= 250) {
+          throw new ApiError(
+            400,
+            "T\xE0i x\u1EBF \u0111\xE3 di chuy\u1EC3n \u0111\xFAng \u0111\u01B0\u1EDDng v\u1EC1 ph\xEDa \u0111i\u1EC3m l\u1EA5y h\xE0ng. N\xFAt h\u1EE7y t\u1EF1 \u0111\u1ED9ng \u0111\xE3 b\u1ECB kh\xF3a \u0111\u1EC3 b\u1EA3o v\u1EC7 t\xE0i x\u1EBF. Vui l\xF2ng li\xEAn h\u1EC7 tr\u1EF1c ti\u1EBFp v\u1EDBi t\xE0i x\u1EBF.",
+            "DRIVER_ON_THE_WAY"
+          );
+        }
+      }
+    }
+  }
+  if (isDriver) {
   }
   const cancelledBy = isCustomer ? "CUSTOMER" : "DRIVER";
   const cancelReason = reason || (isCustomer ? "Kh\xE1ch h\xE0ng y\xEAu c\u1EA7u h\u1EE7y cu\u1ED1c" : "T\xE0i x\u1EBF h\u1EE7y cu\u1ED1c");
-  let cancellationFee = 0;
-  if (isCustomer && b.status === "ARRIVED_AT_PICKUP") {
-    const reasonLower = (cancelReason || "").toLowerCase();
-    const isDriverFault = reasonLower.includes("tr\u1EC5") || reasonLower.includes("qu\xE1 l\xE2u") || reasonLower.includes("kh\xF4ng di chuy\u1EC3n") || reasonLower.includes("kh\xF4ng li\xEAn l\u1EA1c") || reasonLower.includes("kh\xF4ng t\u1EDBi") || reasonLower.includes("\u0111\u1ED5i t\xE0i x\u1EBF");
-    if (!isDriverFault) {
-      cancellationFee = 3e4;
-    }
-  }
+  const cancellationFee = 0;
   const updatedRows = await client.unsafe(
     `
     UPDATE bookings
@@ -4998,58 +5076,6 @@ async function cancelBooking(userId, bookingId, reason) {
     [cancelledBy, cancelReason, cancellationFee, bookingId]
   );
   const cancelled = updatedRows[0];
-  if (cancellationFee > 0) {
-    if (isCustomer && b.customer_id) {
-      try {
-        const customerWallet = await getOrCreateWallet(b.customer_id);
-        const oldCustBalance = Number(customerWallet.balance || 0);
-        const newCustBalance = oldCustBalance - cancellationFee;
-        await client.unsafe(
-          `UPDATE wallets SET balance = $1::numeric, updated_at = NOW() WHERE id = $2::uuid`,
-          [newCustBalance, customerWallet.id]
-        );
-        await client.unsafe(
-          `INSERT INTO wallet_transactions (wallet_id, booking_id, amount, balance_before, balance_after, type, description, created_at)
-           VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::numeric, 'CANCELLATION_FEE', $6, NOW())`,
-          [
-            customerWallet.id,
-            bookingId,
-            -cancellationFee,
-            oldCustBalance,
-            newCustBalance,
-            `Ph\xED ph\u1EA1t h\u1EE7y chuy\u1EBFn ${b.booking_code} khi t\xE0i x\u1EBF \u0111\xE3 t\u1EDBi \u0111i\u1EC3m l\u1EA5y h\xE0ng`
-          ]
-        );
-      } catch (cErr) {
-        console.warn("L\u1ED7i tr\u1EEB ph\xED ph\u1EA1t v\xE0o v\xED kh\xE1ch h\xE0ng:", cErr.message);
-      }
-    }
-    if (b.driver_user_id) {
-      try {
-        const driverWallet = await getOrCreateWallet(b.driver_user_id);
-        const oldDriverBalance = Number(driverWallet.balance || 0);
-        const newDriverBalance = oldDriverBalance + cancellationFee;
-        await client.unsafe(
-          `UPDATE wallets SET balance = $1::numeric, updated_at = NOW() WHERE id = $2::uuid`,
-          [newDriverBalance, driverWallet.id]
-        );
-        await client.unsafe(
-          `INSERT INTO wallet_transactions (wallet_id, booking_id, amount, balance_before, balance_after, type, description, created_at)
-           VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::numeric, 'BONUS', $6, NOW())`,
-          [
-            driverWallet.id,
-            bookingId,
-            cancellationFee,
-            oldDriverBalance,
-            newDriverBalance,
-            `B\u1ED3i th\u01B0\u1EDDng h\u1EE7y chuy\u1EBFn ${b.booking_code} khi t\xE0i x\u1EBF \u0111\xE3 t\u1EDBi \u0111i\u1EC3m l\u1EA5y h\xE0ng`
-          ]
-        );
-      } catch (wErr) {
-        console.warn("L\u1ED7i c\u1ED9ng b\u1ED3i th\u01B0\u1EDDng v\xE0o v\xED t\xE0i x\u1EBF:", wErr.message);
-      }
-    }
-  }
   await triggerBookingCancelled(
     bookingId,
     cancelledBy,

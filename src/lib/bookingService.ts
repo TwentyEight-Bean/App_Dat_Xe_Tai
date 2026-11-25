@@ -453,21 +453,26 @@ export async function acceptBooking(driverUserId: string, bookingId: string) {
   }
 
   // 3. ATOMIC UPDATE: Chỉ cập nhật nếu status hiện tại là 'SEARCHING'
-
   // Đảm bảo dù 2 hay nhiều tài xế cùng bấm trong 1 mili-giây, chỉ ĐÚNG 1 người nhận được
-
   const updated = await client.unsafe(
     `
     UPDATE bookings
     SET 
       driver_id = $1::uuid,
       status = 'ACCEPTED',
+      accepted_at = NOW(),
+      initial_distance_to_pickup = (
+        SELECT ST_Distance(dl.location_point::geography, b.origin_point::geography)
+        FROM bookings b
+        LEFT JOIN driver_locations dl ON dl.driver_id = $1::uuid
+        WHERE b.id = $2::uuid
+        LIMIT 1
+      ),
       updated_at = NOW()
     WHERE id = $2::uuid
       AND status = 'SEARCHING'
     RETURNING *
     `,
-
     [driver.id, bookingId],
   )
 
@@ -632,6 +637,9 @@ export async function getBookingById(bookingId: string) {
       b.completed_at,
       b.created_at,
       b.updated_at,
+      b.accepted_at,
+      b.initial_distance_to_pickup,
+      ST_Distance(dl.location_point::geography, b.origin_point::geography) as current_driver_distance,
       u.full_name as customer_name,
       u.phone as customer_phone,
       u.avatar_url as customer_avatar,
@@ -767,6 +775,38 @@ export async function getBookingById(bookingId: string) {
     completedLng: r.completed_lng !== null ? Number(r.completed_lng) : null,
     inTransitAt: r.in_transit_at || null,
     completedAt: r.completed_at || null,
+    acceptedAt: r.accepted_at || null,
+    canCustomerCancel: (() => {
+      if (r.status === "SEARCHING" || r.status === "PENDING") return true
+      if (r.status === "IN_TRANSIT" || r.status === "COMPLETED" || r.status === "CANCELLED") return false
+      if (r.status === "ACCEPTED" || r.status === "ARRIVED_AT_PICKUP") {
+        const acceptedTime = r.accepted_at ? new Date(r.accepted_at).getTime() : new Date(r.updated_at || r.created_at).getTime()
+        const elapsedMinutes = (Date.now() - acceptedTime) / (1000 * 60)
+        if (elapsedMinutes > 15) return false
+        if (elapsedMinutes <= 2) return true
+        if (r.status === "ARRIVED_AT_PICKUP") return false
+        const initialDist = r.initial_distance_to_pickup != null ? Number(r.initial_distance_to_pickup) : null
+        const currentDist = r.current_driver_distance != null ? Number(r.current_driver_distance) : null
+        if (initialDist != null && currentDist != null && (initialDist - currentDist) >= 250) return false
+        return true
+      }
+      return true
+    })(),
+    customerCancelBlockReason: (() => {
+      if (r.status === "IN_TRANSIT") return "Hàng hóa đang được vận chuyển, không thể hủy chuyến."
+      if (r.status === "ACCEPTED" || r.status === "ARRIVED_AT_PICKUP") {
+        const acceptedTime = r.accepted_at ? new Date(r.accepted_at).getTime() : new Date(r.updated_at || r.created_at).getTime()
+        const elapsedMinutes = (Date.now() - acceptedTime) / (1000 * 60)
+        if (elapsedMinutes > 15) return "Đã quá 15 phút kể từ khi tài xế nhận cuốc. Chỉ tài xế mới có thể hủy cuốc lúc này."
+        if (r.status === "ARRIVED_AT_PICKUP") return "Tài xế đã có mặt tại điểm lấy hàng. Vui lòng liên hệ tài xế nếu cần hủy."
+        const initialDist = r.initial_distance_to_pickup != null ? Number(r.initial_distance_to_pickup) : null
+        const currentDist = r.current_driver_distance != null ? Number(r.current_driver_distance) : null
+        if (initialDist != null && currentDist != null && (initialDist - currentDist) >= 250) {
+          return "Tài xế đã di chuyển đúng đường về phía bạn. Nút hủy đã bị khóa để bảo vệ tài xế."
+        }
+      }
+      return null
+    })(),
 
     createdAt: r.created_at,
 
@@ -1314,13 +1354,24 @@ export async function cancelBooking(
 
   const rows = await client.unsafe(
     `
-    SELECT b.id, b.booking_code, b.status, b.customer_id, b.driver_id, dp.user_id as driver_user_id
+    SELECT 
+      b.id, 
+      b.booking_code, 
+      b.status, 
+      b.customer_id, 
+      b.driver_id, 
+      dp.user_id as driver_user_id,
+      b.accepted_at,
+      b.initial_distance_to_pickup,
+      b.created_at,
+      b.updated_at,
+      ST_Distance(dl.location_point::geography, b.origin_point::geography) as current_driver_distance
     FROM bookings b
     LEFT JOIN driver_profiles dp ON dp.id = b.driver_id
+    LEFT JOIN driver_locations dl ON dl.driver_id = dp.id
     WHERE b.id = $1::uuid
     LIMIT 1
     `,
-
     [bookingId],
   )
 
@@ -1331,9 +1382,7 @@ export async function cancelBooking(
   const b = rows[0]
 
   // Kiểm tra quyền hủy
-
   const isCustomer = b.customer_id === userId
-
   const isDriver = b.driver_user_id === userId
 
   if (!isCustomer && !isDriver) {
@@ -1343,11 +1392,8 @@ export async function cancelBooking(
   if (b.status === "CANCELLED") {
     return {
       bookingId: b.id,
-
       bookingCode: b.booking_code,
-
       status: "CANCELLED",
-
       message: "Chuyến xe đã bị hủy trước đó",
     }
   }
@@ -1356,36 +1402,64 @@ export async function cancelBooking(
     throw new ApiError(400, "Chuyến xe đã hoàn thành, không thể hủy")
   }
 
+  // 1. Nếu đang vận chuyển hàng trên đường: Tuyệt đối CẤM HỦY đối với cả khách và tài xế
   if (b.status === "IN_TRANSIT") {
     throw new ApiError(
       400,
-
-      "Hàng hóa đang được vận chuyển trên đường, không thể hủy chuyến xe. Vui lòng liên hệ tổng đài để được hỗ trợ.",
+      "Hàng hóa đã được nhận lên xe và đang trên đường vận chuyển, không thể hủy chuyến xe. Vui lòng liên hệ tổng đài để được hỗ trợ.",
     )
   }
 
-  const cancelledBy = isCustomer ? "CUSTOMER" : "DRIVER"
+  // 2. Kiểm tra điều kiện hủy của Khách hàng
+  if (isCustomer) {
+    if (b.status === "ACCEPTED" || b.status === "ARRIVED_AT_PICKUP") {
+      const acceptedTime = b.accepted_at
+        ? new Date(b.accepted_at).getTime()
+        : new Date(b.updated_at || b.created_at).getTime()
+      const now = Date.now()
+      const elapsedMinutes = (now - acceptedTime) / (1000 * 60)
 
+      // a. Quá 15 phút kể từ lúc tài xế nhận cuốc: Khóa hoàn toàn quyền hủy của khách
+      if (elapsedMinutes > 15) {
+        throw new ApiError(
+          400,
+          "Đã quá 15 phút kể từ khi tài xế nhận cuốc. Để bảo vệ quyền lợi tài xế đang di chuyển đến, bạn không thể tự hủy lúc này. Vui lòng liên hệ tài xế để thương lượng.",
+          "CANCELLATION_TIME_EXCEEDED",
+        )
+      }
+
+      // b. Sau 2 phút ân hạn (từ phút 2 đến phút 15):
+      // Nếu GPS xác nhận tài xế đã di chuyển đúng đường lại gần điểm đón (>= 250m) hoặc đã đến nơi -> Khóa hủy của khách
+      if (elapsedMinutes > 2) {
+        const initialDist = b.initial_distance_to_pickup != null ? Number(b.initial_distance_to_pickup) : null
+        const currentDist = b.current_driver_distance != null ? Number(b.current_driver_distance) : null
+
+        if (
+          b.status === "ARRIVED_AT_PICKUP" ||
+          (initialDist != null && currentDist != null && (initialDist - currentDist) >= 250)
+        ) {
+          throw new ApiError(
+            400,
+            "Tài xế đã di chuyển đúng đường về phía điểm lấy hàng. Nút hủy tự động đã bị khóa để bảo vệ tài xế. Vui lòng liên hệ trực tiếp với tài xế.",
+            "DRIVER_ON_THE_WAY",
+          )
+        }
+      }
+    }
+  }
+
+  // 3. Kiểm tra điều kiện hủy của Tài xế
+  if (isDriver) {
+    // Tài xế có quyền hủy từ vị trí hiện tại đến vị trí lấy hàng (ACCEPTED, ARRIVED_AT_PICKUP)
+    // Đã kiểm tra chặn IN_TRANSIT và COMPLETED ở trên
+  }
+
+  const cancelledBy = isCustomer ? "CUSTOMER" : "DRIVER"
   const cancelReason =
     reason || (isCustomer ? "Khách hàng yêu cầu hủy cuốc" : "Tài xế hủy cuốc")
 
-  // Task 2.1: Phí bồi thường nếu khách hủy khi tài xế đã đến điểm lấy hàng (ARRIVED_AT_PICKUP)
-  let cancellationFee = 0
-  if (isCustomer && b.status === "ARRIVED_AT_PICKUP") {
-    // Miễn trừ phí phạt nếu lý do hủy xuất phát từ lỗi tài xế (trễ hẹn, không đến, không di chuyển, không liên lạc được)
-    const reasonLower = (cancelReason || "").toLowerCase()
-    const isDriverFault =
-      reasonLower.includes("trễ") ||
-      reasonLower.includes("quá lâu") ||
-      reasonLower.includes("không di chuyển") ||
-      reasonLower.includes("không liên lạc") ||
-      reasonLower.includes("không tới") ||
-      reasonLower.includes("đổi tài xế")
-
-    if (!isDriverFault) {
-      cancellationFee = 30000 // 30.000đ bồi thường xăng xe tài xế khi lỗi do khách
-    }
-  }
+  // Hệ thống không tự động trừ tiền ví / cộng tiền ví (0đ). Hai bên tự thương lượng bồi thường nếu có.
+  const cancellationFee = 0
 
   // Cập nhật sang CANCELLED và lưu vết đầy đủ vào Database
   const updatedRows = await client.unsafe(
@@ -1405,63 +1479,6 @@ export async function cancelBooking(
   )
 
   const cancelled = updatedRows[0]
-
-  // Task 2.1: Tự động trừ tiền ví khách hàng (hoặc ghi nợ) và cộng bồi thường vào ví tài xế
-  if (cancellationFee > 0) {
-    // 1. Trừ tiền ví khách hàng
-    if (isCustomer && b.customer_id) {
-      try {
-        const customerWallet = await getOrCreateWallet(b.customer_id)
-        const oldCustBalance = Number(customerWallet.balance || 0)
-        const newCustBalance = oldCustBalance - cancellationFee
-        await client.unsafe(
-          `UPDATE wallets SET balance = $1::numeric, updated_at = NOW() WHERE id = $2::uuid`,
-          [newCustBalance, customerWallet.id],
-        )
-        await client.unsafe(
-          `INSERT INTO wallet_transactions (wallet_id, booking_id, amount, balance_before, balance_after, type, description, created_at)
-           VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::numeric, 'CANCELLATION_FEE', $6, NOW())`,
-          [
-            customerWallet.id,
-            bookingId,
-            -cancellationFee,
-            oldCustBalance,
-            newCustBalance,
-            `Phí phạt hủy chuyến ${b.booking_code} khi tài xế đã tới điểm lấy hàng`,
-          ],
-        )
-      } catch (cErr: any) {
-        console.warn("Lỗi trừ phí phạt vào ví khách hàng:", cErr.message)
-      }
-    }
-
-    // 2. Cộng tiền bồi thường vào ví tài xế
-    if (b.driver_user_id) {
-      try {
-        const driverWallet = await getOrCreateWallet(b.driver_user_id)
-        const oldDriverBalance = Number(driverWallet.balance || 0)
-        const newDriverBalance = oldDriverBalance + cancellationFee
-        await client.unsafe(
-          `UPDATE wallets SET balance = $1::numeric, updated_at = NOW() WHERE id = $2::uuid`,
-          [newDriverBalance, driverWallet.id],
-        )
-        await client.unsafe(
-          `INSERT INTO wallet_transactions (wallet_id, booking_id, amount, balance_before, balance_after, type, description, created_at)
-           VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::numeric, 'BONUS', $6, NOW())`,
-          [
-            driverWallet.id,
-            bookingId,
-            cancellationFee,
-            oldDriverBalance,
-            newDriverBalance,
-            `Bồi thường hủy chuyến ${b.booking_code} khi tài xế đã tới điểm lấy hàng`,
-          ],
-        )
-      } catch (wErr: any) {
-        console.warn("Lỗi cộng bồi thường vào ví tài xế:", wErr.message)
-      }
-    }
-  }
 
   // Bắn sự kiện Pusher thông báo hủy
   await triggerBookingCancelled(

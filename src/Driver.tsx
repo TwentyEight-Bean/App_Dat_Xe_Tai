@@ -1869,15 +1869,17 @@ function ActiveJob({
           </strong>
           <em>{banner.addr}</em>
         </span>
-        <button
-          aria-label="Hủy chuyến hoặc báo sự cố"
-          className="d-banner-cancel-btn"
-          onClick={onCancelTrip}
-          title="Báo sự cố / Hủy chuyến xe"
-          type="button"
-        >
-          ✕
-        </button>
+        {job !== "delivering" && (
+          <button
+            aria-label="Hủy chuyến hoặc báo sự cố"
+            className="d-banner-cancel-btn"
+            onClick={onCancelTrip}
+            title="Báo sự cố / Hủy chuyến xe"
+            type="button"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {!expanded ? (
@@ -2021,7 +2023,7 @@ function ActiveJob({
                   </div>
                   <div style={{ fontSize: "11px", color: waitingSeconds <= 0 ? "#991b1b" : "#15803d", marginTop: "1px" }}>
                     {waitingSeconds <= 0
-                      ? "Nếu khách không ra và không nghe máy, bạn có quyền báo vắng mặt nhận 30k"
+                      ? "Nếu khách không ra và không nghe máy, bạn có quyền báo vắng mặt và tự thương lượng chi phí với khách"
                       : "Khách có tối đa 15 phút để chuẩn bị bốc hàng lên xe"}
                   </div>
                 </div>
@@ -2042,7 +2044,7 @@ function ActiveJob({
                     flexShrink: 0,
                   }}
                 >
-                  Báo vắng mặt
+                  Báo vắng mặt / Hủy
                 </button>
               )}
             </div>
@@ -2663,23 +2665,25 @@ function ActiveJob({
               />
             )}
 
-            <button
-              type="button"
-              onClick={onCancelTrip}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#dc2626",
-                fontSize: "12.5px",
-                fontWeight: 700,
-                padding: "6px 0",
-                cursor: "pointer",
-                textAlign: "center",
-                textDecoration: "underline",
-              }}
-            >
-              Hủy nhận chuyến xe này
-            </button>
+            {job !== "delivering" && (
+              <button
+                type="button"
+                onClick={onCancelTrip}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#dc2626",
+                  fontSize: "12.5px",
+                  fontWeight: 700,
+                  padding: "6px 0",
+                  cursor: "pointer",
+                  textAlign: "center",
+                  textDecoration: "underline",
+                }}
+              >
+                Hủy nhận chuyến xe này
+              </button>
+            )}
 
             {/* Báo sự cố khẩn cấp dành cho tài xế */}
             <button
@@ -4578,8 +4582,7 @@ export default function DriverApp() {
                   color: "#94a3b8",
                 }}
               >
-                Chọn lý do để hệ thống hủy chuyến và điều phối xe thay thế cho khách
-                hàng:
+                Chọn lý do hủy chuyến trước khi nhận hàng. Hệ thống không trừ tiền ví, chi phí phát sinh (nếu có) do hai bên tự thương lượng:
               </p>
               <div
                 style={{

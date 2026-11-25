@@ -2039,6 +2039,8 @@ function TrackingSheet({
   onOpenComplaint,
 
   onReassign,
+
+  cancelPolicy,
 }: {
   phase: TrackPhase
 
@@ -2077,6 +2079,8 @@ function TrackingSheet({
   onOpenComplaint?: () => void
 
   onReassign?: () => void
+
+  cancelPolicy?: { canCancel: boolean; blockReason: string | null }
 
   onRate?: (
     rating: number,
@@ -2555,25 +2559,36 @@ function TrackingSheet({
 
           {onCancelTrip && (
             <div style={{ textAlign: "center", marginTop: "10px" }}>
-              <button
-                type="button"
-                onClick={onCancelTrip}
-                style={{
-                  background: "transparent",
-
-                  border: "none",
-
-                  color: "#ef4444",
-
-                  fontSize: "12px",
-
-                  cursor: "pointer",
-
-                  textDecoration: "underline",
-                }}
-              >
-                Hủy chuyến xe này
-              </button>
+              {cancelPolicy && !cancelPolicy.canCancel ? (
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "#94a3b8",
+                    display: "inline-block",
+                    padding: "6px 12px",
+                    background: "#f1f5f9",
+                    borderRadius: "8px",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  🔒 {cancelPolicy.blockReason || "Quyền hủy tự động đã bị khóa"}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onCancelTrip}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#ef4444",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Hủy chuyến xe này
+                </button>
+              )}
             </div>
           )}
 
@@ -5116,6 +5131,11 @@ export default function App() {
     "Đổi kế hoạch di chuyển",
   )
 
+  const [cancelPolicyInfo, setCancelPolicyInfo] = useState<{
+    canCancel: boolean
+    blockReason: string | null
+  }>({ canCancel: true, blockReason: null })
+
   const [isCancellingCustomer, setIsCancellingCustomer] = useState(false)
 
   const cancelDialogRef = useCustomerDialog(showCustomerCancelModal, () => {
@@ -5300,6 +5320,13 @@ export default function App() {
             }
           }
 
+          if (typeof trackData.canCustomerCancel === "boolean") {
+            setCancelPolicyInfo({
+              canCancel: trackData.canCustomerCancel,
+              blockReason: trackData.customerCancelBlockReason || null,
+            })
+          }
+
           if (trackData.deliveryOtp) {
             setCurrentDeliveryOtp(trackData.deliveryOtp)
           }
@@ -5473,9 +5500,9 @@ export default function App() {
 
       originLng: 106.7009,
 
-      destLat: 10.7734,
+      destLat: 10.7769,
 
-      destLng: 106.7044,
+      destLng: 106.7009,
     }
 
     setIsEstimating(true)
@@ -5998,17 +6025,7 @@ export default function App() {
       if (res.ok && data.success) {
         fetchCustomerWallet()
 
-        if (data.data?.cancellationFee > 0) {
-          showCustomerToast(
-            `Chuyến xe đã hủy. Do tài xế đã đến điểm đón, áp dụng phí bồi thường: ${data.data.cancellationFee.toLocaleString(
-              "vi-VN",
-            )}đ.`,
-
-            5000,
-          )
-        } else {
-          showCustomerToast("Bạn đã hủy chuyến xe thành công.")
-        }
+        showCustomerToast("Bạn đã hủy chuyến xe thành công.")
 
         setPhase("booking")
 
@@ -6112,6 +6129,14 @@ export default function App() {
   }
 
   const handleCancel = () => {
+    if (cancelPolicyInfo && !cancelPolicyInfo.canCancel) {
+      showCustomerToast(
+        cancelPolicyInfo.blockReason ||
+          "Chuyến xe đã bị khóa quyền hủy tự động để bảo vệ lộ trình tài xế.",
+        5000,
+      )
+      return
+    }
     setShowCustomerCancelModal(true)
   }
 
@@ -7105,6 +7130,7 @@ export default function App() {
                       onReassign={handleReassignDriver}
                       onViewOrders={viewCompletedOrder}
                       onCancelTrip={handleCancel}
+                      cancelPolicy={cancelPolicyInfo}
                       onRate={async (stars, comment, tags) => {
                         if (currentBookingId) {
                           await handleRateBooking(
@@ -7313,13 +7339,7 @@ export default function App() {
                   lineHeight: 1.4,
                 }}
               >
-                {customerCancelReason.includes("quá trễ") ||
-                customerCancelReason.includes("không di chuyển") ||
-                customerCancelReason.includes("Không liên lạc")
-                  ? "✅ HỦY MIỄN PHÍ 100% (0đ phí phạt do lỗi tài xế trễ hẹn / không di chuyển)."
-                  : phase === "arrived"
-                    ? "⚠️ Tài xế đã có mặt tại điểm đón. Nếu hủy do đổi ý, hệ thống sẽ áp dụng phí bồi thường 30.000đ cho tài xế."
-                    : "Vui lòng chọn lý do bạn muốn hủy đơn hàng này:"}
+                Hệ thống không thu phí hủy cuốc (0đ). Mọi chi phí hỗ trợ xăng xe (nếu có) do bạn và tài xế tự thương lượng trực tiếp.
               </p>
               <div
                 style={{
